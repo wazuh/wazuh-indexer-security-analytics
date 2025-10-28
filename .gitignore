@@ -9,3 +9,5 @@ out/
 .project
 .settings
 .vscode
+artifacts/
+bin/
