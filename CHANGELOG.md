@@ -5,7 +5,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ## [Unreleased 5.0.x]
 ### Added
--
+- Init repository [(#2)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/2)
 
 ### Dependencies
 -
