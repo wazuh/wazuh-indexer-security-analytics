@@ -24,6 +24,6 @@ public class SecurityAnalyticsPluginRestApiIT extends SecurityAnalyticsRestTestC
         List<Object> pluginsList = JsonXContent.jsonXContent.createParser(NamedXContentRegistry.EMPTY,
                 LoggingDeprecationHandler.INSTANCE, response.getEntity().getContent()).list();
         Assert.assertTrue(pluginsList.stream().map(o -> (Map<String, Object>) o).anyMatch(plugin -> plugin.get("component")
-                .equals("opensearch-security-analytics")));
+                .equals("wazuh-indexer-security-analytics")));
     }
 }
