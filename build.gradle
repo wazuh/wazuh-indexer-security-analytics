@@ -28,7 +28,7 @@ buildscript {
         plugin_no_snapshot = opensearch_build
         opensearch_no_snapshot = opensearch_version.replace("-SNAPSHOT","")
         wazuh_version = System.getProperty("version", "5.0.0")
-        revision = System.getProperty("build.revision", "0")
+        revision = System.getProperty("revision", "0")
         sa_commons_version = '1.0.0'
         if (buildVersionQualifier) {
             opensearch_build += "-${buildVersionQualifier}"
