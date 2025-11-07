@@ -27,6 +27,8 @@ buildscript {
         opensearch_build = version_tokens[0] + '.0'
         plugin_no_snapshot = opensearch_build
         opensearch_no_snapshot = opensearch_version.replace("-SNAPSHOT","")
+        wazuh_version = System.getProperty("version", "5.0.0")
+        revision = System.getProperty("revision", "0")
         sa_commons_version = '1.0.0'
         if (buildVersionQualifier) {
             opensearch_build += "-${buildVersionQualifier}"
@@ -109,8 +111,8 @@ validateNebulaPom.enabled = false
 loggerUsageCheck.enabled = false
 
 opensearchplugin {
-    name 'opensearch-security-analytics'
-    description 'OpenSearch Security Analytics plugin'
+    name 'wazuh-indexer-security-analytics'
+    description 'Wazuh Indexer Security Analytics plugin'
     classname 'org.opensearch.securityanalytics.SecurityAnalyticsPlugin'
     extendedPlugins = ['opensearch-job-scheduler', 'opensearch-alerting']
 }
@@ -126,13 +128,7 @@ testClusters.javaRestTest {
 
 allprojects {
     group = 'org.opensearch'
-    version = opensearch_version.tokenize('-')[0] + '.0'
-    if (buildVersionQualifier) {
-        version += "-${buildVersionQualifier}"
-    }
-    if (isSnapshot) {
-        version += "-SNAPSHOT"
-    }
+    version = "${wazuh_version}" + ".${revision}"
 
     apply from: "$rootDir/build-tools/repositories.gradle"
 
@@ -146,9 +142,9 @@ publishing {
     publications {
         pluginZip(MavenPublication) { publication ->
             pom {
-                groupId = "org.opensearch.plugin"
-                name = "opensearch-security-analytics"
-                description = "OpenSearch Security Analytics plugin"
+                groupId = "wazuh-indexer.plugin"
+                name = "wazuh-indexer-security-analytics"
+                description = "Wazuh Indexer Security Analytics plugin"
                 licenses {
                     license {
                         name = "The Apache License, Version 2.0"
@@ -157,8 +153,8 @@ publishing {
                 }
                 developers {
                     developer {
-                        name = "OpenSearch"
-                        url = "https://github.com/opensearch-project/security-analytics"
+                        name = "wazuh-indexer"
+                        url = "https://github.com/wazuh/wazuh-indexer-security-analytics"
                     }
                 }
             }
@@ -487,11 +483,10 @@ afterEvaluate {
         prefix '/usr'
 
         license 'ASL-2.0'
-        maintainer 'OpenSearch Team <opensearch@amazon.com>'
-        url 'https://opensearch.org/downloads.html'
+        maintainer 'Wazuh-Indexer Team'
+        url 'https://wazuh.com/'
         summary '''
-         Security Analytics plugin for OpenSearch.
-         Reference documentation can be found at https://docs-beta.opensearch.org/.
+         Security Analytics plugin for Wazuh-Indexer.
     '''.stripIndent().replace('\n', ' ').trim()
     }
 
