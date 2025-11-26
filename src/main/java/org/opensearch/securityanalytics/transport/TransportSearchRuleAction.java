@@ -95,22 +95,22 @@ public class TransportSearchRuleAction extends HandledTransportAction<SearchRule
                             @Override
                             public void onResponse(CreateIndexResponse response) {
                                 ruleIndices.onCreateMappingsResponse(response, true);
-                                ruleIndices.importRules(WriteRequest.RefreshPolicy.IMMEDIATE, indexTimeout,
-                                        new ActionListener<>() {
-                                            @Override
-                                            public void onResponse(BulkResponse response) {
-                                                if (!response.hasFailures()) {
-                                                    search(request.getSearchRequest());
-                                                } else {
-                                                    onFailures(new OpenSearchStatusException(response.buildFailureMessage(), RestStatus.INTERNAL_SERVER_ERROR));
-                                                }
-                                            }
-
-                                            @Override
-                                            public void onFailure(Exception e) {
-                                                onFailures(e);
-                                            }
-                                        });
+                                // ruleIndices.importRules(WriteRequest.RefreshPolicy.IMMEDIATE, indexTimeout,
+                                //         new ActionListener<>() {
+                                //             @Override
+                                //             public void onResponse(BulkResponse response) {
+                                //                 if (!response.hasFailures()) {
+                                //                     search(request.getSearchRequest());
+                                //                 } else {
+                                //                     onFailures(new OpenSearchStatusException(response.buildFailureMessage(), RestStatus.INTERNAL_SERVER_ERROR));
+                                //                 }
+                                //             }
+                                //
+                                //             @Override
+                                //             public void onFailure(Exception e) {
+                                //                 onFailures(e);
+                                //             }
+                                //         });
                             }
 
                             @Override
@@ -121,33 +121,33 @@ public class TransportSearchRuleAction extends HandledTransportAction<SearchRule
                         new ActionListener<>() {
                             @Override
                             public void onResponse(AcknowledgedResponse response) {
-                                ruleIndices.onUpdateMappingsResponse(response, true);
-                                ruleIndices.deleteRules(new ActionListener<>() {
-                                    @Override
-                                    public void onResponse(BulkByScrollResponse response) {
-                                        ruleIndices.importRules(WriteRequest.RefreshPolicy.IMMEDIATE, indexTimeout,
-                                                new ActionListener<>() {
-                                                    @Override
-                                                    public void onResponse(BulkResponse response) {
-                                                        if (!response.hasFailures()) {
-                                                            search(request.getSearchRequest());
-                                                        } else {
-                                                            onFailures(new OpenSearchStatusException(response.buildFailureMessage(), RestStatus.INTERNAL_SERVER_ERROR));
-                                                        }
-                                                    }
-
-                                                    @Override
-                                                    public void onFailure(Exception e) {
-                                                        onFailures(e);
-                                                    }
-                                                });
-                                    }
-
-                                    @Override
-                                    public void onFailure(Exception e) {
-                                        onFailures(e);
-                                    }
-                                });
+                                // ruleIndices.onUpdateMappingsResponse(response, true);
+                                // ruleIndices.deleteRules(new ActionListener<>() {
+                                //     @Override
+                                //     public void onResponse(BulkByScrollResponse response) {
+                                //         ruleIndices.importRules(WriteRequest.RefreshPolicy.IMMEDIATE, indexTimeout,
+                                //                 new ActionListener<>() {
+                                //                     @Override
+                                //                     public void onResponse(BulkResponse response) {
+                                //                         if (!response.hasFailures()) {
+                                //                             search(request.getSearchRequest());
+                                //                         } else {
+                                //                             onFailures(new OpenSearchStatusException(response.buildFailureMessage(), RestStatus.INTERNAL_SERVER_ERROR));
+                                //                         }
+                                //                     }
+                                //
+                                //                     @Override
+                                //                     public void onFailure(Exception e) {
+                                //                         onFailures(e);
+                                //                     }
+                                //                 });
+                                //     }
+                                //
+                                //     @Override
+                                //     public void onFailure(Exception e) {
+                                //         onFailures(e);
+                                //     }
+                                // });
                             }
 
                             @Override

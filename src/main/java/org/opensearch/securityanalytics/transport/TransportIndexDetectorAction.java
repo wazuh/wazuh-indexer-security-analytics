@@ -1286,15 +1286,15 @@ public class TransportIndexDetectorAction extends HandledTransportAction<IndexDe
                             initRuleIndexAndImportRules(request, new ActionListener<>() {
                                 @Override
                                 public void onResponse(List<IndexMonitorResponse> monitorResponses) {
-                                    log.debug("monitors indexed");
-                                    request.getDetector().setMonitorIds(getMonitorIds(monitorResponses));
-                                    request.getDetector().setRuleIdMonitorIdMap(mapMonitorIds(monitorResponses));
-                                    try {
-                                        indexDetector();
-                                    } catch (Exception e) {
-                                        logger.debug("create detector failed", e);
-                                        onFailures(e);
-                                    }
+                                    // log.debug("monitors indexed");
+                                    // request.getDetector().setMonitorIds(getMonitorIds(monitorResponses));
+                                    // request.getDetector().setRuleIdMonitorIdMap(mapMonitorIds(monitorResponses));
+                                    // try {
+                                    //     indexDetector();
+                                    // } catch (Exception e) {
+                                    //     logger.debug("create detector failed", e);
+                                    //     onFailures(e);
+                                    // }
                                 }
 
                                 @Override
@@ -1440,24 +1440,24 @@ public class TransportIndexDetectorAction extends HandledTransportAction<IndexDe
                     public void onResponse(CreateIndexResponse response) {
                         log.debug("prepackaged rule index created");
                         ruleIndices.onCreateMappingsResponse(response, true);
-                        ruleIndices.importRules(RefreshPolicy.IMMEDIATE, indexTimeout,
-                            new ActionListener<>() {
-                                @Override
-                                public void onResponse(BulkResponse response) {
-                                    log.debug("rules imported");
-                                    if (!response.hasFailures()) {
-                                        importRules(request, listener);
-                                    } else {
-                                        onFailures(new OpenSearchStatusException(response.buildFailureMessage(), RestStatus.INTERNAL_SERVER_ERROR));
-                                    }
-                                }
+                        // ruleIndices.importRules(RefreshPolicy.IMMEDIATE, indexTimeout,
+                        //     new ActionListener<>() {
+                        //         @Override
+                        //         public void onResponse(BulkResponse response) {
+                        //             log.debug("rules imported");
+                        //             if (!response.hasFailures()) {
+                        //                 // importRules(request, listener);
+                        //             } else {
+                        //                 onFailures(new OpenSearchStatusException(response.buildFailureMessage(), RestStatus.INTERNAL_SERVER_ERROR));
+                        //             }
+                        //         }
 
-                                @Override
-                                public void onFailure(Exception e) {
-                                    log.debug("failed to import rules", e);
-                                    onFailures(e);
-                                }
-                            });
+                        //         @Override
+                        //         public void onFailure(Exception e) {
+                        //             log.debug("failed to import rules", e);
+                        //             onFailures(e);
+                        //         }
+                        //     });
                     }
 
                     @Override
@@ -1468,33 +1468,33 @@ public class TransportIndexDetectorAction extends HandledTransportAction<IndexDe
                 new ActionListener<>() {
                     @Override
                     public void onResponse(AcknowledgedResponse response) {
-                        ruleIndices.onUpdateMappingsResponse(response, true);
-                        ruleIndices.deleteRules(new ActionListener<>() {
-                            @Override
-                            public void onResponse(BulkByScrollResponse response) {
-                                ruleIndices.importRules(WriteRequest.RefreshPolicy.IMMEDIATE, indexTimeout,
-                                    new ActionListener<>() {
-                                        @Override
-                                        public void onResponse(BulkResponse response) {
-                                            if (!response.hasFailures()) {
-                                                importRules(request, listener);
-                                            } else {
-                                                onFailures(new OpenSearchStatusException(response.buildFailureMessage(), RestStatus.INTERNAL_SERVER_ERROR));
-                                            }
-                                        }
-
-                                        @Override
-                                        public void onFailure(Exception e) {
-                                            onFailures(e);
-                                        }
-                                    });
-                            }
-
-                            @Override
-                            public void onFailure(Exception e) {
-                                onFailures(e);
-                            }
-                        });
+                        // ruleIndices.onUpdateMappingsResponse(response, true);
+                        // ruleIndices.deleteRules(new ActionListener<>() {
+                        //     @Override
+                        //     public void onResponse(BulkByScrollResponse response) {
+                        //         ruleIndices.importRules(WriteRequest.RefreshPolicy.IMMEDIATE, indexTimeout,
+                        //             new ActionListener<>() {
+                        //                 @Override
+                        //                 public void onResponse(BulkResponse response) {
+                        //                     if (!response.hasFailures()) {
+                        //                         importRules(request, listener);
+                        //                     } else {
+                        //                         onFailures(new OpenSearchStatusException(response.buildFailureMessage(), RestStatus.INTERNAL_SERVER_ERROR));
+                        //                     }
+                        //                 }
+                        //
+                        //                 @Override
+                        //                 public void onFailure(Exception e) {
+                        //                     onFailures(e);
+                        //                 }
+                        //             });
+                        //     }
+                        //
+                        //     @Override
+                        //     public void onFailure(Exception e) {
+                        //         onFailures(e);
+                        //     }
+                        // });
                     }
 
                     @Override
@@ -1509,27 +1509,27 @@ public class TransportIndexDetectorAction extends HandledTransportAction<IndexDe
                             onFailures(new OpenSearchStatusException("Search request timed out", RestStatus.REQUEST_TIMEOUT));
                         }
 
-                        long count = response.getHits().getTotalHits().value();
-                        if (count == 0) {
-                            ruleIndices.importRules(WriteRequest.RefreshPolicy.IMMEDIATE, indexTimeout,
-                                new ActionListener<>() {
-                                    @Override
-                                    public void onResponse(BulkResponse response) {
-                                        if (!response.hasFailures()) {
-                                            importRules(request, listener);
-                                        } else {
-                                            onFailures(new OpenSearchStatusException(response.buildFailureMessage(), RestStatus.INTERNAL_SERVER_ERROR));
-                                        }
-                                    }
+                        // long count = response.getHits().getTotalHits().value();
+                        // if (count == 0) {
+                        //     ruleIndices.importRules(WriteRequest.RefreshPolicy.IMMEDIATE, indexTimeout,
+                        //         new ActionListener<>() {
+                        //             @Override
+                        //             public void onResponse(BulkResponse response) {
+                        //                 if (!response.hasFailures()) {
+                        //                     importRules(request, listener);
+                        //                 } else {
+                        //                     onFailures(new OpenSearchStatusException(response.buildFailureMessage(), RestStatus.INTERNAL_SERVER_ERROR));
+                        //                 }
+                        //             }
 
-                                    @Override
-                                    public void onFailure(Exception e) {
-                                        onFailures(e);
-                                    }
-                                });
-                        } else {
-                            importRules(request, listener);
-                        }
+                        //             @Override
+                        //             public void onFailure(Exception e) {
+                        //                 onFailures(e);
+                        //             }
+                        //         });
+                        // } else {
+                        //     importRules(request, listener);
+                        // }
                     }
 
                     @Override

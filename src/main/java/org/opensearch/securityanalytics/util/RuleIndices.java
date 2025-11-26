@@ -152,7 +152,7 @@ public class RuleIndices {
         if (response.isAcknowledged()) {
             log.info(String.format(Locale.getDefault(), "Created %s with mappings.", isPrepackaged? Rule.PRE_PACKAGED_RULES_INDEX: Rule.CUSTOM_RULES_INDEX));
             if (isPrepackaged) {
-                IndexUtils.prePackagedRuleIndexUpdated();
+                // IndexUtils.prePackagedRuleIndexUpdated();
             } else {
                 IndexUtils.customRuleIndexUpdated();
             }
@@ -166,7 +166,7 @@ public class RuleIndices {
         if (response.isAcknowledged()) {
             log.info(String.format(Locale.getDefault(), "Updated  %s with mappings.", isPrepackaged? Rule.PRE_PACKAGED_RULES_INDEX: Rule.CUSTOM_RULES_INDEX));
             if (isPrepackaged) {
-                IndexUtils.prePackagedRuleIndexUpdated();
+                // IndexUtils.prePackagedRuleIndexUpdated();
             } else {
                 IndexUtils.customRuleIndexUpdated();
             }
@@ -181,12 +181,12 @@ public class RuleIndices {
             if (!ruleIndexExists(true)) {
                 initRuleIndex(createListener, true);
             } else if (!IndexUtils.prePackagedRuleIndexUpdated) {
-                IndexUtils.updateIndexMapping(
-                        Rule.PRE_PACKAGED_RULES_INDEX,
-                        RuleIndices.ruleMappings(), clusterService.state(), client.admin().indices(),
-                        updateListener,
-                        false
-                );
+                // IndexUtils.updateIndexMapping(
+                //         Rule.PRE_PACKAGED_RULES_INDEX,
+                //         RuleIndices.ruleMappings(), clusterService.state(), client.admin().indices(),
+                //         updateListener,
+                //         false
+                // );
             } else {
                 countRules(searchListener);
             }
