@@ -21,6 +21,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Fixed
 - Fix typo in revision variable [(#4)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/4)
+- Fix cluster getting stuck when interacting with Security Analytics rules [(#10)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/10)
 
 ### Security
 -
