@@ -200,7 +200,7 @@ public class RuleIndices {
             final String configDirName = System.getProperty("opensearch.path.conf");
             if (configDirName != null) {
                 Path path = Path.of(configDirName, "opensearch-security-analytics", "rules");
-                // loadQueries(path, refreshPolicy, indexTimeout, listener);
+                loadQueries(path, refreshPolicy, indexTimeout, listener);
             } else {
                 log.warn("opensearch.path.conf system property not found");
                 listener.onFailure(new IOException("Config directory not found"));
