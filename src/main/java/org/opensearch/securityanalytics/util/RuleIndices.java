@@ -196,18 +196,18 @@ public class RuleIndices {
     }
 
     public void importRules(WriteRequest.RefreshPolicy refreshPolicy, TimeValue indexTimeout, ActionListener<BulkResponse> listener) {
-         try {
-         final String configDirName = System.getProperty("opensearch.path.conf");
-         if (configDirName != null) {
-              Path path = Path.of(configDirName, "wazuh-indexer-security-analytics", "rules");
-              loadQueries(path, refreshPolicy, indexTimeout, listener);
-         } else {
-             log.warn("opensearch.path.conf system property not found");
-             listener.onFailure(new IOException("Config directory not found"));
-         }
-         } catch (IOException | SigmaError ex) {
-             log.info(ex.getMessage());
-         }
+        try {
+            final String configDirName = System.getProperty("opensearch.path.conf");
+            if (configDirName != null) {
+                Path path = Path.of(configDirName, "opensearch-security-analytics", "rules");
+                // loadQueries(path, refreshPolicy, indexTimeout, listener);
+            } else {
+                log.warn("opensearch.path.conf system property not found");
+                listener.onFailure(new IOException("Config directory not found"));
+            }
+        } catch (IOException | SigmaError ex) {
+            log.info(ex.getMessage());
+        }
     }
 
     public void deleteRules(ActionListener<BulkByScrollResponse> listener) {

@@ -11,7 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 -
 
 ### Changed
--
+- Disable pre-packaged rules [(#9)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/9)
 
 ### Deprecated
 -
