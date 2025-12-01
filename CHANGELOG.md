@@ -11,13 +11,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 -
 
 ### Changed
-- Disable pre-packaged rules [(#9)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/9)
+- Rename folder for pre-packaged rules [(#10)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/10)
 
 ### Deprecated
 -
 
 ### Removed
--
+- Disable creation of pre-packaged rules [(#9)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/9)
 
 ### Fixed
 - Fix typo in revision variable [(#4)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/4)
