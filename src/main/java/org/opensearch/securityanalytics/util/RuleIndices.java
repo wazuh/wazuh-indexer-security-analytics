@@ -264,7 +264,8 @@ public class RuleIndices {
         Stream<Path> folder = Files.list(path);
         List<Path> folderPaths = folder.collect(Collectors.toList());
         Map<String, List<String>> logIndexToRules = new HashMap<>();
-        if (System.getProperty("INDEXER_TEST_ENV").toString().equals("true")) {
+        String testEnv = System.getProperty("INDEXER_TEST_ENV");
+        if (testEnv != null &&  testEnv.equals("true")) {
              for (Path folderPath: folderPaths) {
                  List<String> rules = getRules(List.of(folderPath));
                  String ruleCategory = getRuleCategory(folderPath);
