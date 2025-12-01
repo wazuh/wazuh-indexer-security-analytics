@@ -309,6 +309,7 @@ integTest.getClusters().forEach{c -> {
 }}
 
 testClusters.integTest {
+    systemProperty "INDEXER_TEST_ENV", "true"
     testDistribution = 'ARCHIVE'
 
     // Cluster shrink exception thrown if we try to set numberOfNodes to 1, so only apply if > 1
