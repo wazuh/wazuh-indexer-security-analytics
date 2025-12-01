@@ -264,12 +264,12 @@ public class RuleIndices {
         Stream<Path> folder = Files.list(path);
         List<Path> folderPaths = folder.collect(Collectors.toList());
         Map<String, List<String>> logIndexToRules = new HashMap<>();
-
-        // for (Path folderPath: folderPaths) {
-        //     List<String> rules = getRules(List.of(folderPath));
-        //     String ruleCategory = getRuleCategory(folderPath);
-        //     logIndexToRules.put(ruleCategory, rules);
-        // }
+        if (System.getenv("INDEXER_TEST_ENV").equals("true")) {
+             for (Path folderPath: folderPaths) {
+                 List<String> rules = getRules(List.of(folderPath));
+                 String ruleCategory = getRuleCategory(folderPath);
+                 logIndexToRules.put(ruleCategory, rules);
+             }}
         checkLogTypes(logIndexToRules, refreshPolicy, indexTimeout, listener);
     }
 
