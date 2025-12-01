@@ -253,7 +253,6 @@ task integTest(type: RestIntegTestTask) {
 tasks.named("check").configure { dependsOn(integTest) }
 
 integTest {
-    environment "INDEXER_TEST_ENV", "true"
     if (project.hasProperty('excludeTests')) {
         project.properties['excludeTests']?.replaceAll('\\s', '')?.split('[,;]')?.each {
             exclude "${it}"
