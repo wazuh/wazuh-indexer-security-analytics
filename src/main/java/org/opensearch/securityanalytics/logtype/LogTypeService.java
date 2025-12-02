@@ -531,12 +531,17 @@ public class LogTypeService {
     public void loadBuiltinLogTypes(ActionListener<Void> listener) {
         logger.info("Loading builtin types!");
         List<LogType> logTypes = builtinLogTypeLoader.getAllLogTypes();
-        if (logTypes == null || logTypes.size() == 0) {
-            logger.error("Failed loading builtin log types from disk!");
-            listener.onFailure(SecurityAnalyticsException.wrap(
-                    new IllegalStateException("Failed loading builtin log types from disk!"))
-            );
-            return;
+        // Disabled pre-packaged log types loading for production builds, enabled only on test environments.
+        // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
+        String testEnv = System.getProperty("TEST_PREPACKAGED_RULES");
+        if (testEnv != null &&  testEnv.equals("true")) {
+            if (logTypes == null || logTypes.size() == 0) {
+                logger.error("Failed loading builtin log types from disk!");
+                listener.onFailure(SecurityAnalyticsException.wrap(
+                        new IllegalStateException("Failed loading builtin log types from disk!"))
+                );
+                return;
+            }
         }
         List<FieldMappingDoc> fieldMappingDocs = createFieldMappingDocs(logTypes);
         logger.info("Indexing [" + fieldMappingDocs.size() + "] fieldMappingDocs from logTypes: " + logTypes.size());

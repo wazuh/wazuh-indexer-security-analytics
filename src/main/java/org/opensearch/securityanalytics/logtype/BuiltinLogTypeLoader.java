@@ -10,7 +10,6 @@ import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -18,6 +17,7 @@ import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.common.lifecycle.AbstractLifecycleComponent;
@@ -81,23 +81,27 @@ public class BuiltinLogTypeLoader extends AbstractLifecycleComponent {
 
         Stream<Path> folder = Files.list(dirPath);
         List<Path> logTypePaths = folder.filter(e -> e.toString().endsWith(LOG_TYPE_FILE_SUFFIX)).collect(Collectors.toList());
+        // Disabled pre-packaged log types loading for production builds, enabled only on test environments.
+        // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
+        String testEnv = System.getProperty("TEST_PREPACKAGED_RULES");
+        if (testEnv != null &&  testEnv.equals("true")) {
+            for (Path logTypePath : logTypePaths) {
+                try (
+                        InputStream is = BuiltinLogTypeLoader.class.getResourceAsStream(logTypePath.toString())
+                ) {
+                    String logTypeFilePayload = new String(Objects.requireNonNull(is).readAllBytes(), StandardCharsets.UTF_8);
 
-        for (Path logTypePath : logTypePaths) {
-            try (
-                    InputStream is = BuiltinLogTypeLoader.class.getResourceAsStream(logTypePath.toString())
-            ) {
-                String logTypeFilePayload = new String(Objects.requireNonNull(is).readAllBytes(), StandardCharsets.UTF_8);
+                    if (logTypeFilePayload != null) {
+                        Map<String, Object> logTypeFileAsMap =
+                                XContentHelper.convertToMap(JsonXContent.jsonXContent, logTypeFilePayload, false);
 
-                if (logTypeFilePayload != null) {
-                    Map<String, Object> logTypeFileAsMap =
-                            XContentHelper.convertToMap(JsonXContent.jsonXContent, logTypeFilePayload, false);
+                        logTypes.add(new LogType(logTypeFileAsMap));
 
-                    logTypes.add(new LogType(logTypeFileAsMap));
-
-                    logger.info("Loaded [{}] log type", logTypePath.getFileName());
+                        logger.info("Loaded [{}] log type", logTypePath.getFileName());
+                    }
+                } catch (Exception e) {
+                    throw new SettingsException("Failed to load builtin log types", e);
                 }
-            } catch (Exception e) {
-                throw new SettingsException("Failed to load builtin log types", e);
             }
         }
 
