@@ -264,7 +264,9 @@ public class RuleIndices {
         Stream<Path> folder = Files.list(path);
         List<Path> folderPaths = folder.collect(Collectors.toList());
         Map<String, List<String>> logIndexToRules = new HashMap<>();
-        String testEnv = System.getProperty("INDEXER_TEST_ENV");
+        // Disabled pre-packaged rules loading for production builds, enabled only on test environments.
+        // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
+        String testEnv = System.getProperty("TEST_PREPACKAGED_RULES");
         if (testEnv != null &&  testEnv.equals("true")) {
              for (Path folderPath: folderPaths) {
                  List<String> rules = getRules(List.of(folderPath));
