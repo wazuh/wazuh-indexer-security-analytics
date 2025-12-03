@@ -309,7 +309,7 @@ integTest.getClusters().forEach{c -> {
 }}
 
 testClusters.integTest {
-    systemProperty "TEST_PREPACKAGED_RULES", "true"
+    systemProperty "TEST_PREPACKAGED_RULES",  System.getProperty("TEST_PREPACKAGED_RULES", "true")
     testDistribution = 'ARCHIVE'
 
     // Cluster shrink exception thrown if we try to set numberOfNodes to 1, so only apply if > 1
