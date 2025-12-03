@@ -7,6 +7,7 @@ package org.opensearch.securityanalytics.logtype;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -227,9 +228,13 @@ public class LogTypeService {
         }
         getAllFieldMappings(ActionListener.wrap(existingFieldMappings -> {
 
-            //List<FieldMappingDoc> mergedFieldMappings = mergeFieldMappings(existingFieldMappings, fieldMappingDocs);
             List<FieldMappingDoc> mergedFieldMappings = new ArrayList<>();
-
+            // Disabled pre-packaged log types loading for production builds, enabled only on test environments.
+            // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
+            String testEnv = System.getProperty("TEST_PREPACKAGED_RULES");
+            if (testEnv != null &&  testEnv.equals("true")) {
+                mergedFieldMappings = mergeFieldMappings(existingFieldMappings, fieldMappingDocs);
+            }
             BulkRequest bulkRequest = new BulkRequest();
             mergedFieldMappings.stream()
                     .filter(e -> e.isDirty())
@@ -251,7 +256,6 @@ public class LogTypeService {
 
             // Disabled pre-packaged log types loading for production builds, enabled only on test environments.
             // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
-            String testEnv = System.getProperty("TEST_PREPACKAGED_RULES");
             if (testEnv != null &&  testEnv.equals("true")) {
                 client.bulk(
                         bulkRequest,
@@ -291,8 +295,13 @@ public class LogTypeService {
                     listener.onResponse(null);
                 } else {
                     try {
-                        //List<CustomLogType> customLogTypes = builtinLogTypeLoader.loadBuiltinLogTypesMetadata();
                         List<CustomLogType> customLogTypes = new ArrayList<>();
+                        // Disabled pre-packaged log types loading for production builds, enabled only on test environments.
+                        // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
+                        String testEnv = System.getProperty("TEST_PREPACKAGED_RULES");
+                        if (testEnv != null &&  testEnv.equals("true")) {
+                            customLogTypes = builtinLogTypeLoader.loadBuiltinLogTypesMetadata();
+                        }
                         BulkRequest bulkRequest = new BulkRequest();
 
                         for (CustomLogType customLogType: customLogTypes) {
@@ -320,8 +329,7 @@ public class LogTypeService {
                         } else {
                             listener.onResponse(null);
                         }
-                    //} catch (URISyntaxException | IOException e) {
-                    } catch (IOException e) {
+                    } catch (URISyntaxException | IOException e) {
                         listener.onFailure(e);
                     }
                 }

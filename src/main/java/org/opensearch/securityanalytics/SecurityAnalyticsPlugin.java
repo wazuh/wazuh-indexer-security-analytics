@@ -578,7 +578,7 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
 
             @Override
             public void onFailure(Exception e) {
-                log.error("Failed to initialize LogType config index and builtin log types", e);
+                log.warn("Failed to initialize LogType config index and builtin log types");
             }
         });
 
