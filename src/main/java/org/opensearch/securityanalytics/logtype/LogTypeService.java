@@ -93,7 +93,7 @@ public class LogTypeService {
     private String defaultSchemaField;
 
     // Environment variable to check if we are in test environment
-    private static final String testEnv = System.getProperty("TEST_PREPACKAGED_RULES");
+    private static final String enabledPrepackaged = System.getProperty("default_rules.enabled");
 
     public int logTypeMappingVersion;
 
@@ -234,7 +234,7 @@ public class LogTypeService {
             List<FieldMappingDoc> mergedFieldMappings = new ArrayList<>();
             // Disabled pre-packaged log types loading for production builds, enabled only on test environments.
             // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
-            if (this.testEnv != null && this.testEnv.equals("true")) {
+            if (this.enabledPrepackaged != null && this.enabledPrepackaged.equals("true")) {
                 mergedFieldMappings = mergeFieldMappings(existingFieldMappings, fieldMappingDocs);
             }
             BulkRequest bulkRequest = new BulkRequest();
@@ -258,7 +258,7 @@ public class LogTypeService {
 
             // Disabled pre-packaged log types loading for production builds, enabled only on test environments.
             // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
-            if (this.testEnv != null && this.testEnv.equals("true")) {
+            if (this.enabledPrepackaged != null && this.enabledPrepackaged.equals("true")) {
                 client.bulk(
                         bulkRequest,
                         ActionListener.delegateFailure(listener, (l, r) -> {
@@ -302,7 +302,7 @@ public class LogTypeService {
                         List<CustomLogType> customLogTypes = new ArrayList<>();
                         // Disabled pre-packaged log types loading for production builds, enabled only on test environments.
                         // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
-                        if (LogTypeService.testEnv != null && LogTypeService.testEnv.equals("true")) {
+                        if (LogTypeService.enabledPrepackaged != null && LogTypeService.enabledPrepackaged.equals("true")) {
                             customLogTypes = builtinLogTypeLoader.loadBuiltinLogTypesMetadata();
                         }
                         BulkRequest bulkRequest = new BulkRequest();
@@ -551,8 +551,8 @@ public class LogTypeService {
         List<LogType> logTypes = new ArrayList<>();
         // Disabled pre-packaged log types loading for production builds, enabled only on test environments.
         // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
-        if (this.testEnv != null && this.testEnv.equals("true")) {
-          logger.info("TEST_PREPACKAGED_RULES is true, loading pre-packaged log types from disk.");
+        if (this.enabledPrepackaged != null && this.enabledPrepackaged.equals("true")) {
+          logger.info("default_rules.enabled is true, loading pre-packaged log types from disk.");
           logTypes = builtinLogTypeLoader.getAllLogTypes();
           if (logTypes == null || logTypes.size() == 0) {
             logger.error("Failed loading builtin log types from disk!");

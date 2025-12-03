@@ -309,7 +309,6 @@ integTest.getClusters().forEach{c -> {
 }}
 
 testClusters.integTest {
-    systemProperty "TEST_PREPACKAGED_RULES",  System.getProperty("TEST_PREPACKAGED_RULES", "true")
     testDistribution = 'ARCHIVE'
 
     // Cluster shrink exception thrown if we try to set numberOfNodes to 1, so only apply if > 1
@@ -656,4 +655,19 @@ task updateVersion {
         }
         ant.replaceregexp(file:'build.gradle', match: '"opensearch.version", "\\d.*"', replace: '"opensearch.version", "' + newVersion.tokenize('-')[0] + '-SNAPSHOT"', flags:'g', byline:true)
     }
+}
+
+// Enable prepackaged rules for testing environments.
+// Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
+tasks.named("test").configure {
+    systemProperty "default_rules.enabled", System.getProperty("default_rules.enabled", "true")
+}
+tasks.named("integTest").configure {
+    systemProperty "default_rules.enabled", System.getProperty("default_rules.enabled", "true")
+}
+tasks.named("integTestRemote").configure {
+    systemProperty "default_rules.enabled", System.getProperty("default_rules.enabled", "true")
+}
+tasks.named("javaRestTest").configure {
+    systemProperty "default_rules.enabled", System.getProperty("default_rules.enabled", "true")
 }

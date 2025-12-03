@@ -266,8 +266,8 @@ public class RuleIndices {
         Map<String, List<String>> logIndexToRules = new HashMap<>();
         // Disabled pre-packaged rules loading for production builds, enabled only on test environments.
         // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
-        String testEnv = System.getProperty("TEST_PREPACKAGED_RULES");
-        if (testEnv != null &&  testEnv.equals("true")) {
+        String enabledPrepackaged = System.getProperty("default_rules.enabled");
+        if (enabledPrepackaged != null &&  enabledPrepackaged.equals("true")) {
              for (Path folderPath: folderPaths) {
                  List<String> rules = getRules(List.of(folderPath));
                  String ruleCategory = getRuleCategory(folderPath);

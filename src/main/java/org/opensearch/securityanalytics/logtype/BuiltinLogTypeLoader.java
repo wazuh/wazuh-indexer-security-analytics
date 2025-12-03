@@ -83,8 +83,8 @@ public class BuiltinLogTypeLoader extends AbstractLifecycleComponent {
         List<Path> logTypePaths = new ArrayList<>();
         // Disabled pre-packaged log types loading for production builds, enabled only on test environments.
         // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
-        String testEnv = System.getProperty("TEST_PREPACKAGED_RULES");
-        if (testEnv != null &&  testEnv.equals("true")) {
+        String enabledPrepackaged = System.getProperty("default_rules.enabled");
+        if (enabledPrepackaged != null &&  enabledPrepackaged.equals("true")) {
             logTypePaths = folder.filter(e -> e.toString().endsWith(LOG_TYPE_FILE_SUFFIX)).collect(Collectors.toList());
         }
         for (Path logTypePath : logTypePaths) {
