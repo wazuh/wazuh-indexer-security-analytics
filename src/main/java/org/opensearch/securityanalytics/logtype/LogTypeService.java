@@ -18,13 +18,16 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
-
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.opensearch.ExceptionsHelper;
 import org.opensearch.OpenSearchStatusException;
 import org.opensearch.ResourceAlreadyExistsException;
+import org.opensearch.cluster.routing.Preference;
+import org.opensearch.common.xcontent.XContentHelper;
+import org.opensearch.common.xcontent.json.JsonXContent;
+import org.opensearch.core.action.ActionListener;
 import org.opensearch.action.DocWriteRequest;
 import org.opensearch.action.admin.indices.create.CreateIndexRequest;
 import org.opensearch.action.admin.indices.create.CreateIndexResponse;
@@ -36,17 +39,13 @@ import org.opensearch.action.support.WriteRequest;
 import org.opensearch.cluster.ClusterState;
 import org.opensearch.cluster.metadata.IndexMetadata;
 import org.opensearch.cluster.metadata.MappingMetadata;
-import org.opensearch.cluster.routing.Preference;
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.inject.Inject;
 import org.opensearch.common.settings.Settings;
 import org.opensearch.common.util.io.Streams;
 import org.opensearch.common.util.set.Sets;
 import org.opensearch.common.xcontent.XContentFactory;
-import org.opensearch.common.xcontent.XContentHelper;
 import org.opensearch.common.xcontent.XContentType;
-import org.opensearch.common.xcontent.json.JsonXContent;
-import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.rest.RestStatus;
 import org.opensearch.core.xcontent.NamedXContentRegistry;
 import org.opensearch.index.query.BoolQueryBuilder;
@@ -57,13 +56,14 @@ import org.opensearch.search.aggregations.bucket.terms.TermsAggregationBuilder;
 import org.opensearch.search.builder.SearchSourceBuilder;
 import org.opensearch.securityanalytics.model.CustomLogType;
 import org.opensearch.securityanalytics.model.FieldMappingDoc;
-import static org.opensearch.securityanalytics.model.FieldMappingDoc.LOG_TYPES;
 import org.opensearch.securityanalytics.model.LogType;
+import org.opensearch.securityanalytics.util.SecurityAnalyticsException;
+import org.opensearch.transport.client.Client;
+
+import static org.opensearch.securityanalytics.model.FieldMappingDoc.LOG_TYPES;
 import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings.DEFAULT_MAPPING_SCHEMA;
 import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings.maxSystemIndexReplicas;
 import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings.minSystemIndexReplicas;
-import org.opensearch.securityanalytics.util.SecurityAnalyticsException;
-import org.opensearch.transport.client.Client;
 
 /**
  *
@@ -91,6 +91,9 @@ public class LogTypeService {
     private BuiltinLogTypeLoader builtinLogTypeLoader;
 
     private String defaultSchemaField;
+
+    // Environment variable to check if we are in test environment
+    private static final String testEnv = System.getProperty("TEST_PREPACKAGED_RULES");
 
     public int logTypeMappingVersion;
 
@@ -231,8 +234,7 @@ public class LogTypeService {
             List<FieldMappingDoc> mergedFieldMappings = new ArrayList<>();
             // Disabled pre-packaged log types loading for production builds, enabled only on test environments.
             // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
-            String testEnv = System.getProperty("TEST_PREPACKAGED_RULES");
-            if (testEnv != null &&  testEnv.equals("true")) {
+            if (this.testEnv != null && this.testEnv.equals("true")) {
                 mergedFieldMappings = mergeFieldMappings(existingFieldMappings, fieldMappingDocs);
             }
             BulkRequest bulkRequest = new BulkRequest();
@@ -256,7 +258,7 @@ public class LogTypeService {
 
             // Disabled pre-packaged log types loading for production builds, enabled only on test environments.
             // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
-            if (testEnv != null &&  testEnv.equals("true")) {
+            if (this.testEnv != null && this.testEnv.equals("true")) {
                 client.bulk(
                         bulkRequest,
                         ActionListener.delegateFailure(listener, (l, r) -> {
@@ -269,6 +271,8 @@ public class LogTypeService {
                             }
                         })
                 );
+            } else {
+                listener.onResponse(null);
             }
         }, listener::onFailure));
     }
@@ -298,8 +302,7 @@ public class LogTypeService {
                         List<CustomLogType> customLogTypes = new ArrayList<>();
                         // Disabled pre-packaged log types loading for production builds, enabled only on test environments.
                         // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
-                        String testEnv = System.getProperty("TEST_PREPACKAGED_RULES");
-                        if (testEnv != null &&  testEnv.equals("true")) {
+                        if (LogTypeService.testEnv != null && LogTypeService.testEnv.equals("true")) {
                             customLogTypes = builtinLogTypeLoader.loadBuiltinLogTypesMetadata();
                         }
                         BulkRequest bulkRequest = new BulkRequest();
@@ -548,8 +551,7 @@ public class LogTypeService {
         List<LogType> logTypes = new ArrayList<>();
         // Disabled pre-packaged log types loading for production builds, enabled only on test environments.
         // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
-        String testEnv = System.getProperty("TEST_PREPACKAGED_RULES");
-        if (testEnv != null &&  testEnv.equals("true")) {
+        if (this.testEnv != null && this.testEnv.equals("true")) {
           logger.info("TEST_PREPACKAGED_RULES is true, loading pre-packaged log types from disk.");
           logTypes = builtinLogTypeLoader.getAllLogTypes();
           if (logTypes == null || logTypes.size() == 0) {

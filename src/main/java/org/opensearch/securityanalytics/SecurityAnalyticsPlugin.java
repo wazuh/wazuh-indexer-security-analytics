@@ -4,13 +4,6 @@
  */
 package org.opensearch.securityanalytics;
 
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.function.Supplier;
-
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.action.ActionRequest;
@@ -79,6 +72,7 @@ import org.opensearch.securityanalytics.action.IndexCustomLogTypeAction;
 import org.opensearch.securityanalytics.action.IndexDetectorAction;
 import org.opensearch.securityanalytics.action.IndexRuleAction;
 import org.opensearch.securityanalytics.action.ListCorrelationsAction;
+import org.opensearch.securityanalytics.threatIntel.action.ListIOCsAction;
 import org.opensearch.securityanalytics.action.SearchCorrelationRuleAction;
 import org.opensearch.securityanalytics.action.SearchCustomLogTypeAction;
 import org.opensearch.securityanalytics.action.SearchDetectorAction;
@@ -121,6 +115,7 @@ import org.opensearch.securityanalytics.resthandler.RestIndexCustomLogTypeAction
 import org.opensearch.securityanalytics.resthandler.RestIndexDetectorAction;
 import org.opensearch.securityanalytics.resthandler.RestIndexRuleAction;
 import org.opensearch.securityanalytics.resthandler.RestListCorrelationAction;
+import org.opensearch.securityanalytics.threatIntel.resthandler.RestListIOCsAction;
 import org.opensearch.securityanalytics.resthandler.RestSearchCorrelationAction;
 import org.opensearch.securityanalytics.resthandler.RestSearchCorrelationRuleAction;
 import org.opensearch.securityanalytics.resthandler.RestSearchCustomLogTypeAction;
@@ -132,7 +127,6 @@ import org.opensearch.securityanalytics.resthandler.RestValidateRulesAction;
 import org.opensearch.securityanalytics.services.STIX2IOCFetchService;
 import org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings;
 import org.opensearch.securityanalytics.threatIntel.action.GetIocFindingsAction;
-import org.opensearch.securityanalytics.threatIntel.action.ListIOCsAction;
 import org.opensearch.securityanalytics.threatIntel.action.PutTIFJobAction;
 import org.opensearch.securityanalytics.threatIntel.action.SADeleteTIFSourceConfigAction;
 import org.opensearch.securityanalytics.threatIntel.action.SAGetTIFSourceConfigAction;
@@ -150,19 +144,15 @@ import org.opensearch.securityanalytics.threatIntel.iocscan.dao.IocFindingServic
 import org.opensearch.securityanalytics.threatIntel.iocscan.dao.ThreatIntelAlertService;
 import org.opensearch.securityanalytics.threatIntel.iocscan.service.SaIoCScanService;
 import org.opensearch.securityanalytics.threatIntel.iocscan.service.ThreatIntelMonitorRunner;
-import static org.opensearch.securityanalytics.threatIntel.iocscan.service.ThreatIntelMonitorRunner.THREAT_INTEL_MONITOR_TYPE;
 import org.opensearch.securityanalytics.threatIntel.jobscheduler.TIFJobRunner;
 import org.opensearch.securityanalytics.threatIntel.jobscheduler.TIFSourceConfigRunner;
 import org.opensearch.securityanalytics.threatIntel.model.SATIFSourceConfig;
-import static org.opensearch.securityanalytics.threatIntel.model.SATIFSourceConfig.SOURCE_CONFIG_FIELD;
-import org.opensearch.securityanalytics.threatIntel.model.TIFJobParameter;
-import static org.opensearch.securityanalytics.threatIntel.model.TIFJobParameter.THREAT_INTEL_DATA_INDEX_NAME_PREFIX;
 import org.opensearch.securityanalytics.threatIntel.model.monitor.TransportThreatIntelMonitorFanOutAction;
+import org.opensearch.securityanalytics.threatIntel.model.TIFJobParameter;
 import org.opensearch.securityanalytics.threatIntel.resthandler.RestDeleteTIFSourceConfigAction;
 import org.opensearch.securityanalytics.threatIntel.resthandler.RestGetIocFindingsAction;
 import org.opensearch.securityanalytics.threatIntel.resthandler.RestGetTIFSourceConfigAction;
 import org.opensearch.securityanalytics.threatIntel.resthandler.RestIndexTIFSourceConfigAction;
-import org.opensearch.securityanalytics.threatIntel.resthandler.RestListIOCsAction;
 import org.opensearch.securityanalytics.threatIntel.resthandler.RestRefreshTIFSourceConfigAction;
 import org.opensearch.securityanalytics.threatIntel.resthandler.RestSearchTIFSourceConfigsAction;
 import org.opensearch.securityanalytics.threatIntel.resthandler.monitor.RestDeleteThreatIntelMonitorAction;
@@ -181,7 +171,6 @@ import org.opensearch.securityanalytics.threatIntel.transport.TransportDeleteTIF
 import org.opensearch.securityanalytics.threatIntel.transport.TransportGetIocFindingsAction;
 import org.opensearch.securityanalytics.threatIntel.transport.TransportGetTIFSourceConfigAction;
 import org.opensearch.securityanalytics.threatIntel.transport.TransportIndexTIFSourceConfigAction;
-import org.opensearch.securityanalytics.threatIntel.transport.TransportListIOCsAction;
 import org.opensearch.securityanalytics.threatIntel.transport.TransportPutTIFJobAction;
 import org.opensearch.securityanalytics.threatIntel.transport.TransportRefreshTIFSourceConfigAction;
 import org.opensearch.securityanalytics.threatIntel.transport.TransportSearchTIFSourceConfigsAction;
@@ -210,6 +199,7 @@ import org.opensearch.securityanalytics.transport.TransportIndexCustomLogTypeAct
 import org.opensearch.securityanalytics.transport.TransportIndexDetectorAction;
 import org.opensearch.securityanalytics.transport.TransportIndexRuleAction;
 import org.opensearch.securityanalytics.transport.TransportListCorrelationAction;
+import org.opensearch.securityanalytics.threatIntel.transport.TransportListIOCsAction;
 import org.opensearch.securityanalytics.transport.TransportSearchCorrelationAction;
 import org.opensearch.securityanalytics.transport.TransportSearchCorrelationRuleAction;
 import org.opensearch.securityanalytics.transport.TransportSearchCustomLogTypeAction;
@@ -219,7 +209,6 @@ import org.opensearch.securityanalytics.transport.TransportTestS3ConnectionActio
 import org.opensearch.securityanalytics.transport.TransportUpdateIndexMappingsAction;
 import org.opensearch.securityanalytics.transport.TransportValidateRulesAction;
 import org.opensearch.securityanalytics.util.CorrelationIndices;
-import static org.opensearch.securityanalytics.util.CorrelationIndices.CORRELATION_ALERT_INDEX;
 import org.opensearch.securityanalytics.util.CorrelationRuleIndices;
 import org.opensearch.securityanalytics.util.CustomLogTypeIndices;
 import org.opensearch.securityanalytics.util.DetectorIndices;
@@ -229,8 +218,19 @@ import org.opensearch.threadpool.ThreadPool;
 import org.opensearch.transport.client.Client;
 import org.opensearch.transport.client.node.NodeClient;
 import org.opensearch.watcher.ResourceWatcherService;
-
 import reactor.util.annotation.NonNull;
+
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.Supplier;
+
+import static org.opensearch.securityanalytics.threatIntel.iocscan.service.ThreatIntelMonitorRunner.THREAT_INTEL_MONITOR_TYPE;
+import static org.opensearch.securityanalytics.threatIntel.model.SATIFSourceConfig.SOURCE_CONFIG_FIELD;
+import static org.opensearch.securityanalytics.threatIntel.model.TIFJobParameter.THREAT_INTEL_DATA_INDEX_NAME_PREFIX;
+import static org.opensearch.securityanalytics.util.CorrelationIndices.CORRELATION_ALERT_INDEX;
 
 public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, MapperPlugin, SearchPlugin, EnginePlugin, ClusterPlugin, SystemIndexPlugin, JobSchedulerExtension, RemoteMonitorRunnerExtension {
 
