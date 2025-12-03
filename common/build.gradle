@@ -37,6 +37,11 @@ def projectPath = System.getProperty('projectPath', 'com.wazuh')
 def wazuh_version = System.getProperty('wazuh.version', '5.0.0')
 def revision = System.getProperty('revision', '0')
 
+java {
+    targetCompatibility = JavaVersion.VERSION_21
+    sourceCompatibility = JavaVersion.VERSION_21
+}
+
 publishing {
     publications {
         mavenJava(MavenPublication) { publication ->

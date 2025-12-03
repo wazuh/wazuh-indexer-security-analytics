@@ -227,6 +227,8 @@ dependencies {
     if (securityEnabled) {
         opensearchPlugin "org.opensearch.plugin:opensearch-security:${opensearch_build}@zip"
     }
+    // Common Wazuh library for transport layer communication
+    implementation group: 'com.wazuh', name: 'wazuh-indexer-common', version: "5.0.0.0"
 }
 
 // RPM & Debian build
