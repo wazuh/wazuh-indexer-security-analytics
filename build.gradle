@@ -251,8 +251,19 @@ task integTest(type: RestIntegTestTask) {
     }
 }
 tasks.named("check").configure { dependsOn(integTest) }
+// Enable prepackaged rules for testing environments.
+// Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
+tasks.named("test").configure {
+    systemProperty "default_rules.enabled", System.getProperty("default_rules.enabled", "true")
+}
+tasks.named("javaRestTest").configure {
+    systemProperty "default_rules.enabled", System.getProperty("default_rules.enabled", "true")
+}
 
 integTest {
+    // Enable prepackaged rules for testing environments.
+    // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
+    systemProperty "default_rules.enabled", System.getProperty("default_rules.enabled", "true")
     if (project.hasProperty('excludeTests')) {
         project.properties['excludeTests']?.replaceAll('\\s', '')?.split('[,;]')?.each {
             exclude "${it}"
@@ -428,6 +439,10 @@ run {
 }
 
 task integTestRemote(type: RestIntegTestTask) {
+    // Enable prepackaged rules for testing environments.
+    // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
+    systemProperty "default_rules.enabled", System.getProperty("default_rules.enabled", "true")
+
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
     systemProperty 'tests.security.manager', 'false'
@@ -655,19 +670,4 @@ task updateVersion {
         }
         ant.replaceregexp(file:'build.gradle', match: '"opensearch.version", "\\d.*"', replace: '"opensearch.version", "' + newVersion.tokenize('-')[0] + '-SNAPSHOT"', flags:'g', byline:true)
     }
-}
-
-// Enable prepackaged rules for testing environments.
-// Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
-tasks.named("test").configure {
-    systemProperty "default_rules.enabled", System.getProperty("default_rules.enabled", "true")
-}
-tasks.named("integTest").configure {
-    systemProperty "default_rules.enabled", System.getProperty("default_rules.enabled", "true")
-}
-tasks.named("integTestRemote").configure {
-    systemProperty "default_rules.enabled", System.getProperty("default_rules.enabled", "true")
-}
-tasks.named("javaRestTest").configure {
-    systemProperty "default_rules.enabled", System.getProperty("default_rules.enabled", "true")
 }
