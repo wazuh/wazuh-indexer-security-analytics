@@ -14,15 +14,33 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-package com.wazuh.common.transport;
+package com.wazuh.common.action;
 
-import org.opensearch.action.ActionType;
+import org.opensearch.core.action.ActionResponse;
+import org.opensearch.core.common.io.stream.StreamInput;
+import org.opensearch.core.common.io.stream.StreamOutput;
 
-public class CommandRequestAction extends ActionType<CommandResponse> {
-    public static final String NAME = "cluster:admin/wazuh/command/send";
-    public static final CommandRequestAction INSTANCE = new CommandRequestAction();
+import java.io.IOException;
 
-    private CommandRequestAction() {
-        super(NAME, CommandResponse::new);
-    }
+public class UpdateRulesResponse extends ActionResponse {
+
+  private final String message;
+
+  public UpdateRulesResponse(String message) {
+    this.message = message;
+  }
+
+  public UpdateRulesResponse(StreamInput in) throws IOException {
+    super(in);
+    this.message = in.readString();
+  }
+
+  public String getMessage() {
+    return message;
+  }
+
+  @Override
+  public void writeTo(StreamOutput out) throws IOException {
+    out.writeString(message);
+  }
 }
