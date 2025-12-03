@@ -228,7 +228,8 @@ public class LogTypeService {
         }
         getAllFieldMappings(ActionListener.wrap(existingFieldMappings -> {
 
-            List<FieldMappingDoc> mergedFieldMappings = mergeFieldMappings(existingFieldMappings, fieldMappingDocs);
+            //List<FieldMappingDoc> mergedFieldMappings = mergeFieldMappings(existingFieldMappings, fieldMappingDocs);
+            List<FieldMappingDoc> mergedFieldMappings = new ArrayList<>();
 
             BulkRequest bulkRequest = new BulkRequest();
             mergedFieldMappings.stream()
@@ -286,7 +287,8 @@ public class LogTypeService {
                     listener.onResponse(null);
                 } else {
                     try {
-                        List<CustomLogType> customLogTypes = builtinLogTypeLoader.loadBuiltinLogTypesMetadata();
+                        //List<CustomLogType> customLogTypes = builtinLogTypeLoader.loadBuiltinLogTypesMetadata();
+                        List<CustomLogType> customLogTypes = new ArrayList<>();
                         BulkRequest bulkRequest = new BulkRequest();
 
                         for (CustomLogType customLogType: customLogTypes) {
@@ -314,7 +316,8 @@ public class LogTypeService {
                         } else {
                             listener.onResponse(null);
                         }
-                    } catch (URISyntaxException | IOException e) {
+                    //} catch (URISyntaxException | IOException e) {
+                    } catch (IOException e) {
                         listener.onFailure(e);
                     }
                 }
@@ -530,13 +533,19 @@ public class LogTypeService {
 
     public void loadBuiltinLogTypes(ActionListener<Void> listener) {
         logger.info("Loading builtin types!");
-        List<LogType> logTypes = builtinLogTypeLoader.getAllLogTypes();
-        if (logTypes == null || logTypes.size() == 0) {
+        // List<LogType> logTypes = builtinLogTypeLoader.getAllLogTypes();
+        List<LogType> logTypes = new ArrayList<>();
+        // Disabled pre-packaged log types loading for production builds, enabled only on test environments.
+        // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
+        String testEnv = System.getProperty("TEST_PREPACKAGED_RULES");
+        if (testEnv != null &&  testEnv.equals("true")) {
+          if (logTypes == null || logTypes.size() == 0) {
             logger.error("Failed loading builtin log types from disk!");
             listener.onFailure(SecurityAnalyticsException.wrap(
-                    new IllegalStateException("Failed loading builtin log types from disk!"))
+                new IllegalStateException("Failed loading builtin log types from disk!"))
             );
             return;
+          }
         }
         List<FieldMappingDoc> fieldMappingDocs = createFieldMappingDocs(logTypes);
         logger.info("Indexing [" + fieldMappingDocs.size() + "] fieldMappingDocs from logTypes: " + logTypes.size());
