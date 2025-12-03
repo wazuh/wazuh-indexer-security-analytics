@@ -1,0 +1,65 @@
+buildscript {
+    ext {
+        opensearch_version = System.getProperty("opensearch.version", "3.3.2-SNAPSHOT")
+    }
+
+    repositories {
+        maven { url "https://ci.opensearch.org/ci/dbc/snapshots/maven/" }
+        mavenCentral()
+        maven { url "https://plugins.gradle.org/m2/" }
+        mavenLocal()
+    }
+
+    dependencies {
+        classpath "org.opensearch.gradle:build-tools:${opensearch_version}"
+    }
+}
+
+//TODO: cleanup gradle config file, some overlap
+plugins {
+    id 'java'
+    id 'maven-publish'
+}
+
+repositories {
+    mavenLocal()
+    maven { url "https://ci.opensearch.org/ci/dbc/snapshots/maven/" }
+    mavenCentral()
+    maven { url "https://plugins.gradle.org/m2/" }
+}
+dependencies {
+    compileOnly group: 'org.opensearch', name: 'opensearch', version: "${opensearch_version}"
+}
+
+def projectName = 'wazuh-indexer-common'
+def projectDescription = 'Wazuh Indexer Common Library'
+def projectPath = System.getProperty('projectPath', 'com.wazuh')
+def wazuh_version = System.getProperty('wazuh.version', '5.0.0')
+def revision = System.getProperty('revision', '0')
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) { publication ->
+            artifactId = projectName
+            from components.java
+            pom {
+                name = projectName
+                description = projectDescription
+                groupId = projectPath
+                version = wazuh_version + "." + revision
+                licenses {
+                    license {
+                        name = "GNU Affero General Public License (AGPL) version 3.0"
+                        url = "http://www.gnu.org/licenses/agpl-3.0.txt"
+                    }
+                }
+                developers {
+                    developer {
+                        name = "Wazuh"
+                        url = "https://wazuh.com"
+                    }
+                }
+            }
+        }
+    }
+}
