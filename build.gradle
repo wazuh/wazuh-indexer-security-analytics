@@ -126,8 +126,7 @@ testClusters.javaRestTest {
     testDistribution = 'INTEG_TEST'
     // Enable prepackaged rules for testing environments.
     // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
-    systemProperty "default_rules.enabled", System.getProperty("default_rules.enabled", "true")
-
+     systemProperty 'default_rules.enabled', 'true'
 }
 
 allprojects {
@@ -259,7 +258,7 @@ tasks.named("check").configure { dependsOn(integTest) }
 tasks.named("test").configure {
     // Enable prepackaged rules for testing environments.
     // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
-    systemProperty "default_rules.enabled", System.getProperty("default_rules.enabled", "true")
+    systemProperty 'default_rules.enabled', 'true'
 }
 
 integTest {
@@ -321,7 +320,7 @@ integTest.getClusters().forEach{c -> {
 testClusters.integTest {
     // Enable prepackaged rules for testing environments.
     // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
-    systemProperty "default_rules.enabled", System.getProperty("default_rules.enabled", "true")
+    systemProperty 'default_rules.enabled', 'true'
     testDistribution = 'ARCHIVE'
 
     // Cluster shrink exception thrown if we try to set numberOfNodes to 1, so only apply if > 1
@@ -443,7 +442,7 @@ run {
 task integTestRemote(type: RestIntegTestTask) {
     // Enable prepackaged rules for testing environments.
     // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
-    systemProperty "default_rules.enabled", System.getProperty("default_rules.enabled", "true")
+    systemProperty 'default_rules.enabled', 'true'
 
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
