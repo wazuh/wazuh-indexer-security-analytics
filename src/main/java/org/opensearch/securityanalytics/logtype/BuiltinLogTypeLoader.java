@@ -80,8 +80,13 @@ public class BuiltinLogTypeLoader extends AbstractLifecycleComponent {
         }
 
         Stream<Path> folder = Files.list(dirPath);
-        List<Path> logTypePaths = folder.filter(e -> e.toString().endsWith(LOG_TYPE_FILE_SUFFIX)).collect(Collectors.toList());
-
+        List<Path> logTypePaths = new ArrayList<>();
+        // Disabled pre-packaged log types loading for production builds, enabled only on test environments.
+        // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
+        String enabledPrepackaged = System.getProperty("default_rules.enabled");
+        if (enabledPrepackaged != null &&  enabledPrepackaged.equals("true")) {
+            logTypePaths = folder.filter(e -> e.toString().endsWith(LOG_TYPE_FILE_SUFFIX)).collect(Collectors.toList());
+        }
         for (Path logTypePath : logTypePaths) {
             try (
                     InputStream is = BuiltinLogTypeLoader.class.getResourceAsStream(logTypePath.toString())

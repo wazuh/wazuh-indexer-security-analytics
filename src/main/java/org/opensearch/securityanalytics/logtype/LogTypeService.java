@@ -92,6 +92,9 @@ public class LogTypeService {
 
     private String defaultSchemaField;
 
+    // Environment variable to check if we are in test environment
+    private static final String enabledPrepackaged = System.getProperty("default_rules.enabled");
+
     public int logTypeMappingVersion;
 
     @Inject
@@ -228,8 +231,12 @@ public class LogTypeService {
         }
         getAllFieldMappings(ActionListener.wrap(existingFieldMappings -> {
 
-            List<FieldMappingDoc> mergedFieldMappings = mergeFieldMappings(existingFieldMappings, fieldMappingDocs);
-
+            List<FieldMappingDoc> mergedFieldMappings = new ArrayList<>();
+            // Disabled pre-packaged log types loading for production builds, enabled only on test environments.
+            // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
+            if (this.enabledPrepackaged != null && this.enabledPrepackaged.equals("true")) {
+                mergedFieldMappings = mergeFieldMappings(existingFieldMappings, fieldMappingDocs);
+            }
             BulkRequest bulkRequest = new BulkRequest();
             mergedFieldMappings.stream()
                     .filter(e -> e.isDirty())
@@ -248,19 +255,25 @@ public class LogTypeService {
                     });
             // Index all fieldMapping docs
             logger.info("Indexing [" + bulkRequest.numberOfActions() + "] fieldMappingDocs");
-            client.bulk(
-                    bulkRequest,
-                    ActionListener.delegateFailure(listener, (l, r) -> {
-                        if (r.hasFailures()) {
-                            logger.error("FieldMappingDoc Bulk Index had failures:\n ", r.buildFailureMessage());
-                            listener.onFailure(new IllegalStateException(r.buildFailureMessage()));
-                        } else {
-                            logger.info("Loaded [" + r.getItems().length + "] field mapping docs successfully!");
-                            listener.onResponse(null);
-                        }
-                    })
-            );
 
+            // Disabled pre-packaged log types loading for production builds, enabled only on test environments.
+            // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
+            if (this.enabledPrepackaged != null && this.enabledPrepackaged.equals("true")) {
+                client.bulk(
+                        bulkRequest,
+                        ActionListener.delegateFailure(listener, (l, r) -> {
+                            if (r.hasFailures()) {
+                                logger.error("FieldMappingDoc Bulk Index had failures:\n ", r.buildFailureMessage());
+                                listener.onFailure(new IllegalStateException(r.buildFailureMessage()));
+                            } else {
+                                logger.info("Loaded [" + r.getItems().length + "] field mapping docs successfully!");
+                                listener.onResponse(null);
+                            }
+                        })
+                );
+            } else {
+                listener.onResponse(null);
+            }
         }, listener::onFailure));
     }
 
@@ -286,7 +299,12 @@ public class LogTypeService {
                     listener.onResponse(null);
                 } else {
                     try {
-                        List<CustomLogType> customLogTypes = builtinLogTypeLoader.loadBuiltinLogTypesMetadata();
+                        List<CustomLogType> customLogTypes = new ArrayList<>();
+                        // Disabled pre-packaged log types loading for production builds, enabled only on test environments.
+                        // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
+                        if (LogTypeService.enabledPrepackaged != null && LogTypeService.enabledPrepackaged.equals("true")) {
+                            customLogTypes = builtinLogTypeLoader.loadBuiltinLogTypesMetadata();
+                        }
                         BulkRequest bulkRequest = new BulkRequest();
 
                         for (CustomLogType customLogType: customLogTypes) {
@@ -530,13 +548,19 @@ public class LogTypeService {
 
     public void loadBuiltinLogTypes(ActionListener<Void> listener) {
         logger.info("Loading builtin types!");
-        List<LogType> logTypes = builtinLogTypeLoader.getAllLogTypes();
-        if (logTypes == null || logTypes.size() == 0) {
+        List<LogType> logTypes = new ArrayList<>();
+        // Disabled pre-packaged log types loading for production builds, enabled only on test environments.
+        // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
+        if (this.enabledPrepackaged != null && this.enabledPrepackaged.equals("true")) {
+          logger.info("default_rules.enabled is true, loading pre-packaged log types from disk.");
+          logTypes = builtinLogTypeLoader.getAllLogTypes();
+          if (logTypes == null || logTypes.size() == 0) {
             logger.error("Failed loading builtin log types from disk!");
             listener.onFailure(SecurityAnalyticsException.wrap(
-                    new IllegalStateException("Failed loading builtin log types from disk!"))
+                new IllegalStateException("Failed loading builtin log types from disk!"))
             );
             return;
+          }
         }
         List<FieldMappingDoc> fieldMappingDocs = createFieldMappingDocs(logTypes);
         logger.info("Indexing [" + fieldMappingDocs.size() + "] fieldMappingDocs from logTypes: " + logTypes.size());
