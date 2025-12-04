@@ -264,12 +264,15 @@ public class RuleIndices {
         Stream<Path> folder = Files.list(path);
         List<Path> folderPaths = folder.collect(Collectors.toList());
         Map<String, List<String>> logIndexToRules = new HashMap<>();
-
-        for (Path folderPath: folderPaths) {
-            List<String> rules = getRules(List.of(folderPath));
-            String ruleCategory = getRuleCategory(folderPath);
-            logIndexToRules.put(ruleCategory, rules);
-        }
+        // Disabled pre-packaged rules loading for production builds, enabled only on test environments.
+        // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
+        String enabledPrepackaged = System.getProperty("default_rules.enabled");
+        if (enabledPrepackaged != null &&  enabledPrepackaged.equals("true")) {
+             for (Path folderPath: folderPaths) {
+                 List<String> rules = getRules(List.of(folderPath));
+                 String ruleCategory = getRuleCategory(folderPath);
+                 logIndexToRules.put(ruleCategory, rules);
+             }}
         checkLogTypes(logIndexToRules, refreshPolicy, indexTimeout, listener);
     }
 
