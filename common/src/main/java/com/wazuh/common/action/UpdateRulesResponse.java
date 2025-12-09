@@ -22,7 +22,7 @@ import org.opensearch.core.common.io.stream.StreamOutput;
 
 import java.io.IOException;
 
-public class UpdateRulesResponse extends ActionResponse {
+public class UpdateRulesResponse extends ActionResponse  {
 
   private final String message;
 
