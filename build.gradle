@@ -219,6 +219,8 @@ dependencies {
     // TODO remove once SA commons is published to maven central
     api files(sa_commons_file_path)
 
+    implementation files('./lib/wazuh-indexer-security-analytics-commons.jar')
+
     // Needed for integ tests
     zipArchive group: 'org.opensearch.plugin', name:'alerting', version: "${opensearch_build}"
     zipArchive group: 'org.opensearch.plugin', name:'opensearch-notifications-core', version: "${opensearch_build}"

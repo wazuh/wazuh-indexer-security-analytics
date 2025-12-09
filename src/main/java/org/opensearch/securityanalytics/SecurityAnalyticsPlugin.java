@@ -4,6 +4,7 @@
  */
 package org.opensearch.securityanalytics;
 
+import com.wazuh.securityanalytics.action.WIndexRuleAction;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.action.ActionRequest;
@@ -179,35 +180,8 @@ import org.opensearch.securityanalytics.threatIntel.transport.monitor.TransportG
 import org.opensearch.securityanalytics.threatIntel.transport.monitor.TransportIndexThreatIntelMonitorAction;
 import org.opensearch.securityanalytics.threatIntel.transport.monitor.TransportSearchThreatIntelMonitorAction;
 import org.opensearch.securityanalytics.threatIntel.transport.monitor.TransportUpdateThreatIntelAlertStatusAction;
-import org.opensearch.securityanalytics.transport.TransportAckCorrelationAlertsAction;
-import org.opensearch.securityanalytics.transport.TransportAcknowledgeAlertsAction;
-import org.opensearch.securityanalytics.transport.TransportCorrelateFindingAction;
-import org.opensearch.securityanalytics.transport.TransportCreateIndexMappingsAction;
-import org.opensearch.securityanalytics.transport.TransportDeleteCorrelationRuleAction;
-import org.opensearch.securityanalytics.transport.TransportDeleteCustomLogTypeAction;
-import org.opensearch.securityanalytics.transport.TransportDeleteDetectorAction;
-import org.opensearch.securityanalytics.transport.TransportDeleteRuleAction;
-import org.opensearch.securityanalytics.transport.TransportGetAlertsAction;
-import org.opensearch.securityanalytics.transport.TransportGetAllRuleCategoriesAction;
-import org.opensearch.securityanalytics.transport.TransportGetCorrelationAlertsAction;
-import org.opensearch.securityanalytics.transport.TransportGetDetectorAction;
-import org.opensearch.securityanalytics.transport.TransportGetFindingsAction;
-import org.opensearch.securityanalytics.transport.TransportGetIndexMappingsAction;
-import org.opensearch.securityanalytics.transport.TransportGetMappingsViewAction;
-import org.opensearch.securityanalytics.transport.TransportIndexCorrelationRuleAction;
-import org.opensearch.securityanalytics.transport.TransportIndexCustomLogTypeAction;
-import org.opensearch.securityanalytics.transport.TransportIndexDetectorAction;
-import org.opensearch.securityanalytics.transport.TransportIndexRuleAction;
-import org.opensearch.securityanalytics.transport.TransportListCorrelationAction;
+import org.opensearch.securityanalytics.transport.*;
 import org.opensearch.securityanalytics.threatIntel.transport.TransportListIOCsAction;
-import org.opensearch.securityanalytics.transport.TransportSearchCorrelationAction;
-import org.opensearch.securityanalytics.transport.TransportSearchCorrelationRuleAction;
-import org.opensearch.securityanalytics.transport.TransportSearchCustomLogTypeAction;
-import org.opensearch.securityanalytics.transport.TransportSearchDetectorAction;
-import org.opensearch.securityanalytics.transport.TransportSearchRuleAction;
-import org.opensearch.securityanalytics.transport.TransportTestS3ConnectionAction;
-import org.opensearch.securityanalytics.transport.TransportUpdateIndexMappingsAction;
-import org.opensearch.securityanalytics.transport.TransportValidateRulesAction;
 import org.opensearch.securityanalytics.util.CorrelationIndices;
 import org.opensearch.securityanalytics.util.CorrelationRuleIndices;
 import org.opensearch.securityanalytics.util.CustomLogTypeIndices;
@@ -522,6 +496,7 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
     @Override
     public List<ActionHandler<? extends ActionRequest, ? extends ActionResponse>> getActions() {
         return List.of(
+                new ActionHandler<>(WIndexRuleAction.INSTANCE, WTransportIndexRuleAction.class),
                 new ActionPlugin.ActionHandler<>(AckAlertsAction.INSTANCE, TransportAcknowledgeAlertsAction.class),
                 new ActionPlugin.ActionHandler<>(UpdateIndexMappingsAction.INSTANCE, TransportUpdateIndexMappingsAction.class),
                 new ActionPlugin.ActionHandler<>(CreateIndexMappingsAction.INSTANCE, TransportCreateIndexMappingsAction.class),
