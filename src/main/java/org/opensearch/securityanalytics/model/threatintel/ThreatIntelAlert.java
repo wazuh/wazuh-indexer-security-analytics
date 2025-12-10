@@ -8,7 +8,6 @@ import org.opensearch.core.common.io.stream.StreamOutput;
 import org.opensearch.core.xcontent.XContentBuilder;
 import org.opensearch.core.xcontent.XContentParser;
 import org.opensearch.index.seqno.SequenceNumbers;
-import org.opensearch.securityanalytics.threatIntel.sacommons.monitor.ThreatIntelAlertDto;
 import org.opensearch.securityanalytics.util.XContentUtils;
 
 import java.io.IOException;
