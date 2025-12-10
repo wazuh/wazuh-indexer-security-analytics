@@ -4,6 +4,8 @@
  */
 package org.opensearch.securityanalytics;
 
+import com.wazuh.securityanalytics.SecuriyAnalyticsExtension;
+import com.wazuh.securityanalytics.action.WIndexIntegrationAction;
 import com.wazuh.securityanalytics.action.WIndexRuleAction;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -343,6 +345,7 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
     public List<ActionHandler<? extends ActionRequest, ? extends ActionResponse>> getActions() {
         return List.of(
                 new ActionHandler<>(WIndexRuleAction.INSTANCE, WTransportIndexRuleAction.class),
+                new ActionHandler<>(WIndexIntegrationAction.INSTANCE, WTransportIndexIntegrationAction.class),
                 new ActionPlugin.ActionHandler<>(AckAlertsAction.INSTANCE, TransportAcknowledgeAlertsAction.class),
                 new ActionPlugin.ActionHandler<>(UpdateIndexMappingsAction.INSTANCE, TransportUpdateIndexMappingsAction.class),
                 new ActionPlugin.ActionHandler<>(CreateIndexMappingsAction.INSTANCE, TransportCreateIndexMappingsAction.class),
