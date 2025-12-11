@@ -7,12 +7,16 @@ package org.opensearch.securityanalytics;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.action.ActionRequest;
+import org.opensearch.action.admin.indices.create.CreateIndexRequest;
+import org.opensearch.action.search.SearchRequest;
+import org.opensearch.action.search.SearchResponse;
 import org.opensearch.alerting.spi.RemoteMonitorRunner;
 import org.opensearch.alerting.spi.RemoteMonitorRunnerExtension;
 import org.opensearch.cluster.metadata.IndexMetadata;
 import org.opensearch.cluster.metadata.IndexNameExpressionResolver;
 import org.opensearch.cluster.node.DiscoveryNode;
 import org.opensearch.cluster.node.DiscoveryNodes;
+import org.opensearch.cluster.routing.Preference;
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.inject.Inject;
 import org.opensearch.common.lifecycle.Lifecycle;
@@ -36,6 +40,8 @@ import org.opensearch.index.IndexSettings;
 import org.opensearch.index.codec.CodecServiceFactory;
 import org.opensearch.index.engine.EngineFactory;
 import org.opensearch.index.mapper.Mapper;
+import org.opensearch.index.query.QueryBuilder;
+import org.opensearch.index.query.QueryBuilders;
 import org.opensearch.indices.SystemIndexDescriptor;
 import org.opensearch.jobscheduler.spi.JobSchedulerExtension;
 import org.opensearch.jobscheduler.spi.ScheduledJobParser;
@@ -52,34 +58,11 @@ import org.opensearch.repositories.RepositoriesService;
 import org.opensearch.rest.RestController;
 import org.opensearch.rest.RestHandler;
 import org.opensearch.script.ScriptService;
-import org.opensearch.securityanalytics.action.AckAlertsAction;
-import org.opensearch.securityanalytics.action.AckCorrelationAlertsAction;
-import org.opensearch.securityanalytics.action.CorrelatedFindingAction;
-import org.opensearch.securityanalytics.action.CreateIndexMappingsAction;
-import org.opensearch.securityanalytics.action.DeleteCorrelationRuleAction;
-import org.opensearch.securityanalytics.action.DeleteCustomLogTypeAction;
-import org.opensearch.securityanalytics.action.DeleteDetectorAction;
-import org.opensearch.securityanalytics.action.DeleteRuleAction;
-import org.opensearch.securityanalytics.action.GetAlertsAction;
-import org.opensearch.securityanalytics.action.GetAllRuleCategoriesAction;
-import org.opensearch.securityanalytics.action.GetCorrelationAlertsAction;
-import org.opensearch.securityanalytics.action.GetDetectorAction;
-import org.opensearch.securityanalytics.action.GetFindingsAction;
-import org.opensearch.securityanalytics.action.GetIndexMappingsAction;
-import org.opensearch.securityanalytics.action.GetMappingsViewAction;
-import org.opensearch.securityanalytics.action.IndexCorrelationRuleAction;
-import org.opensearch.securityanalytics.action.IndexCustomLogTypeAction;
-import org.opensearch.securityanalytics.action.IndexDetectorAction;
-import org.opensearch.securityanalytics.action.IndexRuleAction;
-import org.opensearch.securityanalytics.action.ListCorrelationsAction;
+import org.opensearch.search.SearchHit;
+import org.opensearch.search.builder.SearchSourceBuilder;
+import org.opensearch.search.fetch.subphase.FetchSourceContext;
+import org.opensearch.securityanalytics.action.*;
 import org.opensearch.securityanalytics.threatIntel.action.ListIOCsAction;
-import org.opensearch.securityanalytics.action.SearchCorrelationRuleAction;
-import org.opensearch.securityanalytics.action.SearchCustomLogTypeAction;
-import org.opensearch.securityanalytics.action.SearchDetectorAction;
-import org.opensearch.securityanalytics.action.SearchRuleAction;
-import org.opensearch.securityanalytics.action.TestS3ConnectionAction;
-import org.opensearch.securityanalytics.action.UpdateIndexMappingsAction;
-import org.opensearch.securityanalytics.action.ValidateRulesAction;
 import org.opensearch.securityanalytics.correlation.alert.CorrelationAlertService;
 import org.opensearch.securityanalytics.correlation.alert.notifications.NotificationService;
 import org.opensearch.securityanalytics.correlation.index.codec.CorrelationCodecService;
@@ -227,6 +210,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
 
+import static java.lang.Thread.sleep;
 import static org.opensearch.securityanalytics.threatIntel.iocscan.service.ThreatIntelMonitorRunner.THREAT_INTEL_MONITOR_TYPE;
 import static org.opensearch.securityanalytics.threatIntel.model.SATIFSourceConfig.SOURCE_CONFIG_FIELD;
 import static org.opensearch.securityanalytics.threatIntel.model.TIFJobParameter.THREAT_INTEL_DATA_INDEX_NAME_PREFIX;
@@ -289,6 +273,8 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
 
     private TIFLockService threatIntelLockService;
 
+    private Client client;
+
     @Override
     public Collection<SystemIndexDescriptor> getSystemIndexDescriptors(Settings settings) {
         List<SystemIndexDescriptor> descriptors = List.of(
@@ -311,7 +297,7 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
                                                NamedWriteableRegistry namedWriteableRegistry,
                                                IndexNameExpressionResolver indexNameExpressionResolver,
                                                Supplier<RepositoriesService> repositoriesServiceSupplier) {
-
+        this.client = client;
         builtinLogTypeLoader = new BuiltinLogTypeLoader();
         BuiltInTIFMetadataLoader builtInTIFMetadataLoader = new BuiltInTIFMetadataLoader();
         logTypeService = new LogTypeService(client, clusterService, xContentRegistry, builtinLogTypeLoader);
@@ -583,7 +569,61 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
         });
 
         LockService lockService = GuiceHolder.getLockService();
+        Client client = this.client;
+        logTypeService.ensureConfigIndexIsInitialized(new ActionListener<>() {
+            @Override
+            public void onResponse(Void unused) {
+                try {
+                    sleep(20000);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+                // METEMOS EL POC ACA
+                SecurityAnalyticsPlugin.createTestIndex("test-index-security-analytics", client);
+                String ruleId = SecurityAnalyticsPlugin.getRuleId(client);
+                log.info("Pre-packaged rule ID found: {}", ruleId);
+                //
+            }
+
+            @Override
+            public void onFailure(Exception e) {
+                log.warn("Failed to initialize LogType config index and builtin log types");
+            }
+        });
         threatIntelLockService.initialize(lockService);
+    }
+
+    // Create index
+    public static void createTestIndex(String indexName, Client client) {
+        CreateIndexRequest createIndexRequest = new CreateIndexRequest(indexName);
+        try {
+            client.admin().indices().create(createIndexRequest).actionGet();
+            log.info("Test index [{}] created successfully", indexName);
+        } catch (Exception e) {
+            log.error("Failed to create test index [{}]: {}", indexName, e.getMessage());
+        }
+    }
+
+    // Get pre-packaged rule ID
+    public static String getRuleId(Client client) {
+
+        QueryBuilder queryBuilder = QueryBuilders.matchAllQuery();
+        SearchRequest searchRequest = new SearchRequest(Rule.PRE_PACKAGED_RULES_INDEX)
+                .source(new SearchSourceBuilder()
+                        .seqNoAndPrimaryTerm(false)
+                        .version(false)
+                        .query(queryBuilder)
+                        .fetchSource(FetchSourceContext.FETCH_SOURCE)
+                        .size(1000)
+                )
+                .indices(Rule.PRE_PACKAGED_RULES_INDEX)
+                .preference(Preference.PRIMARY_FIRST.type());
+        // Get first appearance of rule with matching name
+        SearchResponse searchResponse = client.execute(SearchRuleAction.INSTANCE, new SearchRuleRequest(false, searchRequest)).actionGet();
+        for (SearchHit hit : searchResponse.getHits().getHits()) {
+            return hit.getId();
+        }
+        return null;
     }
 
     @NonNull
