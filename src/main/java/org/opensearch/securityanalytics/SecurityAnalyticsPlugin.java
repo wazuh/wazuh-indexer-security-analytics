@@ -4,12 +4,16 @@
  */
 package org.opensearch.securityanalytics;
 
+import java.io.IOException;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.action.ActionRequest;
 import org.opensearch.action.admin.indices.create.CreateIndexRequest;
 import org.opensearch.action.search.SearchRequest;
 import org.opensearch.action.search.SearchResponse;
+import org.opensearch.action.support.WriteRequest.RefreshPolicy;
 import org.opensearch.alerting.spi.RemoteMonitorRunner;
 import org.opensearch.alerting.spi.RemoteMonitorRunnerExtension;
 import org.opensearch.cluster.metadata.IndexMetadata;
@@ -19,7 +23,7 @@ import org.opensearch.cluster.node.DiscoveryNodes;
 import org.opensearch.cluster.routing.Preference;
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.inject.Inject;
-import org.opensearch.common.lifecycle.Lifecycle;
+import org.opensearch.common.lifecycle.Lifecycle.State;
 import org.opensearch.common.lifecycle.LifecycleComponent;
 import org.opensearch.common.lifecycle.LifecycleListener;
 import org.opensearch.common.settings.ClusterSettings;
@@ -28,18 +32,20 @@ import org.opensearch.common.settings.Setting;
 import org.opensearch.common.settings.Settings;
 import org.opensearch.common.settings.SettingsFilter;
 import org.opensearch.commons.alerting.action.AlertingActions;
+import org.opensearch.commons.alerting.model.IntervalSchedule;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.action.ActionResponse;
 import org.opensearch.core.common.io.stream.NamedWriteableRegistry;
 import org.opensearch.core.xcontent.NamedXContentRegistry;
-import org.opensearch.core.xcontent.XContentParser;
+import org.opensearch.core.xcontent.NamedXContentRegistry.Entry;
+import org.opensearch.core.xcontent.XContentParser.Token;
 import org.opensearch.core.xcontent.XContentParserUtils;
 import org.opensearch.env.Environment;
 import org.opensearch.env.NodeEnvironment;
 import org.opensearch.index.IndexSettings;
 import org.opensearch.index.codec.CodecServiceFactory;
 import org.opensearch.index.engine.EngineFactory;
-import org.opensearch.index.mapper.Mapper;
+import org.opensearch.index.mapper.Mapper.TypeParser;
 import org.opensearch.index.query.QueryBuilder;
 import org.opensearch.index.query.QueryBuilders;
 import org.opensearch.indices.SystemIndexDescriptor;
@@ -57,11 +63,13 @@ import org.opensearch.plugins.SystemIndexPlugin;
 import org.opensearch.repositories.RepositoriesService;
 import org.opensearch.rest.RestController;
 import org.opensearch.rest.RestHandler;
+import org.opensearch.rest.RestRequest.Method;
 import org.opensearch.script.ScriptService;
 import org.opensearch.search.SearchHit;
 import org.opensearch.search.builder.SearchSourceBuilder;
 import org.opensearch.search.fetch.subphase.FetchSourceContext;
 import org.opensearch.securityanalytics.action.*;
+import org.opensearch.securityanalytics.model.DetectorRule;
 import org.opensearch.securityanalytics.threatIntel.action.ListIOCsAction;
 import org.opensearch.securityanalytics.correlation.alert.CorrelationAlertService;
 import org.opensearch.securityanalytics.correlation.alert.notifications.NotificationService;
@@ -411,10 +419,10 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
     @Override
     public ScheduledJobParser getJobParser() {
         return (xcp, id, jobDocVersion) -> {
-            XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.nextToken(), xcp);
-            while (xcp.nextToken() != XContentParser.Token.END_OBJECT) {
+            XContentParserUtils.ensureExpectedToken(Token.START_OBJECT, xcp.nextToken(), xcp);
+            while (xcp.nextToken() != Token.END_OBJECT) {
                 String fieldName = xcp.currentName();
-                if (xcp.nextToken() == XContentParser.Token.START_OBJECT) {
+                if (xcp.nextToken() == Token.START_OBJECT) {
                     switch (fieldName) {
                         case SOURCE_CONFIG_FIELD:
                             return SATIFSourceConfig.parse(xcp, id, null);
@@ -431,7 +439,7 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
     }
 
     @Override
-    public List<NamedXContentRegistry.Entry> getNamedXContent() {
+    public List<Entry> getNamedXContent() {
         return List.of(
                 Detector.XCONTENT_REGISTRY,
                 DetectorInput.XCONTENT_REGISTRY,
@@ -442,7 +450,7 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
     }
 
     @Override
-    public Map<String, Mapper.TypeParser> getMappers() {
+    public Map<String, TypeParser> getMappers() {
         return Collections.singletonMap(
                 CorrelationVectorFieldMapper.CONTENT_TYPE,
                 new CorrelationVectorFieldMapper.TypeParser()
@@ -511,30 +519,30 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
     @Override
     public List<ActionHandler<? extends ActionRequest, ? extends ActionResponse>> getActions() {
         return List.of(
-                new ActionPlugin.ActionHandler<>(AckAlertsAction.INSTANCE, TransportAcknowledgeAlertsAction.class),
-                new ActionPlugin.ActionHandler<>(UpdateIndexMappingsAction.INSTANCE, TransportUpdateIndexMappingsAction.class),
-                new ActionPlugin.ActionHandler<>(CreateIndexMappingsAction.INSTANCE, TransportCreateIndexMappingsAction.class),
-                new ActionPlugin.ActionHandler<>(GetIndexMappingsAction.INSTANCE, TransportGetIndexMappingsAction.class),
-                new ActionPlugin.ActionHandler<>(IndexDetectorAction.INSTANCE, TransportIndexDetectorAction.class),
-                new ActionPlugin.ActionHandler<>(DeleteDetectorAction.INSTANCE, TransportDeleteDetectorAction.class),
-                new ActionPlugin.ActionHandler<>(GetMappingsViewAction.INSTANCE, TransportGetMappingsViewAction.class),
-                new ActionPlugin.ActionHandler<>(GetDetectorAction.INSTANCE, TransportGetDetectorAction.class),
-                new ActionPlugin.ActionHandler<>(SearchDetectorAction.INSTANCE, TransportSearchDetectorAction.class),
-                new ActionPlugin.ActionHandler<>(GetFindingsAction.INSTANCE, TransportGetFindingsAction.class),
-                new ActionPlugin.ActionHandler<>(GetAlertsAction.INSTANCE, TransportGetAlertsAction.class),
-                new ActionPlugin.ActionHandler<>(IndexRuleAction.INSTANCE, TransportIndexRuleAction.class),
-                new ActionPlugin.ActionHandler<>(SearchRuleAction.INSTANCE, TransportSearchRuleAction.class),
-                new ActionPlugin.ActionHandler<>(DeleteRuleAction.INSTANCE, TransportDeleteRuleAction.class),
-                new ActionPlugin.ActionHandler<>(ValidateRulesAction.INSTANCE, TransportValidateRulesAction.class),
-                new ActionPlugin.ActionHandler<>(GetAllRuleCategoriesAction.INSTANCE, TransportGetAllRuleCategoriesAction.class),
-                new ActionPlugin.ActionHandler<>(CorrelatedFindingAction.INSTANCE, TransportSearchCorrelationAction.class),
-                new ActionPlugin.ActionHandler<>(IndexCorrelationRuleAction.INSTANCE, TransportIndexCorrelationRuleAction.class),
-                new ActionPlugin.ActionHandler<>(DeleteCorrelationRuleAction.INSTANCE, TransportDeleteCorrelationRuleAction.class),
-                new ActionPlugin.ActionHandler<>(AlertingActions.SUBSCRIBE_FINDINGS_ACTION_TYPE, TransportCorrelateFindingAction.class),
-                new ActionPlugin.ActionHandler<>(ListCorrelationsAction.INSTANCE, TransportListCorrelationAction.class),
-                new ActionPlugin.ActionHandler<>(SearchCorrelationRuleAction.INSTANCE, TransportSearchCorrelationRuleAction.class),
-                new ActionPlugin.ActionHandler<>(GetThreatIntelAlertsAction.INSTANCE, TransportGetThreatIntelAlertsAction.class),
-                new ActionPlugin.ActionHandler<>(UpdateThreatIntelAlertStatusAction.INSTANCE, TransportUpdateThreatIntelAlertStatusAction.class),
+                new ActionHandler<>(AckAlertsAction.INSTANCE, TransportAcknowledgeAlertsAction.class),
+                new ActionHandler<>(UpdateIndexMappingsAction.INSTANCE, TransportUpdateIndexMappingsAction.class),
+                new ActionHandler<>(CreateIndexMappingsAction.INSTANCE, TransportCreateIndexMappingsAction.class),
+                new ActionHandler<>(GetIndexMappingsAction.INSTANCE, TransportGetIndexMappingsAction.class),
+                new ActionHandler<>(IndexDetectorAction.INSTANCE, TransportIndexDetectorAction.class),
+                new ActionHandler<>(DeleteDetectorAction.INSTANCE, TransportDeleteDetectorAction.class),
+                new ActionHandler<>(GetMappingsViewAction.INSTANCE, TransportGetMappingsViewAction.class),
+                new ActionHandler<>(GetDetectorAction.INSTANCE, TransportGetDetectorAction.class),
+                new ActionHandler<>(SearchDetectorAction.INSTANCE, TransportSearchDetectorAction.class),
+                new ActionHandler<>(GetFindingsAction.INSTANCE, TransportGetFindingsAction.class),
+                new ActionHandler<>(GetAlertsAction.INSTANCE, TransportGetAlertsAction.class),
+                new ActionHandler<>(IndexRuleAction.INSTANCE, TransportIndexRuleAction.class),
+                new ActionHandler<>(SearchRuleAction.INSTANCE, TransportSearchRuleAction.class),
+                new ActionHandler<>(DeleteRuleAction.INSTANCE, TransportDeleteRuleAction.class),
+                new ActionHandler<>(ValidateRulesAction.INSTANCE, TransportValidateRulesAction.class),
+                new ActionHandler<>(GetAllRuleCategoriesAction.INSTANCE, TransportGetAllRuleCategoriesAction.class),
+                new ActionHandler<>(CorrelatedFindingAction.INSTANCE, TransportSearchCorrelationAction.class),
+                new ActionHandler<>(IndexCorrelationRuleAction.INSTANCE, TransportIndexCorrelationRuleAction.class),
+                new ActionHandler<>(DeleteCorrelationRuleAction.INSTANCE, TransportDeleteCorrelationRuleAction.class),
+                new ActionHandler<>(AlertingActions.SUBSCRIBE_FINDINGS_ACTION_TYPE, TransportCorrelateFindingAction.class),
+                new ActionHandler<>(ListCorrelationsAction.INSTANCE, TransportListCorrelationAction.class),
+                new ActionHandler<>(SearchCorrelationRuleAction.INSTANCE, TransportSearchCorrelationRuleAction.class),
+                new ActionHandler<>(GetThreatIntelAlertsAction.INSTANCE, TransportGetThreatIntelAlertsAction.class),
+                new ActionHandler<>(UpdateThreatIntelAlertStatusAction.INSTANCE, TransportUpdateThreatIntelAlertStatusAction.class),
                 new ActionHandler<>(IndexCustomLogTypeAction.INSTANCE, TransportIndexCustomLogTypeAction.class),
                 new ActionHandler<>(SearchCustomLogTypeAction.INSTANCE, TransportSearchCustomLogTypeAction.class),
                 new ActionHandler<>(DeleteCustomLogTypeAction.INSTANCE, TransportDeleteCustomLogTypeAction.class),
@@ -551,8 +559,8 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
                 new ActionHandler<>(TestS3ConnectionAction.INSTANCE, TransportTestS3ConnectionAction.class),
                 new ActionHandler<>(GetIocFindingsAction.INSTANCE, TransportGetIocFindingsAction.class),
                 new ActionHandler<>(PutTIFJobAction.INSTANCE, TransportPutTIFJobAction.class),
-                new ActionPlugin.ActionHandler<>(GetCorrelationAlertsAction.INSTANCE, TransportGetCorrelationAlertsAction.class),
-                new ActionPlugin.ActionHandler<>(AckCorrelationAlertsAction.INSTANCE, TransportAckCorrelationAlertsAction.class)
+                new ActionHandler<>(GetCorrelationAlertsAction.INSTANCE, TransportGetCorrelationAlertsAction.class),
+                new ActionHandler<>(AckCorrelationAlertsAction.INSTANCE, TransportAckCorrelationAlertsAction.class)
         );
     }
 
@@ -570,6 +578,7 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
                 String ruleId = SecurityAnalyticsPlugin.getRuleId(client);
                 log.info("Pre-packaged rule ID found: {}", ruleId);
                 // Create/Index detector
+                createDetector(client, ruleId);
             }
 
             @Override
@@ -580,6 +589,62 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
 
         LockService lockService = GuiceHolder.getLockService();
         threatIntelLockService.initialize(lockService);
+    }
+
+    private static void createDetector(Client client, String ruleId) {
+
+        // XContentParser xcp = request.contentParser();
+        // XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.nextToken(), xcp);
+        // IndexDetectorRequest indexDetectorRequest = new IndexDetectorRequest();
+        // Detector detector = Detector.parse(xcp, "", null);
+        // detector.setLastUpdateTime(Instant.now());
+        // validateDetectorTriggers(detector);
+
+        IntervalSchedule schedule = new IntervalSchedule(1, ChronoUnit.MINUTES, null);
+        String description = "Test detector description";
+        List<String> indices = List.of("test-index-security-analytics");
+        List<DetectorRule> detectorRules = List.of(new DetectorRule(ruleId));
+
+        List<DetectorInput> inputs = List.of(new DetectorInput(description, indices, null, detectorRules));
+        Detector detector = new Detector(
+            "",
+            0L,
+            "Test detector",
+            true,
+            schedule,
+            null,
+            Instant.now(),
+            null,
+            null,
+            inputs,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null
+        );
+
+        IndexDetectorRequest indexDetectorRequest = new IndexDetectorRequest("", RefreshPolicy.IMMEDIATE,
+            Method.POST, detector);
+
+        client.execute(IndexDetectorAction.INSTANCE, indexDetectorRequest,
+            new ActionListener<IndexDetectorResponse>() {
+                @Override
+                public void onResponse(IndexDetectorResponse indexDetectorResponse) {
+                    log.info("Test detector created with ID: {}", indexDetectorResponse.getId());
+                }
+
+                @Override
+                public void onFailure(Exception e) {
+                    log.error("Failed to create test detector: {}", e.getMessage());
+                }
+            });
     }
 
     // Create index
@@ -642,7 +707,7 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
         public void close() {}
 
         @Override
-        public Lifecycle.State lifecycleState() {
+        public State lifecycleState() {
             return null;
         }
 
