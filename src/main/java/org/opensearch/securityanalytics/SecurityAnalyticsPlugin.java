@@ -592,6 +592,8 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
         List<String> indices = List.of(indexName);
         List<DetectorRule> detectorRules = List.of(new DetectorRule(ruleId));
 
+        Instant Instant = java.time.Instant.now().minusSeconds(3600);
+        log.info("Creating test detector with rule ID: {}", ruleId);
         List<DetectorInput> inputs = List.of(new DetectorInput(description, indices, new ArrayList<>(), detectorRules));
         Detector detector = new Detector(
             "",
@@ -599,7 +601,7 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
             "Test detector",
             true,
             schedule,
-            null,
+            Instant,
             Instant.now(),
             logType,
             null,
@@ -619,7 +621,6 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
 
         IndexDetectorRequest indexDetectorRequest = new IndexDetectorRequest("", RefreshPolicy.IMMEDIATE,
             Method.POST, detector);
-
         client.execute(IndexDetectorAction.INSTANCE, indexDetectorRequest,
             new ActionListener<IndexDetectorResponse>() {
                 @Override
