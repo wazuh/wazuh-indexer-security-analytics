@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Removed
 - Disable pre-packaged rules [(#9)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/9)
+- Remove Job Scheduler and IOCs stuff from the plugin [(#12)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/12)
 
 ### Fixed
 - Fix typo in revision variable [(#4)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/4)
