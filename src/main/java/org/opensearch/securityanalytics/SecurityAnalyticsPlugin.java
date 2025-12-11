@@ -9,10 +9,15 @@ import java.time.temporal.ChronoUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.action.ActionRequest;
+import org.opensearch.action.admin.indices.create.CreateIndexRequest;
+import org.opensearch.action.search.SearchRequest;
+import org.opensearch.action.search.SearchResponse;
+import org.opensearch.action.support.WriteRequest.RefreshPolicy;
 import org.opensearch.cluster.metadata.IndexMetadata;
 import org.opensearch.cluster.metadata.IndexNameExpressionResolver;
 import org.opensearch.cluster.node.DiscoveryNode;
 import org.opensearch.cluster.node.DiscoveryNodes;
+import org.opensearch.cluster.routing.Preference;
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.lifecycle.LifecycleComponent;
 import org.opensearch.common.settings.ClusterSettings;
@@ -20,7 +25,6 @@ import org.opensearch.common.settings.IndexScopedSettings;
 import org.opensearch.common.settings.Setting;
 import org.opensearch.common.settings.Settings;
 import org.opensearch.common.settings.SettingsFilter;
-import org.opensearch.common.unit.TimeValue;
 import org.opensearch.commons.alerting.action.AlertingActions;
 import org.opensearch.commons.alerting.model.IntervalSchedule;
 import org.opensearch.core.action.ActionListener;
@@ -32,8 +36,7 @@ import org.opensearch.env.NodeEnvironment;
 import org.opensearch.index.IndexSettings;
 import org.opensearch.index.codec.CodecServiceFactory;
 import org.opensearch.index.engine.EngineFactory;
-import org.opensearch.index.mapper.Mapper.TypeParser;
-import org.opensearch.index.query.BoolQueryBuilder;
+import org.opensearch.index.mapper.Mapper;
 import org.opensearch.index.query.QueryBuilder;
 import org.opensearch.index.query.QueryBuilders;
 import org.opensearch.indices.SystemIndexDescriptor;
@@ -74,7 +77,6 @@ import org.opensearch.search.builder.SearchSourceBuilder;
 import org.opensearch.search.fetch.subphase.FetchSourceContext;
 import org.opensearch.securityanalytics.action.*;
 import org.opensearch.securityanalytics.model.*;
-import org.opensearch.securityanalytics.threatIntel.action.ListIOCsAction;
 import org.opensearch.securityanalytics.correlation.alert.CorrelationAlertService;
 import org.opensearch.securityanalytics.correlation.alert.notifications.NotificationService;
 import org.opensearch.securityanalytics.correlation.index.codec.CorrelationCodecService;
@@ -128,15 +130,10 @@ import org.opensearch.threadpool.ThreadPool;
 import org.opensearch.transport.client.Client;
 import org.opensearch.transport.client.node.NodeClient;
 import org.opensearch.watcher.ResourceWatcherService;
-import reactor.util.annotation.NonNull;
 
 import java.util.*;
 import java.util.function.Supplier;
 
-import static java.lang.Thread.sleep;
-import static org.opensearch.securityanalytics.threatIntel.iocscan.service.ThreatIntelMonitorRunner.THREAT_INTEL_MONITOR_TYPE;
-import static org.opensearch.securityanalytics.threatIntel.model.SATIFSourceConfig.SOURCE_CONFIG_FIELD;
-import static org.opensearch.securityanalytics.threatIntel.model.TIFJobParameter.THREAT_INTEL_DATA_INDEX_NAME_PREFIX;
 import static org.opensearch.securityanalytics.util.CorrelationIndices.CORRELATION_ALERT_INDEX;
 
 public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, MapperPlugin, SearchPlugin, EnginePlugin, ClusterPlugin, SystemIndexPlugin, ExtensiblePlugin {
@@ -191,10 +188,6 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
     private BuiltinLogTypeLoader builtinLogTypeLoader;
 
     private LogTypeService logTypeService;
-
-    private SATIFSourceConfigService saTifSourceConfigService;
-
-    private TIFLockService threatIntelLockService;
 
     private Client client;
 
@@ -418,9 +411,6 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
                 log.warn("Failed to initialize LogType config index and builtin log types");
             }
         });
-
-        LockService lockService = GuiceHolder.getLockService();
-        threatIntelLockService.initialize(lockService);
     }
 
     private static void createDetector(String ruleId, String logType, String indexName, Client client) {
@@ -472,7 +462,11 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
             });
     }
 
-    // Create index
+    /**
+     * Create index
+     * @param indexName Name of the index to be created
+     * @param client Client to use for index creation
+     */
     public static void createTestIndex(String indexName, Client client) {
         CreateIndexRequest createIndexRequest = new CreateIndexRequest(indexName);
         try {
@@ -483,7 +477,11 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
         }
     }
 
-    // Get pre-packaged rule ID
+    /**
+     * Get pre-packaged rule ID
+     * @param client Client to use for searching pre-packaged rules
+     * @return ID of the first pre-packaged rule found
+     */
     public static String getRuleId(Client client) {
 
         QueryBuilder queryBuilder = QueryBuilders.matchAllQuery();
@@ -505,48 +503,5 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
             return hit.getId();
         }
         return null;
-    }
-
-    @NonNull
-    @Override
-    public Map<String, RemoteMonitorRunner> getMonitorTypesToMonitorRunners() {
-        return Map.of(
-                THREAT_INTEL_MONITOR_TYPE, ThreatIntelMonitorRunner.getMonitorRunner()
-        );
-    }
-
-    public static class GuiceHolder implements LifecycleComponent {
-
-        private static LockService lockService;
-
-        @Inject
-        public GuiceHolder(final LockService lockService) {
-            GuiceHolder.lockService = lockService;
-        }
-
-        static LockService getLockService() {
-            return lockService;
-        }
-
-        @Override
-        public void close() {}
-
-        @Override
-        public State lifecycleState() {
-            return null;
-        }
-
-        @Override
-        public void addLifecycleListener(LifecycleListener listener) {}
-
-        @Override
-        public void removeLifecycleListener(LifecycleListener listener) {}
-
-        @Override
-        public void start() {}
-
-        @Override
-        public void stop() {}
-
     }
 }
