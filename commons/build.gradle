@@ -55,8 +55,6 @@ apply plugin: 'java'
 apply plugin: 'maven-publish'
 apply plugin: 'com.gradleup.shadow'
 apply plugin: 'opensearch.repositories'
-apply plugin: 'opensearch.java-agent'
-
 
 dependencies {
     compileOnly "org.opensearch.client:opensearch-rest-high-level-client:${opensearch_version}"
