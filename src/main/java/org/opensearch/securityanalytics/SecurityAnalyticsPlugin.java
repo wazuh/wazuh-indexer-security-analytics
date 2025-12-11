@@ -565,19 +565,11 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
             @Override
             public void onResponse(Void unused) {
                 log.info("LogType config index successfully created and builtin log types loaded");
-                threadPool.executor(ThreadPool.Names.GENERIC).execute(() -> {
-                    try {
-                        sleep(20000);
-                        SecurityAnalyticsPlugin.createTestIndex("test-index-security-analytics", client);
-                        String ruleId = SecurityAnalyticsPlugin.getRuleId(client);
-                        log.info("Pre-packaged rule ID found: {}", ruleId);
-                    } catch (InterruptedException e) {
-                        log.error("Async task interrupted", e);
-                        Thread.currentThread().interrupt();
-                    } catch (Exception e) {
-                        log.error("Error in async task", e);
-                    }
-                });
+                SecurityAnalyticsPlugin.createTestIndex("test-index-security-analytics", client);
+                // Get ID of a pre-packaged rule required for detector
+                String ruleId = SecurityAnalyticsPlugin.getRuleId(client);
+                log.info("Pre-packaged rule ID found: {}", ruleId);
+                // Create/Index detector
             }
 
             @Override
