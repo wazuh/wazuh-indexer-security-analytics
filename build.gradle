@@ -114,7 +114,6 @@ opensearchplugin {
     name 'wazuh-indexer-security-analytics'
     description 'Wazuh Indexer Security Analytics plugin'
     classname 'org.opensearch.securityanalytics.SecurityAnalyticsPlugin'
-//    extendedPlugins = ['opensearch-job-scheduler', 'opensearch-alerting']
     extendedPlugins = ['opensearch-alerting']
 }
 
@@ -206,7 +205,6 @@ dependencies {
     compileOnly "org.opensearch:common-utils:${common_utils_version}@jar"
     compileOnly "org.opensearch.client:opensearch-rest-client:${opensearch_version}"
     compileOnly "org.jetbrains.kotlin:kotlin-stdlib:${kotlin_version}"
-//    compileOnly "org.opensearch:opensearch-job-scheduler-spi:${opensearch_build}"
     compileOnly "org.opensearch.alerting:alerting-spi:${alerting_spi_build}"
     implementation "org.apache.commons:commons-csv:1.10.0"
     implementation 'com.jayway.jsonpath:json-path:2.9.0'
@@ -224,7 +222,6 @@ dependencies {
     zipArchive group: 'org.opensearch.plugin', name:'alerting', version: "${opensearch_build}"
     zipArchive group: 'org.opensearch.plugin', name:'opensearch-notifications-core', version: "${opensearch_build}"
     zipArchive group: 'org.opensearch.plugin', name:'notifications', version: "${opensearch_build}"
-//    zipArchive group: 'org.opensearch.plugin', name:'opensearch-job-scheduler', version: "${opensearch_build}"
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
 
     // Needed for security tests
@@ -366,16 +363,6 @@ testClusters.integTest {
             }
         }
     }))
-//    plugin(provider({
-//        new RegularFile() {
-//            @Override
-//            File getAsFile() {
-//                return configurations.zipArchive.asFileTree.matching {
-//                    include '**/opensearch-job-scheduler*'
-//                }.singleFile
-//            }
-//        }
-//    }))
 
     if (securityEnabled) {
         plugin(provider({
