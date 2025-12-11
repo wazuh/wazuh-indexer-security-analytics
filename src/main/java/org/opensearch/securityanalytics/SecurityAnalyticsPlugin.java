@@ -4,11 +4,11 @@
  */
 package org.opensearch.securityanalytics;
 
-import java.io.IOException;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.opensearch.OpenSearchStatusException;
 import org.opensearch.action.ActionRequest;
 import org.opensearch.action.admin.indices.create.CreateIndexRequest;
 import org.opensearch.action.search.SearchRequest;
@@ -31,11 +31,13 @@ import org.opensearch.common.settings.IndexScopedSettings;
 import org.opensearch.common.settings.Setting;
 import org.opensearch.common.settings.Settings;
 import org.opensearch.common.settings.SettingsFilter;
+import org.opensearch.common.unit.TimeValue;
 import org.opensearch.commons.alerting.action.AlertingActions;
 import org.opensearch.commons.alerting.model.IntervalSchedule;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.action.ActionResponse;
 import org.opensearch.core.common.io.stream.NamedWriteableRegistry;
+import org.opensearch.core.rest.RestStatus;
 import org.opensearch.core.xcontent.NamedXContentRegistry;
 import org.opensearch.core.xcontent.NamedXContentRegistry.Entry;
 import org.opensearch.core.xcontent.XContentParser.Token;
@@ -46,6 +48,7 @@ import org.opensearch.index.IndexSettings;
 import org.opensearch.index.codec.CodecServiceFactory;
 import org.opensearch.index.engine.EngineFactory;
 import org.opensearch.index.mapper.Mapper.TypeParser;
+import org.opensearch.index.query.BoolQueryBuilder;
 import org.opensearch.index.query.QueryBuilder;
 import org.opensearch.index.query.QueryBuilders;
 import org.opensearch.indices.SystemIndexDescriptor;
@@ -69,7 +72,7 @@ import org.opensearch.search.SearchHit;
 import org.opensearch.search.builder.SearchSourceBuilder;
 import org.opensearch.search.fetch.subphase.FetchSourceContext;
 import org.opensearch.securityanalytics.action.*;
-import org.opensearch.securityanalytics.model.DetectorRule;
+import org.opensearch.securityanalytics.model.*;
 import org.opensearch.securityanalytics.threatIntel.action.ListIOCsAction;
 import org.opensearch.securityanalytics.correlation.alert.CorrelationAlertService;
 import org.opensearch.securityanalytics.correlation.alert.notifications.NotificationService;
@@ -82,11 +85,6 @@ import org.opensearch.securityanalytics.logtype.BuiltinLogTypeLoader;
 import org.opensearch.securityanalytics.logtype.LogTypeService;
 import org.opensearch.securityanalytics.mapper.IndexTemplateManager;
 import org.opensearch.securityanalytics.mapper.MapperService;
-import org.opensearch.securityanalytics.model.CustomLogType;
-import org.opensearch.securityanalytics.model.Detector;
-import org.opensearch.securityanalytics.model.DetectorInput;
-import org.opensearch.securityanalytics.model.Rule;
-import org.opensearch.securityanalytics.model.ThreatIntelFeedData;
 import org.opensearch.securityanalytics.resthandler.RestAcknowledgeAlertsAction;
 import org.opensearch.securityanalytics.resthandler.RestAcknowledgeCorrelationAlertsAction;
 import org.opensearch.securityanalytics.resthandler.RestCreateIndexMappingsAction;
@@ -211,11 +209,7 @@ import org.opensearch.transport.client.node.NodeClient;
 import org.opensearch.watcher.ResourceWatcherService;
 import reactor.util.annotation.NonNull;
 
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.function.Supplier;
 
 import static java.lang.Thread.sleep;
@@ -568,17 +562,18 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
     public void onNodeStarted(DiscoveryNode localNode) {
 //      Trigger initialization of log types
         Client client = this.client;
-        ThreadPool threadPool = this.threadPool;
+        String testIndexName = "test-index-security-analytics";
+
         logTypeService.ensureConfigIndexIsInitialized(new ActionListener<>() {
             @Override
             public void onResponse(Void unused) {
                 log.info("LogType config index successfully created and builtin log types loaded");
-                SecurityAnalyticsPlugin.createTestIndex("test-index-security-analytics", client);
+                SecurityAnalyticsPlugin.createTestIndex(testIndexName, client);
                 // Get ID of a pre-packaged rule required for detector
                 String ruleId = SecurityAnalyticsPlugin.getRuleId(client);
                 log.info("Pre-packaged rule ID found: {}", ruleId);
                 // Create/Index detector
-                createDetector(client, ruleId);
+                createDetector(ruleId, "others_cloud", testIndexName, client);
             }
 
             @Override
@@ -591,21 +586,13 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
         threatIntelLockService.initialize(lockService);
     }
 
-    private static void createDetector(Client client, String ruleId) {
-
-        // XContentParser xcp = request.contentParser();
-        // XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.nextToken(), xcp);
-        // IndexDetectorRequest indexDetectorRequest = new IndexDetectorRequest();
-        // Detector detector = Detector.parse(xcp, "", null);
-        // detector.setLastUpdateTime(Instant.now());
-        // validateDetectorTriggers(detector);
-
+    private static void createDetector(String ruleId, String logType, String indexName, Client client) {
         IntervalSchedule schedule = new IntervalSchedule(1, ChronoUnit.MINUTES, null);
         String description = "Test detector description";
-        List<String> indices = List.of("test-index-security-analytics");
+        List<String> indices = List.of(indexName);
         List<DetectorRule> detectorRules = List.of(new DetectorRule(ruleId));
 
-        List<DetectorInput> inputs = List.of(new DetectorInput(description, indices, null, detectorRules));
+        List<DetectorInput> inputs = List.of(new DetectorInput(description, indices, new ArrayList<>(), detectorRules));
         Detector detector = new Detector(
             "",
             0L,
@@ -614,10 +601,10 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
             schedule,
             null,
             Instant.now(),
-            null,
+            logType,
             null,
             inputs,
-            null,
+            new ArrayList<>(),
             null,
             null,
             null,
