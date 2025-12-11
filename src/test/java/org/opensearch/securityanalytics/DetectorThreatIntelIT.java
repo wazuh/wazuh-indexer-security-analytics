@@ -105,7 +105,7 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
 
         // Verify workflow
         verifyWorkflow(detectorMap, monitorIds, 1);
-        List<String> iocs = getThreatIntelFeedIocs(3);
+        List<String> iocs = new ArrayList<>(3);
         int i = 1;
         for (String ioc : iocs) {
             indexDoc(index, i + "", randomDocWithIpIoc(5, 3, ioc));
@@ -321,7 +321,7 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
         assertEquals("Update detector failed", RestStatus.OK, restStatus(updateResponse));
 
         Map<String, Object> updateResponseBody = asMap(updateResponse);
-        List<String> iocs = getThreatIntelFeedIocs(3);
+        List<String> iocs = new ArrayList<>(3);
         int i = 2;
         for (String ioc : iocs) {
             indexDoc(index, i + "", randomDocWithIpIoc(5, 3, ioc));
@@ -402,7 +402,7 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
 
         // Verify workflow
         verifyWorkflow(detectorMap, monitorIds, 1);
-        List<String> iocs = getThreatIntelFeedIocs(3);
+        List<String> iocs = new ArrayList<>(3);
         int i = 1;
         for (String ioc : iocs) {
             indexDoc(index, i + "", randomDocWithIpIoc(5, 3, ioc));
@@ -496,7 +496,7 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
 
         // Verify workflow
         verifyWorkflow(detectorMap, monitorIds, 1);
-        List<String> iocs = getThreatIntelFeedIocs(3);
+        List<String> iocs = new ArrayList<>(3);
         int i = 1;
         for (String ioc : iocs) {
             indexDoc(index, i + "", randomDocWithIpIoc(5, 3, ioc));
@@ -591,7 +591,7 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
 
         // Verify workflow
         verifyWorkflow(detectorMap, monitorIds, 1);
-        List<String> iocs = getThreatIntelFeedIocs(3);
+        List<String> iocs = new ArrayList<>(3);
         int i = 1;
         for (String ioc : iocs) {
             indexDoc(index, i + "", randomDocWithIpIoc(5, 3, ioc));
