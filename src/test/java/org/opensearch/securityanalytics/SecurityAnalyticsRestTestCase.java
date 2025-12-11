@@ -53,7 +53,6 @@ import org.opensearch.index.mapper.MapperService;
 import org.opensearch.search.SearchHit;
 import org.opensearch.securityanalytics.action.AlertDto;
 import org.opensearch.securityanalytics.action.CreateIndexMappingsRequest;
-import org.opensearch.securityanalytics.action.TestS3ConnectionRequest;
 import org.opensearch.securityanalytics.action.UpdateIndexMappingsRequest;
 import org.opensearch.securityanalytics.config.monitors.DetectorMonitorConfig;
 import org.opensearch.securityanalytics.correlation.CorrelationEngineRestApiIT;
@@ -71,9 +70,6 @@ import org.opensearch.securityanalytics.model.Rule;
 import org.opensearch.securityanalytics.model.ThreatIntelFeedData;
 import org.opensearch.securityanalytics.model.threatintel.IocFinding;
 import org.opensearch.securityanalytics.model.threatintel.ThreatIntelAlert;
-import org.opensearch.securityanalytics.threatIntel.iocscan.dao.IocFindingService;
-import org.opensearch.securityanalytics.threatIntel.model.SATIFSourceConfigDto;
-import org.opensearch.securityanalytics.threatIntel.sacommons.monitor.ThreatIntelMonitorDto;
 import org.opensearch.securityanalytics.util.CorrelationIndices;
 import org.opensearch.test.rest.OpenSearchRestTestCase;
 
@@ -115,7 +111,6 @@ import static org.opensearch.securityanalytics.TestHelpers.s3AccessLogMappings;
 import static org.opensearch.securityanalytics.TestHelpers.sumAggregationTestRule;
 import static org.opensearch.securityanalytics.TestHelpers.vpcFlowMappings;
 import static org.opensearch.securityanalytics.TestHelpers.windowsIndexMapping;
-import static org.opensearch.securityanalytics.services.STIX2IOCFeedStore.IOC_ALL_INDEX_PATTERN;
 import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings.ALERT_HISTORY_INDEX_MAX_AGE;
 import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings.ALERT_HISTORY_MAX_DOCS;
 import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings.ALERT_HISTORY_RETENTION_PERIOD;
@@ -124,7 +119,6 @@ import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSetting
 import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings.FINDING_HISTORY_MAX_DOCS;
 import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings.FINDING_HISTORY_RETENTION_PERIOD;
 import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings.FINDING_HISTORY_ROLLOVER_PERIOD;
-import static org.opensearch.securityanalytics.threatIntel.util.ThreatIntelFeedDataUtils.getTifdList;
 import static org.opensearch.securityanalytics.util.RuleTopicIndices.ruleTopicIndexSettings;
 
 public class SecurityAnalyticsRestTestCase extends OpenSearchRestTestCase {
@@ -689,20 +683,8 @@ public class SecurityAnalyticsRestTestCase extends OpenSearchRestTestCase {
         return new StringEntity(toJsonString(rule), ContentType.APPLICATION_JSON);
     }
 
-    protected HttpEntity toHttpEntity(SATIFSourceConfigDto saTifSourceConfigDto) throws IOException {
-        return new StringEntity(toJsonString(saTifSourceConfigDto), ContentType.APPLICATION_JSON);
-    }
-
     protected HttpEntity toHttpEntity(IocFinding iocFinding) throws IOException {
         return new StringEntity(toJsonString(iocFinding), ContentType.APPLICATION_JSON);
-    }
-
-    protected HttpEntity toHttpEntity(ThreatIntelMonitorDto threatIntelMonitorDto) throws IOException {
-        return new StringEntity(toJsonString(threatIntelMonitorDto), ContentType.APPLICATION_JSON);
-    }
-
-    protected HttpEntity toHttpEntity(TestS3ConnectionRequest testS3ConnectionRequest) throws IOException {
-        return new StringEntity(toJsonString(testS3ConnectionRequest), ContentType.APPLICATION_JSON);
     }
 
     protected RestStatus restStatus(Response response) {
@@ -748,16 +730,6 @@ public class SecurityAnalyticsRestTestCase extends OpenSearchRestTestCase {
         return IndexUtilsKt.string(shuffleXContent(tifd.toXContent(builder, ToXContent.EMPTY_PARAMS)));
     }
 
-    private String toJsonString(SATIFSourceConfigDto saTifSourceConfigDto) throws IOException {
-        XContentBuilder builder = XContentFactory.jsonBuilder();
-        return IndexUtilsKt.string(shuffleXContent(saTifSourceConfigDto.toXContent(builder, ToXContent.EMPTY_PARAMS)));
-    }
-
-    private String toJsonString(ThreatIntelMonitorDto threatIntelMonitorDto) throws IOException {
-        XContentBuilder builder = XContentFactory.jsonBuilder();
-        return IndexUtilsKt.string(shuffleXContent(threatIntelMonitorDto.toXContent(builder, ToXContent.EMPTY_PARAMS)));
-    }
-
     private String toJsonString(IocFinding iocFinding) throws IOException {
         XContentBuilder builder = XContentFactory.jsonBuilder();
         return IndexUtilsKt.string(shuffleXContent(iocFinding.toXContent(builder, ToXContent.EMPTY_PARAMS)));
@@ -766,11 +738,6 @@ public class SecurityAnalyticsRestTestCase extends OpenSearchRestTestCase {
     public String toJsonString(ThreatIntelAlert alert) throws IOException {
         XContentBuilder builder = XContentFactory.jsonBuilder();
         return IndexUtilsKt.string(shuffleXContent(alert.toXContent(builder, ToXContent.EMPTY_PARAMS)));
-    }
-
-    private String toJsonString(TestS3ConnectionRequest testS3ConnectionRequest) throws IOException {
-        XContentBuilder builder = XContentFactory.jsonBuilder();
-        return IndexUtilsKt.string(shuffleXContent(testS3ConnectionRequest.toXContent(builder, ToXContent.EMPTY_PARAMS)));
     }
 
     private String alertingScheduledJobMappings() {
@@ -1529,42 +1496,6 @@ public class SecurityAnalyticsRestTestCase extends OpenSearchRestTestCase {
         return indices;
     }
 
-    public List<String> getIocFindingIndices() throws IOException {
-        Response response = client().performRequest(new Request("GET", "/_cat/indices/" + IocFindingService.IOC_FINDING_INDEX_PATTERN_REGEXP + "?format=json"));
-        XContentParser xcp = createParser(XContentType.JSON.xContent(), response.getEntity().getContent());
-        List<Object> responseList = xcp.list();
-        List<String> indices = new ArrayList<>();
-        for (Object o : responseList) {
-            if (o instanceof Map) {
-                ((Map<?, ?>) o).forEach((BiConsumer<Object, Object>)
-                        (o1, o2) -> {
-                            if (o1.equals("index")) {
-                                indices.add((String) o2);
-                            }
-                        });
-            }
-        }
-        return indices;
-    }
-
-    public List<String> getIocIndices() throws IOException {
-        Response response = client().performRequest(new Request("GET", "/_cat/indices/" + IOC_ALL_INDEX_PATTERN + "?format=json"));
-        XContentParser xcp = createParser(XContentType.JSON.xContent(), response.getEntity().getContent());
-        List<Object> responseList = xcp.list();
-        List<String> indices = new ArrayList<>();
-        for (Object o : responseList) {
-            if (o instanceof Map) {
-                ((Map<?, ?>) o).forEach((BiConsumer<Object, Object>)
-                        (o1, o2) -> {
-                            if (o1.equals("index")) {
-                                indices.add((String) o2);
-                            }
-                        });
-            }
-        }
-        return indices;
-    }
-
     public List<String> getQueryIndices(String detectorType) throws IOException {
         Response response = client().performRequest(new Request("GET", "/_cat/indices/" + DetectorMonitorConfig.getRuleIndex(detectorType) + "*?format=json"));
         XContentParser xcp = createParser(XContentType.JSON.xContent(), response.getEntity().getContent());
@@ -1910,12 +1841,6 @@ public class SecurityAnalyticsRestTestCase extends OpenSearchRestTestCase {
         String entity = "{\"persistent\":{\"plugins.security_analytics.filter_by_backend_roles\" : " + trueOrFalse + "}}";
         request.setJsonEntity(entity);
         client().performRequest(request);
-    }
-
-    public List<String> getThreatIntelFeedIocs(int num) throws IOException {
-        String request = getMatchAllSearchRequestString(num);
-        SearchResponse res = executeSearchAndGetResponse(".opensearch-sap-threat-intel*", request, false);
-        return getTifdList(res, xContentRegistry()).stream().map(it -> it.getIocValue()).collect(Collectors.toList());
     }
 
     public String getMatchAllSearchRequestString(int num) {
