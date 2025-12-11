@@ -34,7 +34,7 @@ import org.opensearch.common.settings.Settings;
 import org.opensearch.common.unit.TimeValue;
 import org.opensearch.securityanalytics.config.monitors.DetectorMonitorConfig;
 import org.opensearch.securityanalytics.logtype.LogTypeService;
-import org.opensearch.securityanalytics.threatIntel.iocscan.dao.IocFindingService;
+
 import org.opensearch.securityanalytics.util.CorrelationIndices;
 import org.opensearch.threadpool.Scheduler;
 import org.opensearch.threadpool.ThreadPool;
@@ -509,20 +509,20 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
     }
 
     private void rolloverAndDeleteIocFindingHistoryIndices() {
-        try {
-            iocFindingHistoryIndex = new HistoryIndexInfo(
-                    IocFindingService.IOC_FINDING_ALIAS_NAME,
-                    IocFindingService.IOC_FINDING_INDEX_PATTERN,
-                    IocFindingService.getIndexMapping(),
-                    iocFindingHistoryMaxDocs,
-                    iocFindingHistoryMaxAge,
-                    clusterService.state().metadata().hasAlias(IocFindingService.IOC_FINDING_ALIAS_NAME)
-            );
-            rolloverIocFindingHistoryIndices();
-            deleteOldIndices("IOC Findings", IocFindingService.IOC_FINDING_INDEX_PATTERN_REGEXP);
-        } catch (Exception ex) {
-            logger.error("failed to construct ioc finding index info");
-        }
+//        try {
+//            iocFindingHistoryIndex = new HistoryIndexInfo(
+//                    IocFindingService.IOC_FINDING_ALIAS_NAME,
+//                    IocFindingService.IOC_FINDING_INDEX_PATTERN,
+//                    IocFindingService.getIndexMapping(),
+//                    iocFindingHistoryMaxDocs,
+//                    iocFindingHistoryMaxAge,
+//                    clusterService.state().metadata().hasAlias(IocFindingService.IOC_FINDING_ALIAS_NAME)
+//            );
+//            rolloverIocFindingHistoryIndices();
+//            deleteOldIndices("IOC Findings", IocFindingService.IOC_FINDING_INDEX_PATTERN_REGEXP);
+//        } catch (Exception ex) {
+//            logger.error("failed to construct ioc finding index info");
+//        }
     }
 
     private List<String> getAllAlertsIndicesPatternForAllTypes(List<String> logTypes) {
