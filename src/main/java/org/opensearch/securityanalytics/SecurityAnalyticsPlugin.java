@@ -275,6 +275,8 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
 
     private Client client;
 
+    private ThreadPool threadPool;
+
     @Override
     public Collection<SystemIndexDescriptor> getSystemIndexDescriptors(Settings settings) {
         List<SystemIndexDescriptor> descriptors = List.of(
@@ -298,6 +300,7 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
                                                IndexNameExpressionResolver indexNameExpressionResolver,
                                                Supplier<RepositoriesService> repositoriesServiceSupplier) {
         this.client = client;
+        this.threadPool = threadPool;
         builtinLogTypeLoader = new BuiltinLogTypeLoader();
         BuiltInTIFMetadataLoader builtInTIFMetadataLoader = new BuiltInTIFMetadataLoader();
         logTypeService = new LogTypeService(client, clusterService, xContentRegistry, builtinLogTypeLoader);
@@ -556,10 +559,25 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
     @Override
     public void onNodeStarted(DiscoveryNode localNode) {
 //      Trigger initialization of log types
+        Client client = this.client;
+        ThreadPool threadPool = this.threadPool;
         logTypeService.ensureConfigIndexIsInitialized(new ActionListener<>() {
             @Override
             public void onResponse(Void unused) {
                 log.info("LogType config index successfully created and builtin log types loaded");
+                threadPool.executor(ThreadPool.Names.GENERIC).execute(() -> {
+                    try {
+                        sleep(20000);
+                        SecurityAnalyticsPlugin.createTestIndex("test-index-security-analytics", client);
+                        String ruleId = SecurityAnalyticsPlugin.getRuleId(client);
+                        log.info("Pre-packaged rule ID found: {}", ruleId);
+                    } catch (InterruptedException e) {
+                        log.error("Async task interrupted", e);
+                        Thread.currentThread().interrupt();
+                    } catch (Exception e) {
+                        log.error("Error in async task", e);
+                    }
+                });
             }
 
             @Override
@@ -569,27 +587,6 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
         });
 
         LockService lockService = GuiceHolder.getLockService();
-        Client client = this.client;
-        logTypeService.ensureConfigIndexIsInitialized(new ActionListener<>() {
-            @Override
-            public void onResponse(Void unused) {
-                try {
-                    sleep(20000);
-                } catch (InterruptedException e) {
-                    throw new RuntimeException(e);
-                }
-                // METEMOS EL POC ACA
-                SecurityAnalyticsPlugin.createTestIndex("test-index-security-analytics", client);
-                String ruleId = SecurityAnalyticsPlugin.getRuleId(client);
-                log.info("Pre-packaged rule ID found: {}", ruleId);
-                //
-            }
-
-            @Override
-            public void onFailure(Exception e) {
-                log.warn("Failed to initialize LogType config index and builtin log types");
-            }
-        });
         threatIntelLockService.initialize(lockService);
     }
 
@@ -619,7 +616,9 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
                 .indices(Rule.PRE_PACKAGED_RULES_INDEX)
                 .preference(Preference.PRIMARY_FIRST.type());
         // Get first appearance of rule with matching name
-        SearchResponse searchResponse = client.execute(SearchRuleAction.INSTANCE, new SearchRuleRequest(false, searchRequest)).actionGet();
+        SearchRuleRequest searchRuleRequest = new SearchRuleRequest(true, searchRequest);
+        SearchResponse searchResponse = client.execute(SearchRuleAction.INSTANCE, searchRuleRequest).actionGet();
+        log.info("Search for pre-packaged rules returned [{}] hits", searchResponse.getHits().getTotalHits());
         for (SearchHit hit : searchResponse.getHits().getHits()) {
             return hit.getId();
         }
