@@ -72,13 +72,16 @@ allprojects {
     afterEvaluate {
         jacocoTestReport.dependsOn integTest
 
-        testClusters.integTest {
-            jvmArgs " ${dummyIntegTest.jacoco.getAsJvmArg()}".replace('javaagent:', 'javaagent:/')
-            systemProperty 'com.sun.management.jmxremote', "true"
-            systemProperty 'com.sun.management.jmxremote.authenticate', "false"
-            systemProperty 'com.sun.management.jmxremote.port', "7777"
-            systemProperty 'com.sun.management.jmxremote.ssl', "false"
-            systemProperty 'java.rmi.server.hostname', "127.0.0.1"
+        // Only add JaCoCo to integTest cluster, not to run task cluster
+        if (gradle.startParameter.taskNames.any { it.contains('integTest') || it.contains('test') }) {
+            testClusters.integTest {
+                jvmArgs " ${dummyIntegTest.jacoco.getAsJvmArg()}".replace('javaagent:', 'javaagent:/')
+                systemProperty 'com.sun.management.jmxremote', "true"
+                systemProperty 'com.sun.management.jmxremote.authenticate', "false"
+                systemProperty 'com.sun.management.jmxremote.port', "7777"
+                systemProperty 'com.sun.management.jmxremote.ssl', "false"
+                systemProperty 'java.rmi.server.hostname', "127.0.0.1"
+            }
         }
     }
 }
