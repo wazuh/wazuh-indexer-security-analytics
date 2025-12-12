@@ -1,0 +1,143 @@
+/*
+ * Copyright Wazuh Contributors
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+buildscript {
+    ext {
+        opensearch_group = "org.opensearch"
+        opensearch_version = System.getProperty("opensearch.version", "3.3.2-SNAPSHOT")
+        isSnapshot = "true" == System.getProperty("build.snapshot", "true")
+        buildVersionQualifier = System.getProperty("build.version_qualifier", "")
+    }
+
+    repositories {
+        mavenLocal()
+        mavenCentral()
+        maven { url = "https://plugins.gradle.org/m2/" }
+        maven { url "https://ci.opensearch.org/ci/dbc/snapshots/maven/" }
+    }
+
+    dependencies {
+        classpath "${opensearch_group}.gradle:build-tools:${opensearch_version}"
+    }
+}
+
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+}
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+    maven { url = "https://plugins.gradle.org/m2/" }
+    maven { url "https://ci.opensearch.org/ci/dbc/snapshots/maven/" }
+}
+
+allprojects {
+    group = 'com.wazuh.securityanalytics.commons'
+    version = opensearch_version.tokenize('-')[0] + '.0'
+    if (buildVersionQualifier) {
+        version += "-${buildVersionQualifier}"
+    }
+    if (isSnapshot) {
+        version += "-SNAPSHOT"
+    }
+}
+
+java {
+    targetCompatibility = JavaVersion.VERSION_21
+    sourceCompatibility = JavaVersion.VERSION_21
+}
+
+apply plugin: 'java'
+apply plugin: 'maven-publish'
+apply plugin: 'com.gradleup.shadow'
+apply plugin: 'opensearch.repositories'
+
+dependencies {
+    compileOnly "org.opensearch.client:opensearch-rest-high-level-client:${opensearch_version}"
+    testImplementation "org.opensearch.test:framework:${opensearch_version}"
+}
+
+test {
+    useJUnitPlatform()
+    testLogging {
+        exceptionFormat = "full"
+        events "skipped", "passed", "failed" // "started"
+        showStandardStreams = true
+    }
+}
+
+shadowJar {
+    archiveClassifier = null
+}
+
+task sourcesJar(type: Jar) {
+    archiveClassifier = 'sources'
+    from sourceSets.main.allJava
+}
+
+task javadocJar(type: Jar) {
+    archiveClassifier = 'javadoc'
+    from javadoc.destinationDir
+}
+publishing {
+    repositories {
+        maven {
+            name = 'staging'
+            url = "${rootProject.buildDir}/local-staging-repo"
+        }
+    }
+    publications {
+        shadow(MavenPublication) {
+            project.shadow.component(it)
+            groupId = 'com.wazuh.securityanalytics'
+            artifactId = 'commons'
+
+            artifact sourcesJar
+            artifact javadocJar
+
+            pom {
+                name = "Wazuh Security Analytics Commons"
+                packaging = "jar"
+                url = "https://github.com/wazuh/wazuh-indexer-security-analytics/commons"
+                description = "Wazuh Security Analytics Commons Library"
+                scm {
+                    connection = "scm:git@github.com:wazuh/wazuh-indexer-security-analytics.git"
+                    developerConnection = "scm:git@github.com:wazuh/wazuh-indexer-security-analytics.git"
+                    url = "git@github.com:wazuh/wazuh-indexer-security-analytics.git"
+                }
+                licenses {
+                    license {
+                        name = "The Apache License, Version 2.0"
+                        url = "http://www.apache.org/licenses/LICENSE-2.0.txt"
+                    }
+                }
+                developers {
+                    developer {
+                        id = "Wazuh"
+                        organization = "Wazuh"
+                        organizationUrl = "https://wazuh.com"
+                    }
+                }
+            }
+        }
+    }
+
+    gradle.startParameter.setShowStacktrace(ShowStacktrace.ALWAYS)
+    gradle.startParameter.setLogLevel(LogLevel.DEBUG)
+}
+
+// updateVersion: Task to auto increment to the next development iteration
+task updateVersion {
+    onlyIf { System.getProperty('newVersion') }
+    doLast {
+        ext.newVersion = System.getProperty('newVersion')
+        println "Setting version to ${newVersion}."
+        // String tokenization to support -SNAPSHOT
+        // Include the required files that needs to be updated with new Version
+        ant.replaceregexp(file:'build.gradle', match: '"opensearch.version", "\\d.*"', replace: '"opensearch.version", "' + newVersion.tokenize('-')[0] + '-SNAPSHOT"', flags:'g', byline:true)
+    }
+}
