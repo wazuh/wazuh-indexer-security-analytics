@@ -25,7 +25,7 @@ public class DetectorFactory {
             detectorRules.add(new DetectorRule(ruleId));
         }
         DetectorInput detectorInput = new DetectorInput(description, indices, new ArrayList<>(), detectorRules);
-
+        // Generate Detector object with this template
         return new Detector(
                 id,
                 version,
