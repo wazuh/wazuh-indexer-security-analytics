@@ -6,6 +6,7 @@ package org.opensearch.securityanalytics;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.action.ActionRequest;
@@ -120,12 +121,7 @@ import org.opensearch.securityanalytics.resthandler.RestUpdateIndexMappingsActio
 import org.opensearch.securityanalytics.resthandler.RestValidateRulesAction;
 import org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings;
 import org.opensearch.securityanalytics.transport.*;
-import org.opensearch.securityanalytics.util.CorrelationIndices;
-import org.opensearch.securityanalytics.util.CorrelationRuleIndices;
-import org.opensearch.securityanalytics.util.CustomLogTypeIndices;
-import org.opensearch.securityanalytics.util.DetectorIndices;
-import org.opensearch.securityanalytics.util.RuleIndices;
-import org.opensearch.securityanalytics.util.RuleTopicIndices;
+import org.opensearch.securityanalytics.util.*;
 import org.opensearch.threadpool.ThreadPool;
 import org.opensearch.transport.client.Client;
 import org.opensearch.transport.client.node.NodeClient;
@@ -393,6 +389,7 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
 //      Trigger initialization of log types
         Client client = this.client;
         String testIndexName = "test-index-security-analytics";
+        String logType = "others_cloud";
 
         logTypeService.ensureConfigIndexIsInitialized(new ActionListener<>() {
             @Override
@@ -403,7 +400,7 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
                 String ruleId = SecurityAnalyticsPlugin.getRuleId(client);
                 log.info("Pre-packaged rule ID found: {}", ruleId);
                 // Create/Index detector
-                createDetector(ruleId, "others_cloud", testIndexName, client);
+                createDetector(ruleId, logType, testIndexName, client);
             }
 
             @Override
@@ -414,58 +411,28 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
     }
 
     private static void createDetector(String ruleId, String logType, String indexName, Client client) {
-        IntervalSchedule schedule = new IntervalSchedule(1, ChronoUnit.MINUTES, null);
-        String description = "Test detector description";
-        List<String> indices = List.of(indexName);
-        List<DetectorRule> detectorRules = List.of(new DetectorRule(ruleId));
-
-        Instant Instant = java.time.Instant.now().minusSeconds(3600);
-        log.info("Creating test detector with rule ID: {}", ruleId);
-        List<DetectorInput> inputs = List.of(new DetectorInput(description, indices, new ArrayList<>(), detectorRules));
-        Detector detector = new Detector(
-            "",
-            0L,
-            "Test detector",
-            true,
-            schedule,
-            Instant,
-            Instant.now(),
-            logType,
-            null,
-            inputs,
-            new ArrayList<>(),
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null
-        );
-
+        Detector detector = DetectorFactory.createDetector(List.of(ruleId), logType, indexName);
         IndexDetectorRequest indexDetectorRequest = new IndexDetectorRequest("", RefreshPolicy.IMMEDIATE,
-            Method.POST, detector);
+                Method.POST, detector);
         client.execute(IndexDetectorAction.INSTANCE, indexDetectorRequest,
-            new ActionListener<IndexDetectorResponse>() {
-                @Override
-                public void onResponse(IndexDetectorResponse indexDetectorResponse) {
-                    log.info("Test detector created with ID: {}", indexDetectorResponse.getId());
-                }
+                new ActionListener<IndexDetectorResponse>() {
+                    @Override
+                    public void onResponse(IndexDetectorResponse indexDetectorResponse) {
+                        log.info("Test detector created with ID: {}", indexDetectorResponse.getId());
+                    }
 
-                @Override
-                public void onFailure(Exception e) {
-                    log.error("Failed to create test detector: {}", e.getMessage());
-                }
-            });
+                    @Override
+                    public void onFailure(Exception e) {
+                        log.error("Failed to create test detector: {}", e.getMessage());
+                    }
+                });
     }
 
     /**
      * Create index
+     *
      * @param indexName Name of the index to be created
-     * @param client Client to use for index creation
+     * @param client    Client to use for index creation
      */
     public static void createTestIndex(String indexName, Client client) {
         CreateIndexRequest createIndexRequest = new CreateIndexRequest(indexName);
@@ -479,6 +446,7 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
 
     /**
      * Get pre-packaged rule ID
+     *
      * @param client Client to use for searching pre-packaged rules
      * @return ID of the first pre-packaged rule found
      */
