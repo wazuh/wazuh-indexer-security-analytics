@@ -4,7 +4,6 @@
  */
 package org.opensearch.securityanalytics;
 
-import com.wazuh.securityanalytics.SecuriyAnalyticsExtension;
 import com.wazuh.securityanalytics.action.WIndexIntegrationAction;
 import com.wazuh.securityanalytics.action.WIndexRuleAction;
 import org.apache.logging.log4j.LogManager;

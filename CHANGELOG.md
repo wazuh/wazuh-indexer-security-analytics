@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Added
 - Init repository [(#2)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/2)
 - Add initial version of SAP commons lib [(#13)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/13/)
+- Add transport classes to the "commons" lib to create integrations [(#14)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/14)
 
 ### Dependencies
 -
