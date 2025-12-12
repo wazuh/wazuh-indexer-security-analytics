@@ -12,7 +12,7 @@ import java.util.List;
 public class DetectorFactory {
     public static final String DEFAULT_RULE_INDEX = ".rules_development_0.0.1-rules_development_0.0.1_test-rule";
     /* Creates a Detector object with the given rules, log type, and index name */
-    public static Detector createDetector(List<String> rulesIds, String logType, String indexName) {
+    public static Detector createDetector(String logType, List<String> rulesIds) {
         List<DetectorRule> detectorRules = new ArrayList<>();
         // Detector body/mapping
         String id = ""; // Empty ID for new detector

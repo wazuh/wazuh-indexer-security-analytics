@@ -388,90 +388,16 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
 
     @Override
     public void onNodeStarted(DiscoveryNode localNode) {
-//      Trigger initialization of log types
-        Client client = this.client;
-        String testIndexName = "test-index-security-analytics";
-        String logType = "others_cloud";
-
+        // Trigger initialization of log types
         logTypeService.ensureConfigIndexIsInitialized(new ActionListener<>() {
             @Override
             public void onResponse(Void unused) {
                 log.info("LogType config index successfully created and builtin log types loaded");
-                SecurityAnalyticsPlugin.createTestIndex(testIndexName, client);
-                // Get ID of a pre-packaged rule required for detector
-                String ruleId = SecurityAnalyticsPlugin.getRuleId(client);
-                log.info("Pre-packaged rule ID found: {}", ruleId);
-                // Create/Index detector
-                createDetector(ruleId, logType, testIndexName, client);
             }
-
             @Override
             public void onFailure(Exception e) {
                 log.warn("Failed to initialize LogType config index and builtin log types");
             }
         });
-    }
-
-    private static void createDetector(String ruleId, String logType, String indexName, Client client) {
-        Detector detector = DetectorFactory.createDetector(List.of(ruleId), logType, indexName);
-        IndexDetectorRequest indexDetectorRequest = new IndexDetectorRequest("", RefreshPolicy.IMMEDIATE,
-                Method.POST, detector);
-        client.execute(IndexDetectorAction.INSTANCE, indexDetectorRequest,
-                new ActionListener<IndexDetectorResponse>() {
-                    @Override
-                    public void onResponse(IndexDetectorResponse indexDetectorResponse) {
-                        log.info("Test detector created with ID: {}", indexDetectorResponse.getId());
-                    }
-
-                    @Override
-                    public void onFailure(Exception e) {
-                        log.error("Failed to create test detector: {}", e.getMessage());
-                    }
-                });
-    }
-
-    /**
-     * Create index
-     *
-     * @param indexName Name of the index to be created
-     * @param client    Client to use for index creation
-     */
-    public static void createTestIndex(String indexName, Client client) {
-        CreateIndexRequest createIndexRequest = new CreateIndexRequest(indexName);
-        try {
-            client.admin().indices().create(createIndexRequest).actionGet();
-            log.info("Test index [{}] created successfully", indexName);
-        } catch (Exception e) {
-            log.error("Failed to create test index [{}]: {}", indexName, e.getMessage());
-        }
-    }
-
-    /**
-     * Get pre-packaged rule ID
-     *
-     * @param client Client to use for searching pre-packaged rules
-     * @return ID of the first pre-packaged rule found
-     */
-    public static String getRuleId(Client client) {
-
-        QueryBuilder queryBuilder = QueryBuilders.matchAllQuery();
-        SearchRequest searchRequest = new SearchRequest(Rule.PRE_PACKAGED_RULES_INDEX)
-                .source(new SearchSourceBuilder()
-                        .seqNoAndPrimaryTerm(false)
-                        .version(false)
-                        .query(queryBuilder)
-                        .fetchSource(FetchSourceContext.FETCH_SOURCE)
-                        .size(1000)
-                )
-                .indices(Rule.PRE_PACKAGED_RULES_INDEX)
-                .preference(Preference.PRIMARY_FIRST.type());
-        // Get first appearance of rule with matching name
-        SearchRuleRequest searchRuleRequest = new SearchRuleRequest(true, searchRequest);
-        SearchResponse searchResponse = client.execute(SearchRuleAction.INSTANCE, searchRuleRequest).actionGet();
-        log.info("Search for pre-packaged rules returned [{}] hits", searchResponse.getHits().getTotalHits());
-        for (SearchHit hit : searchResponse.getHits().getHits()) {
-            return hit.getId();
-        }
-        return null;
     }
 }
