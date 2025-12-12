@@ -4,3 +4,6 @@
  */
 
 rootProject.name = 'wazuh-indexer-security-analytics'
+include 'commons'
+
+project(":commons").name = rootProject.name + "-commons"
