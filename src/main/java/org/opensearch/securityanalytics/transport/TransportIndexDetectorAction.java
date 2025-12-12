@@ -95,7 +95,6 @@ import org.opensearch.securityanalytics.rules.backend.OSQueryBackend.Aggregation
 import org.opensearch.securityanalytics.rules.backend.QueryBackend;
 import org.opensearch.securityanalytics.rules.exceptions.SigmaConditionError;
 import org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings;
-import org.opensearch.securityanalytics.threatIntel.service.DetectorThreatIntelService;
 import org.opensearch.securityanalytics.util.DetectorIndices;
 import org.opensearch.securityanalytics.util.ExceptionChecker;
 import org.opensearch.securityanalytics.util.IndexUtils;
@@ -166,7 +165,6 @@ public class TransportIndexDetectorAction extends HandledTransportAction<IndexDe
 
     private final MonitorService monitorService;
     private final IndexNameExpressionResolver indexNameExpressionResolver;
-    private final DetectorThreatIntelService detectorThreatIntelService;
 
     private final ExceptionChecker exceptionChecker;
 
@@ -185,7 +183,6 @@ public class TransportIndexDetectorAction extends HandledTransportAction<IndexDe
                                         NamedWriteableRegistry namedWriteableRegistry,
                                         LogTypeService logTypeService,
                                         IndexNameExpressionResolver indexNameExpressionResolver,
-                                        DetectorThreatIntelService detectorThreatIntelService,
                                         ExceptionChecker exceptionChecker) {
         super(IndexDetectorAction.NAME, transportService, actionFilters, IndexDetectorRequest::new);
         this.client = client;
@@ -199,7 +196,6 @@ public class TransportIndexDetectorAction extends HandledTransportAction<IndexDe
         this.namedWriteableRegistry = namedWriteableRegistry;
         this.logTypeService = logTypeService;
         this.indexNameExpressionResolver = indexNameExpressionResolver;
-        this.detectorThreatIntelService = detectorThreatIntelService;
         this.threadPool = this.detectorIndices.getThreadPool();
         this.indexTimeout = SecurityAnalyticsSettings.INDEX_TIMEOUT.get(this.settings);
         this.filterByEnabled = SecurityAnalyticsSettings.FILTER_BY_BACKEND_ROLES.get(this.settings);
@@ -829,7 +825,7 @@ public class TransportIndexDetectorAction extends HandledTransportAction<IndexDe
                 if (iocFieldsList == null || iocFieldsList.isEmpty()) {
                     listener.onResponse(List.of());
                 } else {
-                    detectorThreatIntelService.createDocLevelQueryFromThreatIntel(iocFieldsList, detector, listener);
+                    throw new UnsupportedOperationException("IOC stuff was removed from the plugin");
                 }
             } else {
                 listener.onResponse(List.of());

@@ -18,7 +18,6 @@ import org.opensearch.core.xcontent.NamedXContentRegistry;
 import org.opensearch.securityanalytics.action.SearchDetectorAction;
 import org.opensearch.securityanalytics.action.SearchDetectorRequest;
 import org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings;
-import org.opensearch.securityanalytics.threatIntel.transport.TransportPutTIFJobAction;
 import org.opensearch.securityanalytics.util.DetectorIndices;
 import org.opensearch.tasks.Task;
 import org.opensearch.threadpool.ThreadPool;
@@ -43,13 +42,12 @@ public class TransportSearchDetectorAction extends HandledTransportAction<Search
 
     private volatile Boolean filterByEnabled;
 
-    private TransportPutTIFJobAction tifJobAction;
 
     private static final Logger log = LogManager.getLogger(TransportSearchDetectorAction.class);
 
 
     @Inject
-    public TransportSearchDetectorAction(TransportPutTIFJobAction tifJobAction, TransportService transportService, ClusterService clusterService, DetectorIndices detectorIndices, ActionFilters actionFilters, NamedXContentRegistry xContentRegistry, Settings settings, Client client) {
+    public TransportSearchDetectorAction(TransportService transportService, ClusterService clusterService, DetectorIndices detectorIndices, ActionFilters actionFilters, NamedXContentRegistry xContentRegistry, Settings settings, Client client) {
         super(SearchDetectorAction.NAME, transportService, actionFilters, SearchDetectorRequest::new);
         this.xContentRegistry = xContentRegistry;
         this.client = client;
@@ -57,7 +55,6 @@ public class TransportSearchDetectorAction extends HandledTransportAction<Search
         this.clusterService = clusterService;
         this.threadPool = this.detectorIndices.getThreadPool();
         this.settings = settings;
-        this.tifJobAction = tifJobAction;
         this.filterByEnabled = SecurityAnalyticsSettings.FILTER_BY_BACKEND_ROLES.get(this.settings);
 
         this.clusterService.getClusterSettings().addSettingsUpdateConsumer(SecurityAnalyticsSettings.FILTER_BY_BACKEND_ROLES, this::setFilterByEnabled);
