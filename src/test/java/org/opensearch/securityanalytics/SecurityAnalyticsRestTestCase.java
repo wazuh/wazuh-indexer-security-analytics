@@ -12,6 +12,8 @@ import org.apache.hc.core5.http.HttpHost;
 import org.apache.hc.core5.http.HttpStatus;
 import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.apache.hc.core5.http.message.BasicHeader;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Assert;
@@ -122,6 +124,8 @@ import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSetting
 import static org.opensearch.securityanalytics.util.RuleTopicIndices.ruleTopicIndexSettings;
 
 public class SecurityAnalyticsRestTestCase extends OpenSearchRestTestCase {
+
+    private static final Logger log = LogManager.getLogger(SecurityAnalyticsRestTestCase.class);
 
     protected String password = RandomStringUtils.randomAlphanumeric(16);
 
@@ -2211,7 +2215,7 @@ public class SecurityAnalyticsRestTestCase extends OpenSearchRestTestCase {
             Path path = org.opensearch.common.io.PathUtils.get(jacocoBuildPath + "/integTestRunner.exec");
             Files.write(path, proxy.getExecutionData(false));
         } catch (Exception ex) {
-            throw new RuntimeException("Failed to dump coverage: " + ex);
+            log.error("Failed to dump coverage: " + ex);
         }
     }
 

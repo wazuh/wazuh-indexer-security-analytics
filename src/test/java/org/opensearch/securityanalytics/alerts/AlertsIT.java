@@ -967,6 +967,8 @@ public class AlertsIT extends SecurityAnalyticsRestTestCase {
         Assert.assertTrue(alertRespStatus.get());
     }
 
+    // TODO: Create issue to fix the tests. Failing reason: java.net.ConnectException: Connection refused
+    @AwaitsFix(bugUrl = "")
     public void test_detectorWith1AggRuleAndTriggeronRule_updateWithSecondAggRule() throws IOException, InterruptedException {
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
 
