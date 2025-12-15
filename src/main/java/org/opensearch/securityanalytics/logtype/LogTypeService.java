@@ -114,11 +114,14 @@ public class LogTypeService {
 
     public void getAllLogTypes(ActionListener<List<String>> listener) {
         ensureConfigIndexIsInitialized(ActionListener.wrap(e -> {
-
+            String field = "name.keyword"; // TODO changed to match Wazuh's integrations
+            if (enabledPrepackaged != null &&  enabledPrepackaged.equals("true")) {
+                field = LOG_TYPES;
+            }
             SearchRequest searchRequest = new SearchRequest(LOG_TYPE_INDEX);
             searchRequest.source(new SearchSourceBuilder().aggregation(
                 new TermsAggregationBuilder("logTypes")
-                    .field("name.keyword") // TODO changed to match Wazuh's integrations
+                    .field(field)
                     .size(MAX_LOG_TYPE_COUNT)
             ));
             searchRequest.preference(Preference.PRIMARY_FIRST.type());
