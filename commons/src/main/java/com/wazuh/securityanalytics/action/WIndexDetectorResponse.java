@@ -11,8 +11,8 @@ import org.opensearch.core.common.io.stream.StreamOutput;
 import java.io.IOException;
 
 public class WIndexDetectorResponse extends ActionResponse {
-    private String id;
-    private Long version;
+    private final String id;
+    private final Long version;
 
     public WIndexDetectorResponse(String id, Long version) {
         super();
@@ -27,16 +27,16 @@ public class WIndexDetectorResponse extends ActionResponse {
 
     @Override
     public void writeTo(StreamOutput out) throws IOException {
-        out.writeString(id);
-        out.writeLong(version);
+        out.writeString(this.id);
+        out.writeLong(this.version);
     }
 
 
     public String getId() {
-        return id;
+        return this.id;
     }
 
     public Long getVersion() {
-        return version;
+        return this.version;
     }
 }

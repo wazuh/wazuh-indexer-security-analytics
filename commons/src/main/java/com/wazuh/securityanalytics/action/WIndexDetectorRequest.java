@@ -4,7 +4,6 @@
  */
 package com.wazuh.securityanalytics.action;
 
-import com.wazuh.securityanalytics.model.DetectorRule;
 import org.opensearch.action.ActionRequest;
 import org.opensearch.action.ActionRequestValidationException;
 import org.opensearch.action.support.WriteRequest;
@@ -15,13 +14,13 @@ import java.io.IOException;
 import java.util.List;
 
 public class WIndexDetectorRequest extends ActionRequest {
-    private String logTypeName;
-    private List<DetectorRule> rules;
-    private WriteRequest.RefreshPolicy refreshPolicy;
+    private final String logTypeName;
+    private final List<String> rules;
+    private final WriteRequest.RefreshPolicy refreshPolicy;
 
     public WIndexDetectorRequest(
             String logTypeName,
-            List<DetectorRule> rules,
+            List<String> rules,
             WriteRequest.RefreshPolicy refreshPolicy) {
         super();
         this.logTypeName = logTypeName;
@@ -31,7 +30,7 @@ public class WIndexDetectorRequest extends ActionRequest {
 
     public WIndexDetectorRequest(StreamInput sin) throws IOException {
         this(sin.readString(),
-             sin.readList(DetectorRule::new),
+            sin.readStringList(),
              WriteRequest.RefreshPolicy.readFrom(sin));
     }
 
@@ -43,19 +42,19 @@ public class WIndexDetectorRequest extends ActionRequest {
     @Override
     public void writeTo(StreamOutput out) throws IOException {
         out.writeString(this.logTypeName);
-        out.writeList(this.rules);
+        out.writeStringCollection(this.rules);
         this.refreshPolicy.writeTo(out);
     }
 
     public String getLogTypeName() {
-        return logTypeName;
+        return this.logTypeName;
     }
 
-    public List<DetectorRule> getRules() {
-        return rules;
+    public List<String> getRules() {
+        return this.rules;
     }
 
     public WriteRequest.RefreshPolicy getRefreshPolicy() {
-        return refreshPolicy;
+        return this.refreshPolicy;
     }
 }

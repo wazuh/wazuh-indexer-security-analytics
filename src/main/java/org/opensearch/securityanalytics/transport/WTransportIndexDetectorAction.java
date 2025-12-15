@@ -5,20 +5,16 @@ import com.wazuh.securityanalytics.action.WIndexDetectorRequest;
 import com.wazuh.securityanalytics.action.WIndexDetectorResponse;
 import org.opensearch.action.support.ActionFilters;
 import org.opensearch.action.support.HandledTransportAction;
-import org.opensearch.action.support.WriteRequest;
 import org.opensearch.common.inject.Inject;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.rest.RestRequest;
 import org.opensearch.securityanalytics.action.IndexDetectorAction;
 import org.opensearch.securityanalytics.action.IndexDetectorRequest;
-import org.opensearch.securityanalytics.action.IndexDetectorResponse;
 import org.opensearch.securityanalytics.model.Detector;
 import org.opensearch.securityanalytics.util.DetectorFactory;
 import org.opensearch.tasks.Task;
 import org.opensearch.transport.TransportService;
 import org.opensearch.transport.client.Client;
-
-import java.util.ArrayList;
 
 public class WTransportIndexDetectorAction extends HandledTransportAction<WIndexDetectorRequest, WIndexDetectorResponse> implements SecureTransportAction{
     private final Client client;
@@ -40,6 +36,6 @@ public class WTransportIndexDetectorAction extends HandledTransportAction<WIndex
                 request.getRefreshPolicy(),
                 RestRequest.Method.POST,
                 integrationDetector);
-        client.execute(IndexDetectorAction.INSTANCE, indexDetectorRequest);
+        this.client.execute(IndexDetectorAction.INSTANCE, indexDetectorRequest);
     }
 }

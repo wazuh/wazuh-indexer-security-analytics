@@ -60,14 +60,5 @@ public class WTransportIndexIntegrationAction extends HandledTransportAction<WIn
         );
 
         this.client.execute(IndexCustomLogTypeAction.INSTANCE, internalRequest);
-
-        // Create detector for this Integration
-        Detector integrationDetector = DetectorFactory.createDetector(logType.getName(), new ArrayList<>());
-        IndexDetectorRequest indexDetectorRequest = new IndexDetectorRequest(
-                integrationDetector.getId(),
-                WriteRequest.RefreshPolicy.IMMEDIATE,
-                RestRequest.Method.POST,
-                integrationDetector);
-        client.execute(IndexDetectorAction.INSTANCE, indexDetectorRequest);
     }
 }
