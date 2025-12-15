@@ -23,6 +23,7 @@ import org.opensearch.securityanalytics.action.IndexDetectorAction;
 import org.opensearch.securityanalytics.action.IndexDetectorRequest;
 import org.opensearch.securityanalytics.model.CustomLogType;
 import org.opensearch.securityanalytics.model.Detector;
+import org.opensearch.securityanalytics.model.LogType;
 import org.opensearch.securityanalytics.util.DetectorFactory;
 import org.opensearch.tasks.Task;
 import org.opensearch.transport.TransportService;

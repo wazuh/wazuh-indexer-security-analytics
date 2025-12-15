@@ -1266,6 +1266,8 @@ public class TransportIndexDetectorAction extends HandledTransportAction<IndexDe
             } else {
                 request.getDetector().setRuleIndex(DetectorMonitorConfig.getRuleIndex(ruleTopic));
             }
+            log.debug("Rule topic {}", ruleTopic);
+            log.debug("Detector : {}", request.getDetector().toString());
 
             User originalContextUser = this.user;
             log.debug("user from original context is {}", originalContextUser);

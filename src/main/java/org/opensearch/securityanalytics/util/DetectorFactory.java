@@ -25,7 +25,7 @@ public class DetectorFactory {
         DetectorInput detectorInput = new DetectorInput(description, List.of(dataStream), rules, new ArrayList<>());
         // Generate Detector object with this template
         return new Detector(
-                integration,
+                "Detector for " + integration,
                 version,
                 name,
                 true,
@@ -35,9 +35,6 @@ public class DetectorFactory {
                 integration,
                 null,
                 List.of(detectorInput),
-                new ArrayList<>(),
-                new ArrayList<>(),
-                DEFAULT_RULE_INDEX,
                 null,
                 null,
                 null,
@@ -45,7 +42,10 @@ public class DetectorFactory {
                 null,
                 null,
                 null,
-                null
+                null,
+                null,
+                null,
+                false
         );
     }
 }

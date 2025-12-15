@@ -118,7 +118,7 @@ public class LogTypeService {
             SearchRequest searchRequest = new SearchRequest(LOG_TYPE_INDEX);
             searchRequest.source(new SearchSourceBuilder().aggregation(
                 new TermsAggregationBuilder("logTypes")
-                    .field(LOG_TYPES)
+                    .field("name.keyword") // TODO changed to match Wazuh's integrations
                     .size(MAX_LOG_TYPE_COUNT)
             ));
             searchRequest.preference(Preference.PRIMARY_FIRST.type());
