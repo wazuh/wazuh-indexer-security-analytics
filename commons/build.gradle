@@ -61,6 +61,12 @@ dependencies {
     testImplementation "org.opensearch.test:framework:${opensearch_version}"
 }
 
+def projectName = 'wazuh-indexer-common'
+def projectDescription = 'Wazuh Indexer Common Library'
+def projectPath = System.getProperty('projectPath', 'com.wazuh')
+def wazuh_version = System.getProperty('wazuh.version', '5.0.0')
+def revision = System.getProperty('revision', '0')
+
 test {
     useJUnitPlatform()
     testLogging {
@@ -91,35 +97,24 @@ publishing {
         }
     }
     publications {
-        shadow(MavenPublication) {
-            project.shadow.component(it)
-            groupId = 'com.wazuh.securityanalytics'
-            artifactId = 'commons'
-
-            artifact sourcesJar
-            artifact javadocJar
-
+        mavenJava(MavenPublication) { publication ->
+            artifactId = projectName
+            from components.java
             pom {
-                name = "Wazuh Security Analytics Commons"
-                packaging = "jar"
-                url = "https://github.com/wazuh/wazuh-indexer-security-analytics/commons"
-                description = "Wazuh Security Analytics Commons Library"
-                scm {
-                    connection = "scm:git@github.com:wazuh/wazuh-indexer-security-analytics.git"
-                    developerConnection = "scm:git@github.com:wazuh/wazuh-indexer-security-analytics.git"
-                    url = "git@github.com:wazuh/wazuh-indexer-security-analytics.git"
-                }
+                name = 'Wazuh Security Analytics Common'
+                description = projectDescription
+                groupId = projectPath
+                version = wazuh_version + "." + revision
                 licenses {
                     license {
-                        name = "The Apache License, Version 2.0"
-                        url = "http://www.apache.org/licenses/LICENSE-2.0.txt"
+                        name = "GNU Affero General Public License (AGPL) version 3.0"
+                        url = "http://www.gnu.org/licenses/agpl-3.0.txt"
                     }
                 }
                 developers {
                     developer {
-                        id = "Wazuh"
-                        organization = "Wazuh"
-                        organizationUrl = "https://wazuh.com"
+                        name = "Wazuh"
+                        url = "https://wazuh.com"
                     }
                 }
             }
