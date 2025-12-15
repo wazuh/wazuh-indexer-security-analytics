@@ -13,16 +13,21 @@ public class DetectorFactory {
     public static final String DEFAULT_RULE_INDEX = ".rules_development_0.0.1-rules_development_0.0.1_test-rule";
     /* Creates a Detector object with the given rules, log type, and index name */
     public static Detector createDetector(String logType, List<DetectorRule> detectorRules) {
-        String id = ""; // Empty ID for new detector
+
+        List<org.opensearch.securityanalytics.model.DetectorRule> rules = new ArrayList<>();
+        detectorRules.forEach(rule -> {
+            rules.add(new org.opensearch.securityanalytics.model.DetectorRule(rule.getId()));
+        });
+
         Long version = 0L;
         String name = logType + "-detector";
         String description = "Detector for " + logType + " integration";
         String dataStream = "wazuh-events-v5*";
         IntervalSchedule schedule = new IntervalSchedule(1, ChronoUnit.MINUTES, null);
-        DetectorInput detectorInput = new DetectorInput(description, List.of(dataStream), detectorRules, new ArrayList<>());
+        DetectorInput detectorInput = new DetectorInput(description, List.of(dataStream), rules, new ArrayList<>());
         // Generate Detector object with this template
         return new Detector(
-                id,
+                logType,
                 version,
                 name,
                 true,

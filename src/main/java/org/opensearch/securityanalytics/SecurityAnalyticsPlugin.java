@@ -8,6 +8,8 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 
 import com.wazuh.securityanalytics.action.WIndexDetectorAction;
+import com.wazuh.securityanalytics.action.WIndexIntegrationAction;
+import com.wazuh.securityanalytics.action.WIndexRuleAction;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.action.ActionRequest;
