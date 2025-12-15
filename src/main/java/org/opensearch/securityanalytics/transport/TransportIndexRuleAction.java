@@ -282,6 +282,7 @@ public class TransportIndexRuleAction extends HandledTransportAction<IndexRuleRe
                 }
             } else {
                 IndexRequest indexRequest = new IndexRequest(Rule.CUSTOM_RULES_INDEX)
+                        .id(rule.getId()) // TODO create using Wazuh's rule ID.
                         .setRefreshPolicy(request.getRefreshPolicy())
                         .source(rule.toXContent(XContentFactory.jsonBuilder(), new ToXContent.MapParams(Map.of("with_type", "true"))))
                         .timeout(indexTimeout);
