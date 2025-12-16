@@ -101,7 +101,7 @@ publishing {
             artifactId = projectName
             from components.java
             pom {
-                name = 'Wazuh Security Analytics Common'
+                name = projectName
                 description = projectDescription
                 groupId = projectPath
                 version = wazuh_version + "." + revision
