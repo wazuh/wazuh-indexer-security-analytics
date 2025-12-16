@@ -55,16 +55,15 @@ public class WTransportIndexIntegrationAction extends HandledTransportAction<WIn
                 request.getMethod(),
                 logType
         );
-
         this.client.execute(IndexCustomLogTypeAction.INSTANCE, internalRequest, new ActionListener<IndexCustomLogTypeResponse>() {
             @Override
-            public void onResponse(IndexCustomLogTypeResponse indexCustomLogTypeResponse) {
-                log.info("Custom Log Type indexed with ID: {}", indexCustomLogTypeResponse.getId());
+            public void onResponse(IndexCustomLogTypeResponse response) {
+                log.info("Successfully indexed integration with id: " + response.getId());
+                listener.onResponse(new WIndexIntegrationResponse(response.getId(), response.getVersion(), response.getStatus(), request.getCustomLogType()));
             }
-
             @Override
             public void onFailure(Exception e) {
-                log.error("Failed to index Custom Log Type: {}", e.getMessage());
+                listener.onFailure(e);
             }
         });
     }
