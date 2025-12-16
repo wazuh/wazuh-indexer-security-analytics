@@ -17,8 +17,6 @@ import java.util.Map;
 
 public class SecurityAnalyticsPluginRestApiIT extends SecurityAnalyticsRestTestCase {
 
-    // TODO: Create issue to fix the tests. Reason: "java.net.ConnectException: Connection refused"
-    @AwaitsFix(bugUrl = "")
     @SuppressWarnings("unchecked")
     public void testPluginsAreInstalled() throws IOException {
         Request request = new Request("GET", "/_cat/plugins?s=component&h=name,component,version,description&format=json");
