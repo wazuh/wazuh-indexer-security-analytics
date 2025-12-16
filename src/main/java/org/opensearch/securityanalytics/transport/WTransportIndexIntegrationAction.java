@@ -11,16 +11,15 @@ package org.opensearch.securityanalytics.transport;
 import com.wazuh.securityanalytics.action.WIndexIntegrationAction;
 import com.wazuh.securityanalytics.action.WIndexIntegrationRequest;
 import com.wazuh.securityanalytics.action.WIndexIntegrationResponse;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.opensearch.action.support.ActionFilters;
 import org.opensearch.action.support.HandledTransportAction;
 import org.opensearch.action.support.WriteRequest;
 import org.opensearch.common.inject.Inject;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.rest.RestRequest;
-import org.opensearch.securityanalytics.action.IndexCustomLogTypeAction;
-import org.opensearch.securityanalytics.action.IndexCustomLogTypeRequest;
-import org.opensearch.securityanalytics.action.IndexDetectorAction;
-import org.opensearch.securityanalytics.action.IndexDetectorRequest;
+import org.opensearch.securityanalytics.action.*;
 import org.opensearch.securityanalytics.model.CustomLogType;
 import org.opensearch.securityanalytics.model.Detector;
 import org.opensearch.securityanalytics.model.LogType;
@@ -33,6 +32,7 @@ import java.util.ArrayList;
 
 public class WTransportIndexIntegrationAction extends HandledTransportAction<WIndexIntegrationRequest, WIndexIntegrationResponse> implements SecureTransportAction {
     private final Client client;
+    private static final Logger log = LogManager.getLogger(WTransportIndexIntegrationAction.class);
 
     @Inject
     public WTransportIndexIntegrationAction(TransportService transportService,
@@ -60,6 +60,16 @@ public class WTransportIndexIntegrationAction extends HandledTransportAction<WIn
                 logType
         );
 
-        this.client.execute(IndexCustomLogTypeAction.INSTANCE, internalRequest);
+        this.client.execute(IndexCustomLogTypeAction.INSTANCE, internalRequest, new ActionListener<IndexCustomLogTypeResponse>() {
+            @Override
+            public void onResponse(IndexCustomLogTypeResponse indexCustomLogTypeResponse) {
+                log.info("Custom Log Type indexed with ID: {}", indexCustomLogTypeResponse.getId());
+            }
+
+            @Override
+            public void onFailure(Exception e) {
+                log.error("Failed to index Custom Log Type: {}", e.getMessage());
+            }
+        });
     }
 }

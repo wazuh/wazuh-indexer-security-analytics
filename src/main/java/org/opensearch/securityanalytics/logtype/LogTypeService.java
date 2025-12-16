@@ -61,6 +61,7 @@ import org.opensearch.securityanalytics.util.SecurityAnalyticsException;
 import org.opensearch.transport.client.Client;
 
 import static org.opensearch.securityanalytics.model.FieldMappingDoc.LOG_TYPES;
+import static org.opensearch.securityanalytics.model.FieldMappingDoc.WAZUH_INTEGRATIONS;
 import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings.DEFAULT_MAPPING_SCHEMA;
 import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings.maxSystemIndexReplicas;
 import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings.minSystemIndexReplicas;
@@ -114,7 +115,8 @@ public class LogTypeService {
 
     public void getAllLogTypes(ActionListener<List<String>> listener) {
         ensureConfigIndexIsInitialized(ActionListener.wrap(e -> {
-            String field = "name.keyword"; // TODO changed to match Wazuh's integrations
+            String field = WAZUH_INTEGRATIONS;
+            // Enable OpenSearch's log types for testing environments.
             if (enabledPrepackaged != null &&  enabledPrepackaged.equals("true")) {
                 field = LOG_TYPES;
             }

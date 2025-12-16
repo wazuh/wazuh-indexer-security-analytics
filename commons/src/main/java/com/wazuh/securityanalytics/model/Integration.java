@@ -13,7 +13,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
-public class    Integration implements Writeable, ToXContentObject {
+public class Integration implements Writeable, ToXContentObject {
 
     public static final List<String> VALID_CATEGORIES = List.of(
             "Access Management",

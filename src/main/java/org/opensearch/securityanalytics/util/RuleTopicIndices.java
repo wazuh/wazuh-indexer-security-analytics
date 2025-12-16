@@ -46,7 +46,6 @@ public class RuleTopicIndices {
     public void initRuleTopicIndexTemplate(ActionListener<AcknowledgedResponse> actionListener) throws IOException {
         getAllRuleIndices(ActionListener.wrap(allRuleIndices -> {
             // Compose list of all patterns to cover all query indices
-            log.debug("initRuleTopicIndexTemplate: {}", allRuleIndices);
             ComposableIndexTemplate template = new ComposableIndexTemplate(
                     allRuleIndices,
                     new Template(
@@ -59,7 +58,6 @@ public class RuleTopicIndices {
                     null,
                     null
             );
-            log.debug("client.execute");
             client.execute(
                     PutComposableIndexTemplateAction.INSTANCE,
                     new PutComposableIndexTemplateAction.Request(DetectorMonitorConfig.OPENSEARCH_SAP_RULE_INDEX_TEMPLATE)
@@ -67,7 +65,6 @@ public class RuleTopicIndices {
                             .create(false),
                     actionListener
             );
-            log.debug("post client.execute");
         }, actionListener::onFailure));
     }
 
@@ -78,7 +75,6 @@ public class RuleTopicIndices {
     }
 
     private void getAllRuleIndices(ActionListener<List<String>> listener) {
-        log.debug("getAllRulesIndices");
         logTypeService.getAllLogTypes(ActionListener.wrap(logTypes -> {
             listener.onResponse(
                     logTypes
