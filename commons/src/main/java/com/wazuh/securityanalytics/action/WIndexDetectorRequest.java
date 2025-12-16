@@ -15,23 +15,29 @@ import java.util.List;
 
 public class WIndexDetectorRequest extends ActionRequest {
     private final String logTypeName;
+    private final String category;
     private final List<String> rules;
     private final WriteRequest.RefreshPolicy refreshPolicy;
 
     public WIndexDetectorRequest(
             String logTypeName,
+            String category,
             List<String> rules,
             WriteRequest.RefreshPolicy refreshPolicy) {
         super();
         this.logTypeName = logTypeName;
+        this.category = category;
         this.rules = rules;
         this.refreshPolicy = refreshPolicy;
     }
 
     public WIndexDetectorRequest(StreamInput sin) throws IOException {
-        this(sin.readString(),
+        this(
+            sin.readString(),
+            sin.readString(),
             sin.readStringList(),
-             WriteRequest.RefreshPolicy.readFrom(sin));
+            WriteRequest.RefreshPolicy.readFrom(sin)
+        );
     }
 
     @Override
@@ -42,12 +48,17 @@ public class WIndexDetectorRequest extends ActionRequest {
     @Override
     public void writeTo(StreamOutput out) throws IOException {
         out.writeString(this.logTypeName);
+        out.writeString(this.category);
         out.writeStringCollection(this.rules);
         this.refreshPolicy.writeTo(out);
     }
 
     public String getLogTypeName() {
         return this.logTypeName;
+    }
+
+    public String getCategory() {
+        return this.category;
     }
 
     public List<String> getRules() {

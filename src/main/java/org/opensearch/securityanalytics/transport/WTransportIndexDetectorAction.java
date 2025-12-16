@@ -19,8 +19,6 @@ import org.opensearch.tasks.Task;
 import org.opensearch.transport.TransportService;
 import org.opensearch.transport.client.Client;
 
-import java.io.IOException;
-
 public class WTransportIndexDetectorAction extends HandledTransportAction<WIndexDetectorRequest, WIndexDetectorResponse> implements SecureTransportAction{
     private final Client client;
     private static final Logger log = LogManager.getLogger(WTransportIndexDetectorAction.class);
@@ -36,7 +34,7 @@ public class WTransportIndexDetectorAction extends HandledTransportAction<WIndex
     @Override
     protected void doExecute(Task task, WIndexDetectorRequest request, ActionListener<WIndexDetectorResponse> listener) {
         // Create detector for this Integration
-        Detector detector = DetectorFactory.createDetector(request.getLogTypeName(), request.getRules());
+        Detector detector = DetectorFactory.createDetector(request.getLogTypeName(), request.getCategory(), request.getRules());
         IndexDetectorRequest indexDetectorRequest = new IndexDetectorRequest(
                 detector.getId(),
                 request.getRefreshPolicy(),
