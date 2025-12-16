@@ -201,17 +201,20 @@ public class TransportIndexRuleAction extends HandledTransportAction<IndexRuleRe
                     @Override
                     public void onResponse(Map<String, String> fieldMappings) {
                         try {
+                            String ruleId = NO_ID;
                             SigmaRule parsedRule = SigmaRule.fromYaml(rule, true);
                             if (parsedRule.getErrors() != null && parsedRule.getErrors().getErrors().size() > 0) {
                                 onFailures(parsedRule.getErrors());
                                 return;
                             }
                             QueryBackend backend = new OSQueryBackend(fieldMappings, true, true);
-
+                            if (request.getRuleId() != null) {
+                                ruleId = request.getRuleId();
+                            }
                             List<Object> queries = backend.convertRule(parsedRule);
                             Set<String> queryFieldNames = backend.getQueryFields().keySet();
                             Rule ruleDoc = new Rule(
-                                    NO_ID, NO_VERSION, parsedRule, category,
+                                    ruleId, NO_VERSION, parsedRule, category,
                                     queries,
                                     new ArrayList<>(queryFieldNames),
                                     rule
@@ -282,11 +285,12 @@ public class TransportIndexRuleAction extends HandledTransportAction<IndexRuleRe
                 }
             } else {
                 IndexRequest indexRequest = new IndexRequest(Rule.CUSTOM_RULES_INDEX)
-//                        .id(rule.getId()) // TODO create using Wazuh's rule ID.
                         .setRefreshPolicy(request.getRefreshPolicy())
                         .source(rule.toXContent(XContentFactory.jsonBuilder(), new ToXContent.MapParams(Map.of("with_type", "true"))))
                         .timeout(indexTimeout);
-
+                if (rule.getId() != NO_ID) {
+                    indexRequest.id(rule.getId());
+                }
                 client.index(indexRequest, new ActionListener<>() {
                     @Override
                     public void onResponse(IndexResponse response) {

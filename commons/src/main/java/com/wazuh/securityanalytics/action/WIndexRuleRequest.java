@@ -81,7 +81,7 @@ public class WIndexRuleRequest extends ActionRequest {
         ActionRequestValidationException validationException = null;
 
         if (this.logType == null || this.logType.length() == 0) {
-            validationException = addValidationError("rule categoty is missing", validationException);
+            validationException = addValidationError("rule category is missing", validationException);
         }
         return validationException;
     }
