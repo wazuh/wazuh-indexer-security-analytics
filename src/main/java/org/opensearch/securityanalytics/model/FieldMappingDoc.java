@@ -28,6 +28,7 @@ public class FieldMappingDoc implements ToXContent, Writeable {
 
     public static final String RAW_FIELD = "raw_field";
     public static final String LOG_TYPES = "log_types";
+    public static final String WAZUH_INTEGRATIONS = "name.keyword";
 
     private String id;
     private String rawField;
