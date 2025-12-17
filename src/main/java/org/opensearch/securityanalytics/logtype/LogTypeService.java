@@ -61,6 +61,7 @@ import org.opensearch.securityanalytics.util.SecurityAnalyticsException;
 import org.opensearch.transport.client.Client;
 
 import static org.opensearch.securityanalytics.model.FieldMappingDoc.LOG_TYPES;
+import static org.opensearch.securityanalytics.model.FieldMappingDoc.WAZUH_INTEGRATIONS;
 import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings.DEFAULT_MAPPING_SCHEMA;
 import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings.maxSystemIndexReplicas;
 import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings.minSystemIndexReplicas;
@@ -114,11 +115,15 @@ public class LogTypeService {
 
     public void getAllLogTypes(ActionListener<List<String>> listener) {
         ensureConfigIndexIsInitialized(ActionListener.wrap(e -> {
-
+            String field = WAZUH_INTEGRATIONS;
+            // Enable OpenSearch's log types for testing environments.
+            if (enabledPrepackaged != null &&  enabledPrepackaged.equals("true")) {
+                field = LOG_TYPES;
+            }
             SearchRequest searchRequest = new SearchRequest(LOG_TYPE_INDEX);
             searchRequest.source(new SearchSourceBuilder().aggregation(
                 new TermsAggregationBuilder("logTypes")
-                    .field(LOG_TYPES)
+                    .field(field)
                     .size(MAX_LOG_TYPE_COUNT)
             ));
             searchRequest.preference(Preference.PRIMARY_FIRST.type());

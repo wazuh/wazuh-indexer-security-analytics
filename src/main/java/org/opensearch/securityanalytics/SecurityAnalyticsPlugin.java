@@ -4,6 +4,7 @@
  */
 package org.opensearch.securityanalytics;
 
+import com.wazuh.securityanalytics.action.WIndexDetectorAction;
 import com.wazuh.securityanalytics.action.WIndexIntegrationAction;
 import com.wazuh.securityanalytics.action.WIndexRuleAction;
 import org.apache.logging.log4j.LogManager;
@@ -63,6 +64,8 @@ import org.opensearch.securityanalytics.action.SearchDetectorAction;
 import org.opensearch.securityanalytics.action.SearchRuleAction;
 import org.opensearch.securityanalytics.action.UpdateIndexMappingsAction;
 import org.opensearch.securityanalytics.action.ValidateRulesAction;
+import org.opensearch.securityanalytics.action.*;
+import org.opensearch.securityanalytics.model.*;
 import org.opensearch.securityanalytics.correlation.alert.CorrelationAlertService;
 import org.opensearch.securityanalytics.correlation.alert.notifications.NotificationService;
 import org.opensearch.securityanalytics.correlation.index.codec.CorrelationCodecService;
@@ -106,22 +109,13 @@ import org.opensearch.securityanalytics.resthandler.RestUpdateIndexMappingsActio
 import org.opensearch.securityanalytics.resthandler.RestValidateRulesAction;
 import org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings;
 import org.opensearch.securityanalytics.transport.*;
-import org.opensearch.securityanalytics.util.CorrelationIndices;
-import org.opensearch.securityanalytics.util.CorrelationRuleIndices;
-import org.opensearch.securityanalytics.util.CustomLogTypeIndices;
-import org.opensearch.securityanalytics.util.DetectorIndices;
-import org.opensearch.securityanalytics.util.RuleIndices;
-import org.opensearch.securityanalytics.util.RuleTopicIndices;
+import org.opensearch.securityanalytics.util.*;
 import org.opensearch.threadpool.ThreadPool;
 import org.opensearch.transport.client.Client;
 import org.opensearch.transport.client.node.NodeClient;
 import org.opensearch.watcher.ResourceWatcherService;
 
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.function.Supplier;
 
 import static org.opensearch.securityanalytics.util.CorrelationIndices.CORRELATION_ALERT_INDEX;
@@ -179,6 +173,10 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
 
     private LogTypeService logTypeService;
 
+    private Client client;
+
+    private ThreadPool threadPool;
+
     @Override
     public Collection<SystemIndexDescriptor> getSystemIndexDescriptors(Settings settings) {
         List<SystemIndexDescriptor> descriptors = List.of(
@@ -200,7 +198,8 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
                                                NamedWriteableRegistry namedWriteableRegistry,
                                                IndexNameExpressionResolver indexNameExpressionResolver,
                                                Supplier<RepositoriesService> repositoriesServiceSupplier) {
-
+        this.client = client;
+        this.threadPool = threadPool;
         builtinLogTypeLoader = new BuiltinLogTypeLoader();
         logTypeService = new LogTypeService(client, clusterService, xContentRegistry, builtinLogTypeLoader);
         detectorIndices = new DetectorIndices(client.admin(), clusterService, threadPool);
@@ -371,24 +370,23 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
                 new ActionHandler<>(SearchCustomLogTypeAction.INSTANCE, TransportSearchCustomLogTypeAction.class),
                 new ActionHandler<>(DeleteCustomLogTypeAction.INSTANCE, TransportDeleteCustomLogTypeAction.class),
                 new ActionPlugin.ActionHandler<>(GetCorrelationAlertsAction.INSTANCE, TransportGetCorrelationAlertsAction.class),
-                new ActionPlugin.ActionHandler<>(AckCorrelationAlertsAction.INSTANCE, TransportAckCorrelationAlertsAction.class)
+                new ActionPlugin.ActionHandler<>(AckCorrelationAlertsAction.INSTANCE, TransportAckCorrelationAlertsAction.class),
+                new ActionPlugin.ActionHandler<>(WIndexDetectorAction.INSTANCE, WTransportIndexDetectorAction.class)
         );
     }
 
     @Override
     public void onNodeStarted(DiscoveryNode localNode) {
-//      Trigger initialization of log types
+        // Trigger initialization of log types
         logTypeService.ensureConfigIndexIsInitialized(new ActionListener<>() {
             @Override
             public void onResponse(Void unused) {
                 log.info("LogType config index successfully created and builtin log types loaded");
             }
-
             @Override
             public void onFailure(Exception e) {
                 log.warn("Failed to initialize LogType config index and builtin log types");
             }
         });
-
     }
 }
