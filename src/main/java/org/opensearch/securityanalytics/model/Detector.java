@@ -73,6 +73,33 @@ public class Detector implements Writeable, ToXContentObject {
             xcp -> parse(xcp, null, null)
     );
 
+    @Override
+    public String toString() {
+        return "Detector{" +
+                "id='" + id + '\'' +
+                ", version=" + version +
+                ", name='" + name + '\'' +
+                ", threatIntelEnabled=" + threatIntelEnabled +
+                ", enabled=" + enabled +
+                ", schedule=" + schedule +
+                ", lastUpdateTime=" + lastUpdateTime +
+                ", enabledTime=" + enabledTime +
+                ", logType='" + logType + '\'' +
+                ", user=" + user +
+                ", inputs=" + inputs +
+                ", triggers=" + triggers +
+                ", monitorIds=" + monitorIds +
+                ", ruleIdMonitorIdMap=" + ruleIdMonitorIdMap +
+                ", workflowIds=" + workflowIds +
+                ", ruleIndex='" + ruleIndex + '\'' +
+                ", alertsIndex='" + alertsIndex + '\'' +
+                ", alertsHistoryIndex='" + alertsHistoryIndex + '\'' +
+                ", alertsHistoryIndexPattern='" + alertsHistoryIndexPattern + '\'' +
+                ", findingsIndex='" + findingsIndex + '\'' +
+                ", findingsIndexPattern='" + findingsIndexPattern + '\'' +
+                ", type='" + type + '\'' +
+                '}';
+    }
 
     private String id;
 

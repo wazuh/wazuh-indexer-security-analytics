@@ -90,4 +90,16 @@ public class IndexRuleResponse extends ActionResponse implements ToXContentObjec
     public String getId() {
         return id;
     }
+
+    public Long getVersion() {
+        return version;
+    }
+
+    public RestStatus getStatus() {
+        return status;
+    }
+
+    public Rule getRule() {
+        return rule;
+    }
 }
