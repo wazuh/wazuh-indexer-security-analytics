@@ -15,16 +15,6 @@ import java.util.Map;
 
 public class Integration implements Writeable, ToXContentObject {
 
-    public static final List<String> VALID_CATEGORIES = List.of(
-            "Access Management",
-            "Applications",
-            "Cloud Services",
-            "Network Activity",
-            "Security",
-            "System Activity",
-            "Other"
-    );
-
     public static final List<String> WAZUH_CATEGORIES = List.of(
             "access-management",
             "applications",

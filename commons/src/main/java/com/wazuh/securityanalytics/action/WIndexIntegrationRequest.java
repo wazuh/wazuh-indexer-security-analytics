@@ -62,7 +62,7 @@ public class WIndexIntegrationRequest extends ActionRequest {
             throw new ActionRequestValidationException();
         }
         String category = this.customLogType.getCategory();
-        if (!Integration.VALID_CATEGORIES.contains(category) && !Integration.WAZUH_CATEGORIES.contains(category)) {
+        if (!Integration.WAZUH_CATEGORIES.contains(category)) {
             throw new ActionRequestValidationException();
         }
         return null;
