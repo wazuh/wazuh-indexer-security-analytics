@@ -25,6 +25,19 @@ public class Integration implements Writeable, ToXContentObject {
             "Other"
     );
 
+    public static final List<String> WAZUH_CATEGORIES = List.of(
+            "access-management",
+            "applications",
+            "cloud-services",
+            "cloud-services-aws",
+            "cloud-services-azure",
+            "cloud-services-gcp",
+            "network-activity",
+            "other",
+            "security",
+            "system-activity"
+    );
+
     private static final String NAME_FIELD = "name";
 
     private static final String DESCRIPTION_FIELD = "description";
@@ -64,7 +77,7 @@ public class Integration implements Writeable, ToXContentObject {
         this.version = version != null ? version : 1L;
         this.name = name;
         this.description = description;
-        this.category = category != null? category: "Other";
+        this.category = category;
         this.source = source;
         this.ruleIds = ruleIds;
         this.tags = tags;
