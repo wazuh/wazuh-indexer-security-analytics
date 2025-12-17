@@ -75,4 +75,16 @@ public class IndexCustomLogTypeResponse extends ActionResponse implements ToXCon
     public String getId() {
         return id;
     }
+
+    public Long getVersion() {
+        return version;
+    }
+
+    public RestStatus getStatus() {
+        return status;
+    }
+
+    public CustomLogType getCustomLogType() {
+        return customLogType;
+    }
 }
