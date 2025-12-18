@@ -86,6 +86,21 @@ public class Integration implements Writeable, ToXContentObject {
         );
     }
 
+    @SuppressWarnings("unchecked")
+    public Integration(Map<String, Object> input) {
+        this(
+                null,
+                null,
+                input.get(NAME_FIELD).toString(),
+                input.get(DESCRIPTION_FIELD).toString(),
+                input.containsKey(CATEGORY_FIELD)? input.get(CATEGORY_FIELD).toString(): null,
+                input.get(SOURCE_FIELD).toString(),
+                input.get(RULES_FIELD) != null ?
+                        (List<String>) input.get(RULES_FIELD) : null,
+                (Map<String, Object>) input.get(TAGS_FIELD)
+        );
+    }
+
     @Override
     public void writeTo(StreamOutput out) throws IOException {
         out.writeString(this.id);

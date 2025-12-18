@@ -38,6 +38,19 @@ public class CustomLogType implements Writeable, ToXContentObject {
             "Other"
     );
 
+    public static final List<String> WAZUH_CATEGORIES = List.of(
+            "access-management",
+            "applications",
+            "cloud-services",
+            "cloud-services-aws",
+            "cloud-services-azure",
+            "cloud-services-gcp",
+            "network-activity",
+            "other",
+            "security",
+            "system-activity"
+    );
+
     public static final String CUSTOM_LOG_TYPE_ID_FIELD = "custom_logtype_id";
 
     private static final String NAME_FIELD = "name";
