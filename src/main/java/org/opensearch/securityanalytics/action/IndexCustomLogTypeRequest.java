@@ -8,6 +8,7 @@
 
 package org.opensearch.securityanalytics.action;
 
+import com.wazuh.securityanalytics.model.Integration;
 import org.opensearch.action.ActionRequest;
 import org.opensearch.action.ActionRequestValidationException;
 import org.opensearch.action.support.WriteRequest;
@@ -62,7 +63,7 @@ public class IndexCustomLogTypeRequest extends ActionRequest {
             throw new ActionRequestValidationException();
         }
         String category = customLogType.getCategory();
-        if (!CustomLogType.VALID_LOG_CATEGORIES.contains(category) && !CustomLogType.WAZUH_CATEGORIES.contains(category)) {
+        if (!CustomLogType.VALID_LOG_CATEGORIES.contains(category) && !Integration.WAZUH_CATEGORIES.contains(category)) {
             throw new ActionRequestValidationException();
         }
         return null;
