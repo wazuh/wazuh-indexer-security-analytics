@@ -5,6 +5,7 @@ import org.opensearch.securityanalytics.model.Detector;
 import org.opensearch.securityanalytics.model.DetectorInput;
 import org.opensearch.securityanalytics.model.DetectorRule;
 
+import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
@@ -30,8 +31,8 @@ public class DetectorFactory {
                 name,
                 true,
                 schedule,
-                java.time.Instant.now(),
-                java.time.Instant.now(),
+                Instant.now(),
+                Instant.now(),
                 integration,
                 null,
                 List.of(detectorInput),
