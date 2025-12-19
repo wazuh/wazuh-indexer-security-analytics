@@ -15,14 +15,17 @@ import java.util.Map;
 
 public class Integration implements Writeable, ToXContentObject {
 
-    public static final List<String> VALID_CATEGORIES = List.of(
-            "Access Management",
-            "Applications",
-            "Cloud Services",
-            "Network Activity",
-            "Security",
-            "System Activity",
-            "Other"
+    public static final List<String> WAZUH_CATEGORIES = List.of(
+            "access-management",
+            "applications",
+            "cloud-services",
+            "cloud-services-aws",
+            "cloud-services-azure",
+            "cloud-services-gcp",
+            "network-activity",
+            "other",
+            "security",
+            "system-activity"
     );
 
     private static final String NAME_FIELD = "name";
@@ -64,7 +67,7 @@ public class Integration implements Writeable, ToXContentObject {
         this.version = version != null ? version : 1L;
         this.name = name;
         this.description = description;
-        this.category = category != null? category: "Other";
+        this.category = category;
         this.source = source;
         this.ruleIds = ruleIds;
         this.tags = tags;
@@ -80,6 +83,21 @@ public class Integration implements Writeable, ToXContentObject {
                 sin.readString(),
                 sin.readStringList(),
                 sin.readMap()
+        );
+    }
+
+    @SuppressWarnings("unchecked")
+    public Integration(Map<String, Object> input) {
+        this(
+                null,
+                null,
+                input.get(NAME_FIELD).toString(),
+                input.get(DESCRIPTION_FIELD).toString(),
+                input.containsKey(CATEGORY_FIELD)? input.get(CATEGORY_FIELD).toString(): null,
+                input.get(SOURCE_FIELD).toString(),
+                input.get(RULES_FIELD) != null ?
+                        (List<String>) input.get(RULES_FIELD) : null,
+                (Map<String, Object>) input.get(TAGS_FIELD)
         );
     }
 
