@@ -19,7 +19,7 @@ public class DetectorFactory {
         detectorRules.forEach(rule -> rules.add(new DetectorRule(rule)));
 
         Long version = 1L;
-        String name = integration.toLowerCase(Locale.ROOT) + "-detector";
+        String name = integration.toLowerCase(Locale.ROOT);
         String description = "Detector for " + integration + " integration";
         String dataStream = "wazuh-events-v5-" + category.toLowerCase(Locale.ROOT);
         IntervalSchedule schedule = new IntervalSchedule(1, ChronoUnit.MINUTES, null);
