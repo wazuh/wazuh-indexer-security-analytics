@@ -178,4 +178,14 @@ public class DetectorInput implements Writeable, ToXContentObject {
     public int hashCode() {
         return Objects.hash(description, indices, customRules, prePackagedRules);
     }
+
+    @Override
+    public String toString() {
+        return "DetectorInput{" +
+                "description='" + description + '\'' +
+                ", indices=" + indices +
+                ", customRules=" + customRules +
+                ", prePackagedRules=" + prePackagedRules +
+                '}';
+    }
 }
