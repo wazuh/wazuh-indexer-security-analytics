@@ -40,12 +40,13 @@ public class WTransportIndexDetectorAction extends HandledTransportAction<WIndex
                 request.getRefreshPolicy(),
                 RestRequest.Method.POST,
                 detector);
-        this.client.execute(IndexDetectorAction.INSTANCE, indexDetectorRequest, new ActionListener<IndexDetectorResponse>() {
+        this.client.execute(IndexDetectorAction.INSTANCE, indexDetectorRequest, new ActionListener<>() {
             @Override
             public void onResponse(IndexDetectorResponse response) {
-                log.info("Successfully indexed detector with id: " + response.getId());
+                log.info("Successfully indexed detector with id: {}", response.getId());
                 listener.onResponse(new WIndexDetectorResponse(response.getId(), response.getVersion()));
             }
+
             @Override
             public void onFailure(Exception e) {
                 listener.onFailure(e);
