@@ -214,7 +214,7 @@ public class TransportIndexCustomLogTypeAction extends HandledTransportAction<In
 
         private void prepareCustomLogTypeIndexing() throws IOException {
             String logTypeId = request.getLogTypeId();
-            String source = request.getCustomLogType().getSource(); src/main/java/org/opensearch/securityanalytics/transport/T
+            String source = request.getCustomLogType().getSource();
 
             // TODO: Remove this check when we load our Integrations and Rules as pre-packaged.
             String enabledPrepackaged = System.getProperty("default_rules.enabled");
@@ -243,7 +243,6 @@ public class TransportIndexCustomLogTypeAction extends HandledTransportAction<In
                         existingLogType.setVersion(request.getCustomLogType().getVersion());
 
                         // TODO: Remove this check when we load our Integrations and Rules as pre-packaged.
-                        String enabledPrepackaged = System.getProperty("default_rules.enabled");
                         if (enabledPrepackaged != null &&  enabledPrepackaged.equals("true")) {
                             if (existingLogType.getSource().equals("Sigma")) {
                                 onFailures(new OpenSearchStatusException(String.format(Locale.getDefault(), "Log Type with id %s cannot be updated because source is sigma", logTypeId), RestStatus.BAD_REQUEST));
