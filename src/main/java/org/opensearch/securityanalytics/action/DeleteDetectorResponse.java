@@ -54,4 +54,12 @@ public class DeleteDetectorResponse extends ActionResponse implements ToXContent
     public String getId() {
         return id;
     }
+
+    public Long getVersion() {
+        return version;
+    }
+
+    public RestStatus getStatus() {
+        return status;
+    }
 }

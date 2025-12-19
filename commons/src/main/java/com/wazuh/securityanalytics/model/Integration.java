@@ -10,6 +10,7 @@ import org.opensearch.core.common.io.stream.Writeable;
 import org.opensearch.core.xcontent.*;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -64,7 +65,7 @@ public class Integration implements Writeable, ToXContentObject {
         this.version = version != null ? version : 1L;
         this.name = name;
         this.description = description;
-        this.category = category != null? category: "Other";
+        this.category = category != null ? category : "Other";
         this.source = source;
         this.ruleIds = ruleIds;
         this.tags = tags;
@@ -103,7 +104,7 @@ public class Integration implements Writeable, ToXContentObject {
                 .field(CATEGORY_FIELD, this.category)
                 .field(SOURCE_FIELD, this.source)
                 .field(TAGS_FIELD, this.tags)
-                .array(RULES_FIELD, this.ruleIds)
+                .field(RULES_FIELD, this.ruleIds)
                 .endObject();
     }
 
@@ -120,7 +121,7 @@ public class Integration implements Writeable, ToXContentObject {
         String category = null;
         String source = null;
         Map<String, Object> tags = null;
-        List<String> rules = null;
+        List<String> rules = new ArrayList<>();
 
         XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
         while (xcp.nextToken() != XContentParser.Token.END_OBJECT) {
@@ -144,7 +145,11 @@ public class Integration implements Writeable, ToXContentObject {
                     tags = xcp.map();
                     break;
                 case RULES_FIELD:
-//                    rules = xcp.list();
+                    if (xcp.currentToken() == XContentParser.Token.START_ARRAY) {
+                        while (xcp.nextToken() != XContentParser.Token.END_ARRAY) {
+                            rules.add(xcp.text());
+                        }
+                    }
                     break;
                 default:
                     xcp.skipChildren();

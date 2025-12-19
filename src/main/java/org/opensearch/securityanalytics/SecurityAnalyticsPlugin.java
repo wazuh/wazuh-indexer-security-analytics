@@ -4,6 +4,9 @@
  */
 package org.opensearch.securityanalytics;
 
+import com.wazuh.securityanalytics.action.WDeleteDetectorAction;
+import com.wazuh.securityanalytics.action.WDeleteIntegrationAction;
+import com.wazuh.securityanalytics.action.WDeleteRuleAction;
 import com.wazuh.securityanalytics.action.WIndexDetectorAction;
 import com.wazuh.securityanalytics.action.WIndexIntegrationAction;
 import com.wazuh.securityanalytics.action.WIndexRuleAction;
@@ -342,6 +345,9 @@ public class SecurityAnalyticsPlugin extends Plugin implements ActionPlugin, Map
     @Override
     public List<ActionHandler<? extends ActionRequest, ? extends ActionResponse>> getActions() {
         return List.of(
+                new ActionPlugin.ActionHandler<>(WDeleteDetectorAction.INSTANCE, WTransportDeleteDetectorAction.class),
+                new ActionHandler<>(WDeleteRuleAction.INSTANCE, WTransportDeleteRuleAction.class),
+                new ActionHandler<>(WDeleteIntegrationAction.INSTANCE, WTransportDeleteIntegrationAction.class),
                 new ActionHandler<>(WIndexRuleAction.INSTANCE, WTransportIndexRuleAction.class),
                 new ActionHandler<>(WIndexIntegrationAction.INSTANCE, WTransportIndexIntegrationAction.class),
                 new ActionPlugin.ActionHandler<>(AckAlertsAction.INSTANCE, TransportAcknowledgeAlertsAction.class),
