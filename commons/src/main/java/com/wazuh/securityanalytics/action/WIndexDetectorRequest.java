@@ -14,17 +14,20 @@ import java.io.IOException;
 import java.util.List;
 
 public class WIndexDetectorRequest extends ActionRequest {
+    private final String detectorId;
     private final String logTypeName;
     private final String category;
     private final List<String> rules;
     private final WriteRequest.RefreshPolicy refreshPolicy;
 
     public WIndexDetectorRequest(
+            String detectorId,
             String logTypeName,
             String category,
             List<String> rules,
             WriteRequest.RefreshPolicy refreshPolicy) {
         super();
+        this.detectorId = detectorId;
         this.logTypeName = logTypeName;
         this.category = category;
         this.rules = rules;
@@ -33,6 +36,7 @@ public class WIndexDetectorRequest extends ActionRequest {
 
     public WIndexDetectorRequest(StreamInput sin) throws IOException {
         this(
+            sin.readString(),
             sin.readString(),
             sin.readString(),
             sin.readStringList(),
@@ -47,10 +51,15 @@ public class WIndexDetectorRequest extends ActionRequest {
 
     @Override
     public void writeTo(StreamOutput out) throws IOException {
+        out.writeString(this.detectorId);
         out.writeString(this.logTypeName);
         out.writeString(this.category);
         out.writeStringCollection(this.rules);
         this.refreshPolicy.writeTo(out);
+    }
+
+    public String getDetectorId() {
+        return detectorId;
     }
 
     public String getLogTypeName() {

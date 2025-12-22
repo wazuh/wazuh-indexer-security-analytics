@@ -1325,7 +1325,7 @@ public class TransportIndexDetectorAction extends HandledTransportAction<IndexDe
                 @Override
                 public void onResponse(GetResponse response) {
                     if (!response.isExists()) {
-                        onFailures(new OpenSearchStatusException(String.format(Locale.getDefault(), "Detector with %s is not found", id), RestStatus.NOT_FOUND));
+                        createDetector();
                         return;
                     }
 
@@ -1650,7 +1650,7 @@ public class TransportIndexDetectorAction extends HandledTransportAction<IndexDe
         }
 
         private void upsertMonitorQueries(List<Pair<String, Rule>> queries, Detector detector, ActionListener<List<IndexMonitorResponse>> listener, Set<String> ruleFieldNames, String logIndex) {
-            if (request.getMethod() == Method.POST) {
+            if (request.getMethod() == Method.POST || detector.getMonitorIds().isEmpty()) {
                 createMonitorFromQueries(queries, detector, listener, request.getRefreshPolicy(), new ArrayList<>(ruleFieldNames));
             } else if (request.getMethod() == Method.PUT) {
                 updateMonitorFromQueries(logIndex, queries, detector, listener, request.getRefreshPolicy(), new ArrayList<>(ruleFieldNames));
