@@ -327,7 +327,14 @@ public class TransportIndexCustomLogTypeAction extends HandledTransportAction<In
                                             Max agg = response.getAggregations().get("agg");
                                             int value = Double.valueOf(agg.getValue()).intValue();
                                             request.getCustomLogType().setTags(Map.of("correlation_id", value + 1));
+
+                                            String id = request.getLogTypeId();
+                                            if (Detector.NO_ID.equals(id)) {
+                                                id = null;
+                                            }
+
                                             IndexRequest indexRequest = new IndexRequest(LogTypeService.LOG_TYPE_INDEX)
+                                                    .id(id)
                                                     .setRefreshPolicy(request.getRefreshPolicy())
                                                     .source(request.getCustomLogType().toXContent(XContentFactory.jsonBuilder(), ToXContent.EMPTY_PARAMS))
                                                     .timeout(indexTimeout);
