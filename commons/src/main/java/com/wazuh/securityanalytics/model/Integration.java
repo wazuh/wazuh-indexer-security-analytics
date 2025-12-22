@@ -16,16 +16,13 @@ import java.util.Map;
 public class Integration implements Writeable, ToXContentObject {
 
     public static final List<String> WAZUH_CATEGORIES = List.of(
-            "access-management",
-            "applications",
-            "cloud-services",
-            "cloud-services-aws",
-            "cloud-services-azure",
-            "cloud-services-gcp",
-            "network-activity",
-            "other",
-            "security",
-            "system-activity"
+        "Access Management",
+        "Applications",
+        "Cloud Services",
+        "Network Activity",
+        "Security",
+        "System Activity",
+        "Other"
     );
 
     private static final String NAME_FIELD = "name";
