@@ -63,7 +63,7 @@ public class IndexCustomLogTypeRequest extends ActionRequest {
             throw new ActionRequestValidationException();
         }
         String category = customLogType.getCategory();
-        if (!CustomLogType.VALID_LOG_CATEGORIES.contains(category) && !Integration.WAZUH_CATEGORIES.contains(category)) {
+        if (!CustomLogType.VALID_LOG_CATEGORIES.contains(category)) {
             throw new ActionRequestValidationException();
         }
         return null;
