@@ -8,6 +8,7 @@
 
 package org.opensearch.securityanalytics.action;
 
+import com.wazuh.securityanalytics.model.Integration;
 import org.opensearch.action.ActionRequest;
 import org.opensearch.action.ActionRequestValidationException;
 import org.opensearch.action.support.WriteRequest;
