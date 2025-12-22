@@ -170,11 +170,14 @@ public class TransportDeleteCustomLogTypeAction extends HandledTransportAction<D
         }
 
         private void onGetResponse(CustomLogType logType) {
-            if (logType.getSource().equals("Sigma")) {
-                onFailures(new OpenSearchStatusException(String.format(Locale.getDefault(),
-                        "Log Type with id %s cannot be deleted because source is sigma", logType.getId()), RestStatus.BAD_REQUEST));
+            // TODO: Remove this check when we load our Integrations and Rules as pre-packaged.
+            String enabledPrepackaged = System.getProperty("default_rules.enabled");
+            if (enabledPrepackaged != null &&  enabledPrepackaged.equals("true")) {
+                if (logType.getSource().equals("Sigma")) {
+                    onFailures(new OpenSearchStatusException(String.format(Locale.getDefault(),
+                            "Log Type with id %s cannot be deleted because source is sigma", logType.getId()), RestStatus.BAD_REQUEST));
+                }
             }
-
             if (detectorIndices.detectorIndexExists()) {
                 searchDetectors(logType.getName(), new ActionListener<>() {
                     @Override
