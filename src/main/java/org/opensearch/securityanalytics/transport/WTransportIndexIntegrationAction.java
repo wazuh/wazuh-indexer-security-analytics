@@ -24,8 +24,6 @@ import org.opensearch.tasks.Task;
 import org.opensearch.transport.TransportService;
 import org.opensearch.transport.client.Client;
 
-import java.util.ArrayList;
-
 public class WTransportIndexIntegrationAction extends HandledTransportAction<WIndexIntegrationRequest, WIndexIntegrationResponse> implements SecureTransportAction {
     private final Client client;
     private static final Logger log = LogManager.getLogger(WTransportIndexIntegrationAction.class);
@@ -49,6 +47,8 @@ public class WTransportIndexIntegrationAction extends HandledTransportAction<WIn
                         request.getCustomLogType().getSource(),
                         request.getCustomLogType().getTags()
                 );
+        logType.setId(request.getLogTypeId());
+
         IndexCustomLogTypeRequest internalRequest = new IndexCustomLogTypeRequest(
                 request.getLogTypeId(),
                 WriteRequest.RefreshPolicy.IMMEDIATE,
