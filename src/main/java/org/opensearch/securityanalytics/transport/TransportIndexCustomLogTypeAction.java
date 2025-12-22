@@ -215,10 +215,14 @@ public class TransportIndexCustomLogTypeAction extends HandledTransportAction<In
         private void prepareCustomLogTypeIndexing() throws IOException {
             String logTypeId = request.getLogTypeId();
             String source = request.getCustomLogType().getSource();
-            if (source.equals("Sigma")) {
-                onFailures(new OpenSearchStatusException(String.format(Locale.getDefault(), "Log Type with id %s cannot be updated because source is sigma", logTypeId), RestStatus.BAD_REQUEST));
-            }
 
+            // TODO: Remove this check when we load our Integrations and Rules as pre-packaged.
+            String enabledPrepackaged = System.getProperty("default_rules.enabled");
+            if (enabledPrepackaged != null &&  enabledPrepackaged.equals("true")) {
+                if (source.equals("Sigma")) {
+                    onFailures(new OpenSearchStatusException(String.format(Locale.getDefault(), "Log Type with id %s cannot be updated because source is sigma", logTypeId), RestStatus.BAD_REQUEST));
+                }
+            }
             if (request.getMethod() == RestRequest.Method.PUT) {
                 searchLogTypes(logTypeId, new ActionListener<>() {
                     @Override
@@ -238,8 +242,11 @@ public class TransportIndexCustomLogTypeAction extends HandledTransportAction<In
                         existingLogType.setId(request.getCustomLogType().getId());
                         existingLogType.setVersion(request.getCustomLogType().getVersion());
 
-                        if (existingLogType.getSource().equals("Sigma")) {
-                            onFailures(new OpenSearchStatusException(String.format(Locale.getDefault(), "Log Type with id %s cannot be updated because source is sigma", logTypeId), RestStatus.BAD_REQUEST));
+                        // TODO: Remove this check when we load our Integrations and Rules as pre-packaged.
+                        if (enabledPrepackaged != null &&  enabledPrepackaged.equals("true")) {
+                            if (existingLogType.getSource().equals("Sigma")) {
+                                onFailures(new OpenSearchStatusException(String.format(Locale.getDefault(), "Log Type with id %s cannot be updated because source is sigma", logTypeId), RestStatus.BAD_REQUEST));
+                            }
                         }
                         if (!existingLogType.getName().equals(request.getCustomLogType().getName())) {
 
@@ -320,7 +327,14 @@ public class TransportIndexCustomLogTypeAction extends HandledTransportAction<In
                                             Max agg = response.getAggregations().get("agg");
                                             int value = Double.valueOf(agg.getValue()).intValue();
                                             request.getCustomLogType().setTags(Map.of("correlation_id", value + 1));
+
+                                            String id = request.getLogTypeId();
+                                            if (Detector.NO_ID.equals(id)) {
+                                                id = null;
+                                            }
+
                                             IndexRequest indexRequest = new IndexRequest(LogTypeService.LOG_TYPE_INDEX)
+                                                    .id(id)
                                                     .setRefreshPolicy(request.getRefreshPolicy())
                                                     .source(request.getCustomLogType().toXContent(XContentFactory.jsonBuilder(), ToXContent.EMPTY_PARAMS))
                                                     .timeout(indexTimeout);

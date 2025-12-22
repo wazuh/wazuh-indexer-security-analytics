@@ -35,17 +35,19 @@ public class WTransportIndexDetectorAction extends HandledTransportAction<WIndex
     protected void doExecute(Task task, WIndexDetectorRequest request, ActionListener<WIndexDetectorResponse> listener) {
         // Create detector for this Integration
         Detector detector = DetectorFactory.createDetector(request.getLogTypeName(), request.getCategory(), request.getRules());
+        detector.setId(request.getDetectorId());
         IndexDetectorRequest indexDetectorRequest = new IndexDetectorRequest(
                 detector.getId(),
                 request.getRefreshPolicy(),
-                RestRequest.Method.POST,
+                RestRequest.Method.PUT,
                 detector);
-        this.client.execute(IndexDetectorAction.INSTANCE, indexDetectorRequest, new ActionListener<IndexDetectorResponse>() {
+        this.client.execute(IndexDetectorAction.INSTANCE, indexDetectorRequest, new ActionListener<>() {
             @Override
             public void onResponse(IndexDetectorResponse response) {
-                log.info("Successfully indexed detector with id: " + response.getId());
+                log.info("Successfully indexed detector with id: {}", response.getId());
                 listener.onResponse(new WIndexDetectorResponse(response.getId(), response.getVersion()));
             }
+
             @Override
             public void onFailure(Exception e) {
                 listener.onFailure(e);
