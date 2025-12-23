@@ -59,4 +59,16 @@ public class DeleteRuleResponse extends ActionResponse implements ToXContentObje
         out.writeString(id);
         out.writeLong(version);
     }
+
+    public String getId() {
+        return id;
+    }
+
+    public Long getVersion() {
+        return version;
+    }
+
+    public RestStatus getStatus() {
+        return status;
+    }
 }
