@@ -220,7 +220,7 @@ public class TransportDeleteDetectorAction extends HandledTransportAction<Delete
                             logAcceptableEntityMissingException(e, detector.getId());
                             deleteDetectorFromConfig(detector.getId(), request.getRefreshPolicy());
                         } else {
-                            log.error(String.format(Locale.ROOT, "Failed to delete detector %s", detector.getId()), e);
+                            log.error(String.format(Locale.ROOT, "Failed to delete detector %s", detector.getId()), e.getMessage());
                             if (counter.compareAndSet(false, true)) {
                                 finishHim(null, e);
                             }
@@ -309,7 +309,7 @@ public class TransportDeleteDetectorAction extends HandledTransportAction<Delete
         private void finishHim(String detectorId, Exception t) {
             threadPool.executor(ThreadPool.Names.GENERIC).execute(ActionRunnable.supply(listener, () -> {
                 if (t != null) {
-                    log.error(String.format(Locale.ROOT, "Failed to delete detector %s", detectorId), t);
+                    log.error(String.format(Locale.ROOT, "Failed to delete detector %s", detectorId), t.getMessage());
                     if (t instanceof OpenSearchStatusException) {
                         throw t;
                     }
@@ -324,7 +324,7 @@ public class TransportDeleteDetectorAction extends HandledTransportAction<Delete
     private void logAcceptableEntityMissingException(final Exception e, final String detectorId) {
         final String errorMsg = String.format(Locale.ROOT, "Workflow, monitor, or jobs index already deleted." +
                 " Proceeding with detector %s deletion", detectorId);
-        log.error(errorMsg, e);
+        log.error(errorMsg, e.getMessage());
     }
 
     private void setEnabledWorkflowUsage(boolean enabledWorkflowUsage) {

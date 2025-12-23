@@ -261,7 +261,7 @@ public class TransportCorrelateFindingAction extends HandledTransportAction<Acti
                             Detector detector = Detector.docParse(xcp, hit.getId(), hit.getVersion());
                             joinEngine.onSearchDetectorResponse(detector, finding);
                         } catch (Exception e) {
-                            log.error("Exception for request {}", searchRequest.toString(), e);
+                            log.error("Exception for request {}", searchRequest.toString(), e.getMessage());
                             onFailures(e);
                         }
                     } else {
@@ -511,7 +511,7 @@ public class TransportCorrelateFindingAction extends HandledTransportAction<Acti
 
         public void onFailures(Exception t) {
             log.error("Exception occurred while processing correlations for monitor id "
-                    + request.getMonitorId() + " and finding id " + request.getFinding().getId(), t);
+                    + request.getMonitorId() + " and finding id " + request.getFinding().getId(), t.getMessage());
             if (counter.compareAndSet(false, true)) {
                 finishHim(t);
             }

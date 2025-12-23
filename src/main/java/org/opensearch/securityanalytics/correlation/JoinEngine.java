@@ -257,7 +257,7 @@ public class JoinEngine {
         }, e -> {
             try {
                 log.error("[CORRELATIONS] Exception encountered while searching correlation rule index for finding id {}",
-                        finding.getId(), e);
+                        finding.getId(), e.getMessage());
                 getValidDocuments(detectorType, indices, List.of(), List.of(), autoCorrelations);
             } catch (Exception ex) {
                 onFailure(ex);
