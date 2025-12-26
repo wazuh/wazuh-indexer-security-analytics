@@ -268,13 +268,12 @@ public class RuleIndices {
         // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
         String enabledPrepackaged = System.getProperty("default_rules.enabled");
         if (enabledPrepackaged != null &&  enabledPrepackaged.equals("true")) {
-            log.info("[KEVINTEST] Loading pre-packaged rules for testing environment.");
              for (Path folderPath: folderPaths) {
                  List<String> rules = getRules(List.of(folderPath));
                  String ruleCategory = getRuleCategory(folderPath);
                  logIndexToRules.put(ruleCategory, rules);
              }}
-        log.info("[KEVINTEST] Loaded log types for rule ingestion: " + logIndexToRules.keySet());
+        log.info("[TEST] Loaded log types for rule ingestion: " + logIndexToRules.keySet());
         checkLogTypes(logIndexToRules, refreshPolicy, indexTimeout, listener);
     }
 
@@ -293,7 +292,7 @@ public class RuleIndices {
         }
         for (String category: categories) {
             Map<String, String> fieldMappings = logTypeService.getRuleFieldMappingsForBuiltinLogType(category);
-            log.info("[KEVINTEST] Field mappings for category " + category + ": " + fieldMappings);
+            log.info("[TEST] Field mappings for category " + category + ": " + fieldMappings);
             final QueryBackend backend = new OSQueryBackend(fieldMappings, true, true);
             queries.addAll(getQueries(backend, category, logIndexToRules.get(category)));
         }

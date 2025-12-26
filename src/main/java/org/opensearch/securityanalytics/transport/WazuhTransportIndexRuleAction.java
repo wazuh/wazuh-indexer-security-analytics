@@ -86,21 +86,30 @@ public class WazuhTransportIndexRuleAction extends HandledTransportAction<WIndex
             WazuhTransportIndexRuleAction.this.threadPool.getThreadContext().stashContext();
             String category = this.request.getLogType();
             String ruleStr = this.request.getRule();
-            WazuhTransportIndexRuleAction.this.logTypeService.getRuleFieldMappings(
+            WazuhTransportIndexRuleAction.this.logTypeService.getFieldMappingsByLogType(
                     category,
                     new ActionListener<>() {
                         @Override
-                        public void onResponse(Map<String, String> fieldMappings) {
-                            try {
-                                Rule rule = getRule(fieldMappings, ruleStr, category);
-                                if (rule == null) {
-                                    throw new SigmaError("Failed to parse rule");
+                        public void onResponse(List<FieldMappingDoc> fieldMappingDocs) {
+                            Map<String, String> fieldMappings = new HashMap<>(fieldMappingDocs.size());
+                            fieldMappingDocs.forEach( e -> {
+                                fieldMappings.put(e.getRawField(), e.getSchemaFields().get(logTypeService.getDefaultSchemaField()));
+                            });
+                            if (fieldMappings.isEmpty()) {
+                                onFailures(new SigmaError("No field mappings found for log type: " + category));
+                            } else {
+                                try {
+                                    Rule rule = getRule(fieldMappings, ruleStr, category);
+                                    if (rule == null) {
+                                        throw new SigmaError("Failed to parse rule");
+                                    }
+                                    indexRule(rule, fieldMappings);
+                                } catch (IOException | SigmaError | CompositeSigmaErrors e) {
+                                    onFailures(e);
                                 }
-                                indexRule(rule, fieldMappings);
-                            } catch (IOException | SigmaError | CompositeSigmaErrors e) {
-                                onFailures(e);
                             }
                         }
+
                         @Override
                         public void onFailure(Exception e) {
                             onFailures(e);
@@ -118,7 +127,7 @@ public class WazuhTransportIndexRuleAction extends HandledTransportAction<WIndex
             QueryBackend backend = new OSQueryBackend(fieldMappings, true, true);
             List<Object> queries = backend.convertRule(parsedRule);
             Set<String> queryFieldNames = backend.getQueryFields().keySet();
-            log.info("[KEVINTEST] Creating rule with queries: " + queries.toString() + " and fields: " + queryFieldNames.toString());
+            log.info("[TEST] Creating rule with queries: " + queries.toString() + " and fields: " + queryFieldNames.toString());
 
             return new Rule(
                     parsedRule.getId().toString(),
