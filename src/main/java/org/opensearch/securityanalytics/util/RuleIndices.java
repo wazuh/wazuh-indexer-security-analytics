@@ -273,6 +273,7 @@ public class RuleIndices {
                  String ruleCategory = getRuleCategory(folderPath);
                  logIndexToRules.put(ruleCategory, rules);
              }}
+        log.info("[TEST] Loaded log types for rule ingestion: " + logIndexToRules.keySet());
         checkLogTypes(logIndexToRules, refreshPolicy, indexTimeout, listener);
     }
 
@@ -291,6 +292,7 @@ public class RuleIndices {
         }
         for (String category: categories) {
             Map<String, String> fieldMappings = logTypeService.getRuleFieldMappingsForBuiltinLogType(category);
+            log.info("[TEST] Field mappings for category " + category + ": " + fieldMappings);
             final QueryBackend backend = new OSQueryBackend(fieldMappings, true, true);
             queries.addAll(getQueries(backend, category, logIndexToRules.get(category)));
         }
@@ -310,7 +312,8 @@ public class RuleIndices {
             backend.resetQueryFields();
             List<Object> ruleQueries = backend.convertRule(rule);
             Set<String> queryFieldNames = backend.getQueryFields().keySet();
-
+            log.info("[KEVINTEST] Ingesting rule with id: " + rule.getId().toString() + " for category: " + category + " with queries: " + ruleQueries);
+            log.info("[KEVINTEST] Query field names: " + queryFieldNames);
             Rule ruleModel = new Rule(
                     rule.getId().toString(), NO_VERSION, rule, category,
                     ruleQueries.stream().map(Object::toString).collect(Collectors.toList()),
@@ -352,6 +355,7 @@ public class RuleIndices {
                                     filteredLogIndexToRules.put(name, logIndexToRules.get(name));
                                 }
                             }
+                            log.info("[KEVINTEST] Filtered log types for rule ingestion: " + filteredLogIndexToRules.keySet());
                             ingestQueries(filteredLogIndexToRules, refreshPolicy, indexTimeout, listener);
                         } catch (SigmaError | IOException | CompositeSigmaErrors e) {
                             onFailure(e);
