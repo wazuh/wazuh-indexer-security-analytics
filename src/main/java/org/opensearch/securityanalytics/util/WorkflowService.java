@@ -123,7 +123,7 @@ public class WorkflowService {
                 public void onFailure(Exception e) {
                     // Remove created monitors and fail creation of workflow
                     log.error("Failed workflow saving. Removing created monitors: " + addedMonitors.stream().collect(
-                        Collectors.joining()) , e);
+                        Collectors.joining()) , e.getMessage());
 
                     monitorService.deleteAlertingMonitors(addedMonitors,
                         refreshPolicy,
@@ -136,7 +136,7 @@ public class WorkflowService {
 
                             @Override
                             public void onFailure(Exception e) {
-                                log.error("Error deleting monitors", e);
+                                log.error("Error deleting monitors: {}", e.getMessage());
                                 listener.onFailure(e);
                             }
                         });
