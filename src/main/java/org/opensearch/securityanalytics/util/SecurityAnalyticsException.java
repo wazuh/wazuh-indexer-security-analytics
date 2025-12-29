@@ -50,7 +50,7 @@ public class SecurityAnalyticsException extends OpenSearchException {
                 XContentBuilder builder = XContentFactory.jsonBuilder().startObject();
                 for (Exception e: ((CompositeSigmaErrors) ex).getErrors()) {
                     builder.field(e.getClass().getSimpleName(), e.getMessage());
-                    log.error("[USER ERROR] Security Analytics error:", e);
+                    log.error("[USER ERROR] Security Analytics error: {}", e.getMessage());
                 }
                 builder.endObject();
                 String friendlyMsg = builder.toString();
@@ -60,7 +60,7 @@ public class SecurityAnalyticsException extends OpenSearchException {
                 return SecurityAnalyticsException.wrap(e);
             }
         } else {
-            log.error("Security Analytics error:", ex);
+            log.error("Security Analytics error: {}", ex.getMessage());
 
             String friendlyMsg = "Unknown error";
             RestStatus status = RestStatus.INTERNAL_SERVER_ERROR;
@@ -96,7 +96,7 @@ public class SecurityAnalyticsException extends OpenSearchException {
             XContentBuilder builder = XContentFactory.jsonBuilder().startObject();
             for (Exception e: ex) {
                 builder.field(e.getClass().getSimpleName(), e.getMessage());
-                log.warn("[USER ERROR] Security Analytics error:", e);
+                log.warn("[USER ERROR] Security Analytics error: {}", e.getMessage());
             }
             builder.endObject();
             String friendlyMsg = builder.toString();

@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Skip validation of Integrations source [(#20)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/20)
 - Merge `cloud-services` categories [(#19)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/19)
 - Create Integrations and Detectors using CTI IDs [(#21)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/21)
+- Improve logging of security-analytics resources [(#24)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/24)
 
 ### Deprecated
 -
