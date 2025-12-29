@@ -18,16 +18,13 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.opensearch.ExceptionsHelper;
 import org.opensearch.OpenSearchStatusException;
 import org.opensearch.ResourceAlreadyExistsException;
-import org.opensearch.cluster.routing.Preference;
-import org.opensearch.common.xcontent.XContentHelper;
-import org.opensearch.common.xcontent.json.JsonXContent;
-import org.opensearch.core.action.ActionListener;
 import org.opensearch.action.DocWriteRequest;
 import org.opensearch.action.admin.indices.create.CreateIndexRequest;
 import org.opensearch.action.admin.indices.create.CreateIndexResponse;
@@ -39,13 +36,17 @@ import org.opensearch.action.support.WriteRequest;
 import org.opensearch.cluster.ClusterState;
 import org.opensearch.cluster.metadata.IndexMetadata;
 import org.opensearch.cluster.metadata.MappingMetadata;
+import org.opensearch.cluster.routing.Preference;
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.inject.Inject;
 import org.opensearch.common.settings.Settings;
 import org.opensearch.common.util.io.Streams;
 import org.opensearch.common.util.set.Sets;
 import org.opensearch.common.xcontent.XContentFactory;
+import org.opensearch.common.xcontent.XContentHelper;
 import org.opensearch.common.xcontent.XContentType;
+import org.opensearch.common.xcontent.json.JsonXContent;
+import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.rest.RestStatus;
 import org.opensearch.core.xcontent.NamedXContentRegistry;
 import org.opensearch.index.query.BoolQueryBuilder;
@@ -56,15 +57,14 @@ import org.opensearch.search.aggregations.bucket.terms.TermsAggregationBuilder;
 import org.opensearch.search.builder.SearchSourceBuilder;
 import org.opensearch.securityanalytics.model.CustomLogType;
 import org.opensearch.securityanalytics.model.FieldMappingDoc;
-import org.opensearch.securityanalytics.model.LogType;
-import org.opensearch.securityanalytics.util.SecurityAnalyticsException;
-import org.opensearch.transport.client.Client;
-
 import static org.opensearch.securityanalytics.model.FieldMappingDoc.LOG_TYPES;
 import static org.opensearch.securityanalytics.model.FieldMappingDoc.WAZUH_INTEGRATIONS;
+import org.opensearch.securityanalytics.model.LogType;
 import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings.DEFAULT_MAPPING_SCHEMA;
 import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings.maxSystemIndexReplicas;
 import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings.minSystemIndexReplicas;
+import org.opensearch.securityanalytics.util.SecurityAnalyticsException;
+import org.opensearch.transport.client.Client;
 
 /**
  *
@@ -361,6 +361,66 @@ public class LogTypeService {
     public void indexFieldMappings(List<FieldMappingDoc> fieldMappingDocs, ActionListener<Void> listener) {
         ensureConfigIndexIsInitialized(ActionListener.wrap(e -> {
             doIndexFieldMappings(fieldMappingDocs, listener);
+        }, listener::onFailure));
+    }
+
+    /**
+     * Indexes field mappings unconditionally (bypasses the enabledPrepackaged check).
+     * This is used by Wazuh transport actions that need to index field mappings
+     * regardless of the default_rules.enabled setting.
+     */
+    public void indexFieldMappingsForWazuh(List<FieldMappingDoc> fieldMappingDocs, ActionListener<Void> listener) {
+        ensureConfigIndexIsInitialized(ActionListener.wrap(e -> {
+            doIndexFieldMappingsUnconditionally(fieldMappingDocs, listener);
+        }, listener::onFailure));
+    }
+
+    private void doIndexFieldMappingsUnconditionally(List<FieldMappingDoc> fieldMappingDocs, ActionListener<Void> listener) {
+        if (fieldMappingDocs.isEmpty()) {
+            listener.onResponse(null);
+            return;
+        }
+        
+        getAllFieldMappings(ActionListener.wrap(existingFieldMappings -> {
+            // Always merge field mappings
+            List<FieldMappingDoc> mergedFieldMappings = mergeFieldMappings(existingFieldMappings, fieldMappingDocs);
+            
+            BulkRequest bulkRequest = new BulkRequest();
+            mergedFieldMappings.stream()
+                    .filter(FieldMappingDoc::isDirty)
+                    .forEach(fieldMappingDoc -> {
+                        IndexRequest indexRequest = new IndexRequest(LOG_TYPE_INDEX);
+                        try {
+                            indexRequest.id(fieldMappingDoc.getId() == null ? generateFieldMappingDocId(fieldMappingDoc) : fieldMappingDoc.getId());
+                            indexRequest.source(fieldMappingDoc.toXContent(XContentFactory.jsonBuilder(), null));
+                            indexRequest.opType(DocWriteRequest.OpType.INDEX);
+                            bulkRequest.add(indexRequest);
+                            bulkRequest.setRefreshPolicy(WriteRequest.RefreshPolicy.IMMEDIATE);
+                        } catch (IOException ex) {
+                            logger.error("Failed converting FieldMappingDoc to XContent!", ex);
+                        }
+                    });
+            
+            logger.info("Indexing [" + bulkRequest.numberOfActions() + "] fieldMappingDocs (Wazuh)");
+            
+            if (bulkRequest.numberOfActions() == 0) {
+                listener.onResponse(null);
+                return;
+            }
+            
+            // Always execute the bulk request
+            client.bulk(
+                    bulkRequest,
+                    ActionListener.delegateFailure(listener, (l, r) -> {
+                        if (r.hasFailures()) {
+                            logger.error("FieldMappingDoc Bulk Index had failures: ", r.buildFailureMessage());
+                            listener.onFailure(new IllegalStateException(r.buildFailureMessage()));
+                        } else {
+                            logger.info("Loaded [" + r.getItems().length + "] field mapping docs successfully!");
+                            listener.onResponse(null);
+                        }
+                    })
+            );
         }, listener::onFailure));
     }
 

@@ -8,27 +8,24 @@
 
 package org.opensearch.securityanalytics.transport;
 
-import com.wazuh.securityanalytics.action.WIndexIntegrationAction;
-import com.wazuh.securityanalytics.action.WIndexIntegrationRequest;
-import com.wazuh.securityanalytics.action.WIndexIntegrationResponse;
-import com.wazuh.securityanalytics.model.Integration;
+import java.io.IOException;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.action.index.IndexRequest;
 import org.opensearch.action.support.ActionFilters;
 import org.opensearch.action.support.HandledTransportAction;
-import org.opensearch.action.support.WriteRequest;
 import org.opensearch.common.inject.Inject;
 import org.opensearch.core.action.ActionListener;
-import org.opensearch.securityanalytics.action.*;
-import org.opensearch.securityanalytics.model.CustomLogType;
+import static org.opensearch.securityanalytics.logtype.LogTypeService.LOG_TYPE_INDEX;
 import org.opensearch.tasks.Task;
 import org.opensearch.transport.TransportService;
 import org.opensearch.transport.client.Client;
 
-import java.io.IOException;
-
-import static org.opensearch.securityanalytics.logtype.LogTypeService.LOG_TYPE_INDEX;
+import com.wazuh.securityanalytics.action.WIndexIntegrationAction;
+import com.wazuh.securityanalytics.action.WIndexIntegrationRequest;
+import com.wazuh.securityanalytics.action.WIndexIntegrationResponse;
+import com.wazuh.securityanalytics.model.Integration;
 
 public class WTransportIndexIntegrationAction extends HandledTransportAction<WIndexIntegrationRequest, WIndexIntegrationResponse> implements SecureTransportAction {
     private final Client client;

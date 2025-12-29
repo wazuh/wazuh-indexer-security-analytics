@@ -4,6 +4,21 @@
  */
 package org.opensearch.securityanalytics.util;
 
+import java.io.IOException;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.search.join.ScoreMode;
@@ -39,30 +54,17 @@ import org.opensearch.index.reindex.DeleteByQueryRequestBuilder;
 import org.opensearch.search.SearchHit;
 import org.opensearch.search.builder.SearchSourceBuilder;
 import org.opensearch.securityanalytics.logtype.LogTypeService;
+import static org.opensearch.securityanalytics.model.Detector.NO_VERSION;
 import org.opensearch.securityanalytics.model.Rule;
 import org.opensearch.securityanalytics.rules.backend.OSQueryBackend;
 import org.opensearch.securityanalytics.rules.backend.QueryBackend;
-import org.opensearch.securityanalytics.rules.exceptions.SigmaError;
 import org.opensearch.securityanalytics.rules.exceptions.CompositeSigmaErrors;
+import org.opensearch.securityanalytics.rules.exceptions.SigmaError;
 import org.opensearch.securityanalytics.rules.objects.SigmaRule;
-import org.opensearch.threadpool.ThreadPool;
-import org.opensearch.transport.client.Client;
-
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.URISyntaxException;
-import java.net.URL;
-import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.*;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
-
-import static org.opensearch.securityanalytics.model.Detector.NO_VERSION;
 import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings.maxSystemIndexReplicas;
 import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings.minSystemIndexReplicas;
+import org.opensearch.threadpool.ThreadPool;
+import org.opensearch.transport.client.Client;
 
 public class RuleIndices {
 
@@ -273,7 +275,6 @@ public class RuleIndices {
                  String ruleCategory = getRuleCategory(folderPath);
                  logIndexToRules.put(ruleCategory, rules);
              }}
-        log.info("[TEST] Loaded log types for rule ingestion: " + logIndexToRules.keySet());
         checkLogTypes(logIndexToRules, refreshPolicy, indexTimeout, listener);
     }
 
@@ -292,7 +293,6 @@ public class RuleIndices {
         }
         for (String category: categories) {
             Map<String, String> fieldMappings = logTypeService.getRuleFieldMappingsForBuiltinLogType(category);
-            log.info("[TEST] Field mappings for category " + category + ": " + fieldMappings);
             final QueryBackend backend = new OSQueryBackend(fieldMappings, true, true);
             queries.addAll(getQueries(backend, category, logIndexToRules.get(category)));
         }
@@ -312,8 +312,6 @@ public class RuleIndices {
             backend.resetQueryFields();
             List<Object> ruleQueries = backend.convertRule(rule);
             Set<String> queryFieldNames = backend.getQueryFields().keySet();
-            log.info("[KEVINTEST] Ingesting rule with id: " + rule.getId().toString() + " for category: " + category + " with queries: " + ruleQueries);
-            log.info("[KEVINTEST] Query field names: " + queryFieldNames);
             Rule ruleModel = new Rule(
                     rule.getId().toString(), NO_VERSION, rule, category,
                     ruleQueries.stream().map(Object::toString).collect(Collectors.toList()),
@@ -355,7 +353,6 @@ public class RuleIndices {
                                     filteredLogIndexToRules.put(name, logIndexToRules.get(name));
                                 }
                             }
-                            log.info("[KEVINTEST] Filtered log types for rule ingestion: " + filteredLogIndexToRules.keySet());
                             ingestQueries(filteredLogIndexToRules, refreshPolicy, indexTimeout, listener);
                         } catch (SigmaError | IOException | CompositeSigmaErrors e) {
                             onFailure(e);
