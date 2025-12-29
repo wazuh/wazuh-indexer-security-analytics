@@ -116,7 +116,7 @@ public class AlertsService {
 
                             @Override
                             public void onFailure(Exception e) {
-                                log.error("Failed to fetch alerts for detectorId: " + detectorId, e);
+                                log.error("Failed to fetch alerts for detectorId: " + detectorId, e.getMessage());
                                 listener.onFailure(SecurityAnalyticsException.wrap(e));
                             }
                         }
@@ -239,7 +239,7 @@ public class AlertsService {
                     @Override
                     public void onFailure(Exception e) {
                         log.error("Failed to fetch alerts for detectors: [" +
-                                detectors.stream().map(d -> d.getId()).collect(Collectors.joining(",")) + "]", e);
+                                detectors.stream().map(d -> d.getId()).collect(Collectors.joining(",")) + "]", e.getMessage());
                         listener.onFailure(SecurityAnalyticsException.wrap(e));
                     }
                 }

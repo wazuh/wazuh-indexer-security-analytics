@@ -198,7 +198,7 @@ public class MappingsTraverser {
             // This is coming from listeners.
             throw e;
         } catch (Exception e) {
-            log.error("Error traversing mappings tree", e);
+            log.error("Error traversing mappings tree: {}", e.getMessage());
             notifyError("Error traversing mappings tree");
         }
     }
