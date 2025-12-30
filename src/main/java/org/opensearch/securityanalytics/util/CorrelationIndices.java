@@ -141,7 +141,7 @@ public class CorrelationIndices {
 
             client.bulk(bulkRequest, listener);
         } catch (IOException ex) {
-            log.error(ex);
+            log.error(ex.getMessage());
             throw ex;
         }
     }

@@ -285,7 +285,7 @@ public class TransportDeleteCustomLogTypeAction extends HandledTransportAction<D
         }
 
         private void onFailures(Exception t) {
-            log.error(String.format(Locale.ROOT, "Failed to delete log type"), t);
+            log.error(String.format(Locale.ROOT, "Failed to delete log type"), t.getMessage());
             if (counter.compareAndSet(false, true)) {
                 finishHim(null, t);
             }
@@ -294,7 +294,7 @@ public class TransportDeleteCustomLogTypeAction extends HandledTransportAction<D
         private void finishHim(String logTypeId, Exception t) {
             threadPool.executor(ThreadPool.Names.GENERIC).execute(ActionRunnable.supply(listener, () -> {
                 if (t != null) {
-                    log.error(String.format(Locale.ROOT, "Failed to delete log type %s",logTypeId), t);
+                    log.error(String.format(Locale.ROOT, "Failed to delete log type %s",logTypeId), t.getMessage());
                     if (t instanceof OpenSearchStatusException) {
                         throw t;
                     }
