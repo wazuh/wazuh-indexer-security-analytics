@@ -93,7 +93,7 @@ public class FindingsService {
 
                     @Override
                     public void onFailure(Exception e) {
-                        log.error("Failed to fetch findings for detector " + detectorId, e);
+                        log.error("Failed to fetch findings for detector " + detectorId, e.getMessage());
                         listener.onFailure(SecurityAnalyticsException.wrap(e));
                     }
                 };
@@ -290,7 +290,7 @@ public class FindingsService {
                 @Override
                 public void onFailure(Exception e) {
                     log.error("Failed to fetch findings for detectors: [" +
-                            detectors.stream().map(d -> d.getId()).collect(Collectors.joining(",")) + "]", e);
+                            detectors.stream().map(d -> d.getId()).collect(Collectors.joining(",")) + "]", e.getMessage());
                     listener.onFailure(SecurityAnalyticsException.wrap(e));
                 }
             }

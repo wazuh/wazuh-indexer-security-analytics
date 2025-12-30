@@ -105,7 +105,7 @@ public class CorrelationRuleScheduler {
                                     try {
                                         notificationService.sendNotification(configId, correlationRule.getCorrelationTrigger().getSeverity(), transformedSubject, transformedMessage);
                                     } catch (Exception e) {
-                                        log.error("Failed while sending a notification with " + configId + "for correlationRule id " + correlationRule.getId(), e);
+                                        log.error("Failed while sending a notification with " + configId + "for correlationRule id " + correlationRule.getId(), e.getMessage());
                                         new SecurityAnalyticsException("Failed to send notification", RestStatus.INTERNAL_SERVER_ERROR, e);
                                     }
 
@@ -119,12 +119,12 @@ public class CorrelationRuleScheduler {
 
                         @Override
                         public void onFailure(Exception e) {
-                            log.error("Failed to search active correlation alert", e);
+                            log.error("Failed to search active correlation alert: {}", e.getMessage());
                             new SecurityAnalyticsException("Failed to search active correlation alert", RestStatus.INTERNAL_SERVER_ERROR, e);
                         }
                     });
                 } catch (Exception e) {
-                    log.error("Failed to fetch active alerts in the time window", e);
+                    log.error("Failed to fetch active alerts in the time window: {}", e.getMessage());
                     new SecurityAnalyticsException("Failed to get active alerts in the correlationRuletimewindow", RestStatus.INTERNAL_SERVER_ERROR, e);
                 }
             }
@@ -181,7 +181,7 @@ public class CorrelationRuleScheduler {
 
                 @Override
                 public void onFailure(Exception e) {
-                    log.error("Failed to index correlation alert", e);
+                    log.error("Failed to index correlation alert: {}", e.getMessage());
                 }
             });
         }
