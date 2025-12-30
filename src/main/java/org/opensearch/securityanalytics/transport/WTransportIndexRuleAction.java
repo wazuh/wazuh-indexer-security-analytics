@@ -91,8 +91,8 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
             WTransportIndexRuleAction.this.threadPool.getThreadContext().stashContext();
             
             // First, ensure the pre-packaged rules index exists with proper mappings
-            ensureRuleIndexInitialized(ActionListener.wrap(
-                    v -> processRule(),
+            this.ensureRuleIndexInitialized(ActionListener.wrap(
+                    v -> this.processRule(),
                     this::onFailures
             ));
         }
@@ -110,7 +110,7 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
             
             // Create the index with proper mappings
             try {
-                ruleIndices.initRuleIndex(new ActionListener<>() {
+                WTransportIndexRuleAction.this.ruleIndices.initRuleIndex(new ActionListener<>() {
                     @Override
                     public void onResponse(CreateIndexResponse response) {
                         if (response.isAcknowledged()) {
@@ -151,12 +151,12 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
                 try {
                     SigmaRule parsedRule = SigmaRule.fromYaml(ruleStr, true);
                     if (parsedRule == null) {
-                        onFailures(new SigmaError("Failed to parse rule for log type: " + category));
+                        this.onFailures(new SigmaError("Failed to parse rule for log type: " + category));
                         return;
                     }
                     
                     if (parsedRule.getErrors() != null && !parsedRule.getErrors().getErrors().isEmpty()) {
-                        onFailures(parsedRule.getErrors());
+                        this.onFailures(parsedRule.getErrors());
                         return;
                     }
                     
@@ -189,7 +189,7 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
                     return;
 
                 } catch (IOException | SigmaConditionError | SigmaValueError e) {
-                    onFailures(new SigmaError("Could not process rule for log type: " + category + ". Error: " + e.getMessage()));
+                    this.onFailures(new SigmaError("Could not process rule for log type: " + category + ". Error: " + e.getMessage()));
                     return;
                 }
             }
@@ -201,7 +201,7 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
                 }
                 this.indexRule(rule, fieldMappings);
             } catch (IOException | SigmaError | CompositeSigmaErrors e) {
-                onFailures(e);
+                this.onFailures(e);
             }
         }
 
@@ -250,7 +250,7 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
         private Rule getRule(Map<String, String> fieldMappings, String ruleStr, String category) throws IOException, SigmaValueError, SigmaConditionError {
             SigmaRule parsedRule = SigmaRule.fromYaml(ruleStr, true);
             if (parsedRule.getErrors() != null && !parsedRule.getErrors().getErrors().isEmpty()) {
-                onFailures(parsedRule.getErrors());
+                this.onFailures(parsedRule.getErrors());
                 return null;
             }
             QueryBackend backend = new OSQueryBackend(fieldMappings, true, true);
@@ -282,18 +282,18 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
                 public void onResponse(IndexResponse indexResponse) {
                     // Update field mappings in the log type config index
                     // This associates the fields with the integration/category
-                    updateFieldMappings(
+                    AsyncWazuhIndexRule.this.updateFieldMappings(
                             rule,
                             ruleFieldMappings,
                             ActionListener.wrap(
                                     v -> {
                                         log.info("Successfully updated field mappings for rule: {}", rule.getId());
-                                        onOperation(indexResponse, rule);
+                                        AsyncWazuhIndexRule.this.onOperation(indexResponse, rule);
                                     },
                                     e -> {
                                         log.error("Failed to update field mappings for rule: {}", rule.getId(), e);
                                         // Still consider the rule indexed successfully
-                                        onOperation(indexResponse, rule);
+                                        AsyncWazuhIndexRule.this.onOperation(indexResponse, rule);
                                     }
                             )
                     );
