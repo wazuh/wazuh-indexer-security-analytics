@@ -197,39 +197,43 @@ public class TransportDeleteDetectorAction extends HandledTransportAction<Delete
             deleteWorkflow(detector, onDeleteWorkflowStep);
             onDeleteWorkflowStep.whenComplete(acknowledgedResponse -> {
                 List<String> monitorIds = detector.getMonitorIds();
-                ActionListener<DeleteMonitorResponse> deletesListener = new GroupedActionListener<>(new ActionListener<>() {
-                    @Override
-                    public void onResponse(Collection<DeleteMonitorResponse> responses) {
-                        SetOnce<RestStatus> errorStatusSupplier = new SetOnce<>();
-                        if (responses.stream().filter(response -> {
-                            if (response.getStatus() != RestStatus.OK) {
-                                log.error("Detector not being deleted because monitor [{}] could not be deleted. Status [{}]", response.getId(), response.getStatus());
-                                errorStatusSupplier.trySet(response.getStatus());
-                                return true;
+                if (monitorIds == null || monitorIds.isEmpty()) {
+                    deleteDetectorFromConfig(detector.getId(), request.getRefreshPolicy());
+                } else {
+                    ActionListener<DeleteMonitorResponse> deletesListener = new GroupedActionListener<>(new ActionListener<>() {
+                        @Override
+                        public void onResponse(Collection<DeleteMonitorResponse> responses) {
+                            SetOnce<RestStatus> errorStatusSupplier = new SetOnce<>();
+                            if (responses.stream().filter(response -> {
+                                if (response.getStatus() != RestStatus.OK) {
+                                    log.error("Detector not being deleted because monitor [{}] could not be deleted. Status [{}]", response.getId(), response.getStatus());
+                                    errorStatusSupplier.trySet(response.getStatus());
+                                    return true;
+                                }
+                                return false;
+                            }).count() > 0) {
+                                onFailures(new OpenSearchStatusException("Monitor associated with detected could not be deleted", errorStatusSupplier.get()));
                             }
-                            return false;
-                        }).count() > 0) {
-                            onFailures(new OpenSearchStatusException("Monitor associated with detected could not be deleted", errorStatusSupplier.get()));
-                        }
-                        deleteDetectorFromConfig(detector.getId(), request.getRefreshPolicy());
-                    }
-
-                    @Override
-                    public void onFailure(Exception e) {
-                        if (exceptionChecker.doesGroupedActionListenerExceptionMatch(e, ACCEPTABLE_ENTITY_MISSING_THROWABLE_MATCHERS)) {
-                            logAcceptableEntityMissingException(e, detector.getId());
                             deleteDetectorFromConfig(detector.getId(), request.getRefreshPolicy());
-                        } else {
-                            log.error(String.format(Locale.ROOT, "Failed to delete detector %s", detector.getId()), e.getMessage());
-                            if (counter.compareAndSet(false, true)) {
-                                finishHim(null, e);
+                        }
+
+                        @Override
+                        public void onFailure(Exception e) {
+                            if (exceptionChecker.doesGroupedActionListenerExceptionMatch(e, ACCEPTABLE_ENTITY_MISSING_THROWABLE_MATCHERS)) {
+                                logAcceptableEntityMissingException(e, detector.getId());
+                                deleteDetectorFromConfig(detector.getId(), request.getRefreshPolicy());
+                            } else {
+                                log.error(String.format(Locale.ROOT, "Failed to delete detector %s", detector.getId()), e.getMessage());
+                                if (counter.compareAndSet(false, true)) {
+                                    finishHim(null, e);
+                                }
                             }
                         }
+                    }, monitorIds.size());
+                    for (String monitorId : monitorIds) {
+                        deleteAlertingMonitor(monitorId, request.getRefreshPolicy(),
+                                deletesListener);
                     }
-                }, monitorIds.size());
-                for (String monitorId : monitorIds) {
-                    deleteAlertingMonitor(monitorId, request.getRefreshPolicy(),
-                            deletesListener);
                 }
             }, e -> {
                 if (counter.compareAndSet(false, true)) {
