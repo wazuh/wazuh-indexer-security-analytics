@@ -71,7 +71,7 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
 
     @Override
     protected void doExecute(Task task, WIndexRuleRequest request, ActionListener<WIndexRuleResponse> listener) {
-        AsyncWazuhIndexRule asyncAction = new AsyncWazuhIndexRule(task, request, listener);
+        AsyncWazuhIndexRule asyncAction = new AsyncWazuhIndexRule(request, listener);
         asyncAction.start();
     }
 
@@ -80,10 +80,8 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
         private final ActionListener<WIndexRuleResponse> listener;
         private final AtomicReference<Object> response;
         private final AtomicBoolean counter = new AtomicBoolean();
-        private final Task task;
 
-        AsyncWazuhIndexRule(Task task, WIndexRuleRequest request, ActionListener<WIndexRuleResponse> listener) {
-            this.task = task;
+        AsyncWazuhIndexRule(WIndexRuleRequest request, ActionListener<WIndexRuleResponse> listener) {
             this.request = request;
             this.listener = listener;
             this.response = new AtomicReference<>();
@@ -104,7 +102,7 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
          * This must be done before indexing any rules to avoid mapping conflicts.
          */
         private void ensureRuleIndexInitialized(ActionListener<Void> listener) {
-            if (ruleIndices.ruleIndexExists(true)) {
+            if (WTransportIndexRuleAction.this.ruleIndices.ruleIndexExists(true)) {
                 // Index already exists, proceed
                 listener.onResponse(null);
                 return;
@@ -126,7 +124,7 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
                     @Override
                     public void onFailure(Exception e) {
                         // Index might already exist (race condition), check again
-                        if (ruleIndices.ruleIndexExists(true)) {
+                        if (WTransportIndexRuleAction.this.ruleIndices.ruleIndexExists(true)) {
                             listener.onResponse(null);
                         } else {
                             listener.onFailure(e);
@@ -146,12 +144,10 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
             String ruleStr = this.request.getRule();
             
             // Extract fields from the rule and create identity mappings
-            Map<String, String> fieldMappings = extractFieldsAsIdentityMappings(ruleStr);
+            Map<String, String> fieldMappings = this.extractFieldsAsIdentityMappings(ruleStr);
             
             // If no fields could be extracted, try to index the rule anyway
             if (fieldMappings.isEmpty()) {
-                log.debug("No field mappings extracted for log type: {}. Attempting to index rule with empty mappings.", category);
-                
                 try {
                     SigmaRule parsedRule = SigmaRule.fromYaml(ruleStr, true);
                     if (parsedRule == null) {
@@ -174,9 +170,6 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
                         fieldMappings.put(field, field);
                     }
                     
-                    log.debug("Extracted {} fields after conversion for log type {}: {}", 
-                            fieldMappings.size(), category, fieldMappings.keySet());
-                    
                     if (fieldMappings.isEmpty()) {
                         // Rule has no field-based conditions (keyword-only rule)
                         log.debug("Rule has no field-based conditions (keyword-only). Indexing with empty field mappings for log type: {}", category);
@@ -194,15 +187,14 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
                     
                     this.indexRule(rule, fieldMappings);
                     return;
-                    
-                } catch (Exception e) {
+
+                } catch (IOException | SigmaConditionError | SigmaValueError e) {
                     onFailures(new SigmaError("Could not process rule for log type: " + category + ". Error: " + e.getMessage()));
                     return;
                 }
             }
             
             try {
-                log.debug("Using identity field mappings for log type {}: {}", category, fieldMappings);
                 Rule rule = this.getRule(fieldMappings, ruleStr, category);
                 if (rule == null) {
                     throw new SigmaError("Failed to parse rule");
@@ -224,12 +216,11 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
                 SigmaRule sigmaRule = SigmaRule.fromYaml(ruleStr, true);
                 
                 if (sigmaRule == null) {
-                    log.debug("SigmaRule.fromYaml returned null for rule");
-                    return identityMappings;
+                    throw new SigmaError("Failed to parse rule for field extraction");
                 }
                 
                 if (sigmaRule.getErrors() != null && !sigmaRule.getErrors().getErrors().isEmpty()) {
-                    log.warn("Rule has parsing errors: {}", sigmaRule.getErrors().getErrors());
+                   throw new SigmaError("Errors encountered while parsing rule for field extraction: " + sigmaRule.getErrors().getErrors());
                 }
                 
                 QueryBackend backend = new OSQueryBackend(new HashMap<>(), true, false);
@@ -238,25 +229,24 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
                 Map<String, Object> queryFields = backend.getQueryFields();
                 
                 if (queryFields == null || queryFields.isEmpty()) {
-                    log.debug("No fields extracted from rule. This may be a keyword-only rule. Rule content:\n{}", 
-                            ruleStr.substring(0, Math.min(500, ruleStr.length())));
+                    // No fields could be extracted, might be a keyword-only rule
                     return identityMappings;
                 }
                 
                 for (String field : queryFields.keySet()) {
                     identityMappings.put(field, field);
                 }
-                
-                log.debug("Extracted {} identity mappings from rule: {}", 
-                        identityMappings.size(), identityMappings.keySet());
                         
-            } catch (Exception e) {
-                log.debug("Failed to extract fields from rule. Error: {}. Rule content:\n{}", 
-                        e.getMessage(), ruleStr.substring(0, Math.min(500, ruleStr.length())), e);
+            } catch (IOException | SigmaError e) {
+                throw new RuntimeException("Field extraction failed", e);
             }
             return identityMappings;
         }
 
+        /**
+         * Parses a Sigma rule from YAML and converts it to an OpenSearch Rule.
+         * Uses the provided field mappings to transform rule fields to query fields.
+         */
         private Rule getRule(Map<String, String> fieldMappings, String ruleStr, String category) throws IOException, SigmaValueError, SigmaConditionError {
             SigmaRule parsedRule = SigmaRule.fromYaml(ruleStr, true);
             if (parsedRule.getErrors() != null && !parsedRule.getErrors().getErrors().isEmpty()) {
@@ -266,7 +256,6 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
             QueryBackend backend = new OSQueryBackend(fieldMappings, true, true);
             List<Object> queries = backend.convertRule(parsedRule);
             Set<String> queryFieldNames = backend.getQueryFields().keySet();
-            log.debug("Creating rule with queries: {} and fields: {}", queries, queryFieldNames);
 
             return new Rule(
                     parsedRule.getId().toString(),
@@ -279,6 +268,10 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
             );
         }
 
+        /**
+         * Indexes a Rule into the pre-packaged rules index.
+         * After successful indexing, updates field mappings in the log type config index.
+         */
         void indexRule(Rule rule, Map<String, String> ruleFieldMappings) throws IOException {
             IndexRequest indexRequest = new IndexRequest(PRE_PACKAGED_RULES_INDEX)
                     .id(rule.getId())
@@ -287,7 +280,6 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
             client.index(indexRequest, new ActionListener<>() {
                 @Override
                 public void onResponse(IndexResponse indexResponse) {
-                    log.debug("Successfully indexed rule with id: {}", indexResponse.getId());
                     // Update field mappings in the log type config index
                     // This associates the fields with the integration/category
                     updateFieldMappings(
@@ -295,11 +287,11 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
                             ruleFieldMappings,
                             ActionListener.wrap(
                                     v -> {
-                                        log.debug("Successfully updated field mappings for rule: {}", rule.getId());
+                                        log.info("Successfully updated field mappings for rule: {}", rule.getId());
                                         onOperation(indexResponse, rule);
                                     },
                                     e -> {
-                                        log.debug("Failed to update field mappings for rule: {}", rule.getId(), e);
+                                        log.error("Failed to update field mappings for rule: {}", rule.getId(), e);
                                         // Still consider the rule indexed successfully
                                         onOperation(indexResponse, rule);
                                     }
@@ -309,7 +301,7 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
 
                 @Override
                 public void onFailure(Exception e) {
-                    listener.onFailure(e);
+                    AsyncWazuhIndexRule.this.listener.onFailure(e);
                 }
             });
         }
@@ -341,9 +333,6 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
                         Set.of(rule.getCategory())
                 );
                 fieldMappingDocs.add(mappingDoc);
-                
-                log.debug("Creating field mapping: {} -> {} for category: {}", 
-                        fieldName, schemaFields.get(defaultSchema), rule.getCategory());
             });
 
             WTransportIndexRuleAction.this.logTypeService.indexFieldMappingsForWazuh(
@@ -352,7 +341,9 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
             );
         }
 
-        // Handlers
+        /**
+         * Handler for successful rule indexing operations.
+         */
         private void onOperation(IndexResponse response, Rule rule) {
             this.response.set(response);
             if (this.counter.compareAndSet(false, true)) {
@@ -360,12 +351,18 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
             }
         }
 
+        /**
+         * Handler for failed operations.
+         */
         private void onFailures(Exception t) {
             if (this.counter.compareAndSet(false, true)) {
                 this.finishHim(null, t);
             }
         }
 
+        /**
+         * Completes the async action by sending the response or error to the listener.
+         */
         private void finishHim(Rule rule, Exception t) {
             WTransportIndexRuleAction.this.threadPool.executor(ThreadPool.Names.GENERIC).execute(ActionRunnable.supply(this.listener, () -> {
                 if (t != null) {
