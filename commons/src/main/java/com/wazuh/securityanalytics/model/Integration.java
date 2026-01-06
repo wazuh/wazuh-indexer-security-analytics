@@ -11,7 +11,10 @@ import java.util.Map;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
 import org.opensearch.core.common.io.stream.Writeable;
-import org.opensearch.core.xcontent.*;
+import org.opensearch.core.xcontent.ToXContentObject;
+import org.opensearch.core.xcontent.XContentBuilder;
+import org.opensearch.core.xcontent.XContentParser;
+import org.opensearch.core.xcontent.XContentParserUtils;
 
 public class Integration implements Writeable, ToXContentObject {
 
@@ -144,26 +147,14 @@ public class Integration implements Writeable, ToXContentObject {
             xcp.nextToken();
 
             switch (fieldName) {
-                case NAME_FIELD:
-                    name = xcp.text();
-                    break;
-                case DESCRIPTION_FIELD:
-                    description = xcp.text();
-                    break;
-                case CATEGORY_FIELD:
-                    category = xcp.textOrNull();
-                    break;
-                case SOURCE_FIELD:
-                    source = xcp.text();
-                    break;
-                case TAGS_FIELD:
-                    tags = xcp.map();
-                    break;
-                case RULES_FIELD:
-                    // rules = xcp.list();
-                    break;
-                default:
-                    xcp.skipChildren();
+                case NAME_FIELD -> name = xcp.text();
+                case DESCRIPTION_FIELD -> description = xcp.text();
+                case CATEGORY_FIELD -> category = xcp.textOrNull();
+                case SOURCE_FIELD -> source = xcp.text();
+                case TAGS_FIELD -> tags = xcp.map();
+                case RULES_FIELD -> {
+                }
+                default -> xcp.skipChildren();
             }
         }
         return new Integration(id, version, name, description, category, source, rules, tags);

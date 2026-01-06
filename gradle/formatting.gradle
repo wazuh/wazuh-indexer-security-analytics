@@ -44,11 +44,11 @@ allprojects {
 
             importOrder('java', 'javax', '', 'com.amazon', 'org.opensearch', '\\#')
 
-//            custom 'Refuse wildcard imports', {
-//                if (it =~ /\s+import .*\*;/) {
-//                    throw new AssertionError("Do not use wildcard imports.  'spotlessApply' cannot resolve this issue.")
-//                }
-//            }
+           custom 'Refuse wildcard imports', {
+               if (it =~ /\s+import .*\*;/) {
+                   throw new AssertionError("Do not use wildcard imports.  'spotlessApply' cannot resolve this issue.")
+               }
+           }
 
             if (System.getProperty('spotless.paddedcell') != null) {
                 paddedCell()
