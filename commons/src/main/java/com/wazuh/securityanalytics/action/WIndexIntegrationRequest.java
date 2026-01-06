@@ -12,14 +12,14 @@ import java.io.IOException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import com.wazuh.securityanalytics.model.Integration;
+
 import org.opensearch.action.ActionRequest;
 import org.opensearch.action.ActionRequestValidationException;
 import org.opensearch.action.support.WriteRequest;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
 import org.opensearch.rest.RestRequest;
-
-import com.wazuh.securityanalytics.model.Integration;
 
 /**
  * Request for indexing a Wazuh integration (custom log type).

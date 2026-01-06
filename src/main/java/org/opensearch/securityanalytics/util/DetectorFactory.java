@@ -51,27 +51,27 @@ public class DetectorFactory {
         DetectorInput detectorInput = new DetectorInput(description, List.of(dataStream), rules, new ArrayList<>());
         // Generate Detector object with this template
         return new Detector(
-                "Detector for " + integration,
-                version,
-                name,
-                true,
-                schedule,
-                Instant.now(),
-                Instant.now(),
-                integration,
-                null,
-                List.of(detectorInput),
-                new ArrayList<>(),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                false
+            "Detector for " + integration,
+            version,
+            name,
+            true,
+            schedule,
+            Instant.now(),
+            Instant.now(),
+            integration,
+            null,
+            List.of(detectorInput),
+            new ArrayList<>(),
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            false
         );
     }
 }

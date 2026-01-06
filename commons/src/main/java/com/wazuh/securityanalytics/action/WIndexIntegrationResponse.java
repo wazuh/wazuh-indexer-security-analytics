@@ -10,14 +10,14 @@ package com.wazuh.securityanalytics.action;
 
 import java.io.IOException;
 
+import com.wazuh.securityanalytics.model.Integration;
+
 import org.opensearch.core.action.ActionResponse;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
 import org.opensearch.core.rest.RestStatus;
 import org.opensearch.core.xcontent.ToXContentObject;
 import org.opensearch.core.xcontent.XContentBuilder;
-
-import com.wazuh.securityanalytics.model.Integration;
 
 /**
  * Response for a Wazuh integration indexing operation.

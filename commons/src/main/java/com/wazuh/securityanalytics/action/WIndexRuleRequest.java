@@ -9,11 +9,12 @@ import java.util.Locale;
 
 import org.opensearch.action.ActionRequest;
 import org.opensearch.action.ActionRequestValidationException;
-import static org.opensearch.action.ValidateActions.addValidationError;
 import org.opensearch.action.support.WriteRequest;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
 import org.opensearch.rest.RestRequest;
+
+import static org.opensearch.action.ValidateActions.addValidationError;
 
 /**
  * Request for indexing a Wazuh rule.

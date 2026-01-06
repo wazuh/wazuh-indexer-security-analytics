@@ -2,11 +2,12 @@ package org.opensearch.securityanalytics.transport;
 
 import com.wazuh.securityanalytics.action.WIndexRuleAction;
 import com.wazuh.securityanalytics.action.WIndexRuleRequest;
+import com.wazuh.securityanalytics.action.WIndexRuleResponse;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
 import org.opensearch.action.support.ActionFilters;
 import org.opensearch.action.support.HandledTransportAction;
-import com.wazuh.securityanalytics.action.WIndexRuleResponse;
 import org.opensearch.action.support.WriteRequest;
 import org.opensearch.common.inject.Inject;
 import org.opensearch.core.action.ActionListener;
@@ -31,7 +32,9 @@ import org.opensearch.transport.client.Client;
  * @see WIndexRuleRequest
  * @see WIndexRuleResponse
  */
-public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRuleRequest, WIndexRuleResponse> implements SecureTransportAction {
+public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRuleRequest, WIndexRuleResponse>
+    implements
+        SecureTransportAction {
     private static final Logger log = LogManager.getLogger(WTransportIndexRuleAction.class);
 
     private final Client client;
@@ -65,12 +68,12 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
     @Override
     protected void doExecute(Task task, WIndexRuleRequest request, ActionListener<WIndexRuleResponse> listener) {
         IndexRuleRequest internalRequest = new IndexRuleRequest(
-                request.getRuleId(),
-                WriteRequest.RefreshPolicy.IMMEDIATE,
-                request.getLogType(),
-                request.getMethod(),
-                request.getRule(),
-                request.isForced()
+            request.getRuleId(),
+            WriteRequest.RefreshPolicy.IMMEDIATE,
+            request.getLogType(),
+            request.getMethod(),
+            request.getRule(),
+            request.isForced()
         );
         this.client.execute(IndexRuleAction.INSTANCE, internalRequest, new ActionListener<IndexRuleResponse>() {
             @Override
@@ -78,6 +81,7 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
                 log.info("Successfully indexed rule with id: " + response.getId());
                 listener.onResponse(new WIndexRuleResponse(response.getId(), response.getVersion(), response.getStatus()));
             }
+
             @Override
             public void onFailure(Exception e) {
                 listener.onFailure(e);

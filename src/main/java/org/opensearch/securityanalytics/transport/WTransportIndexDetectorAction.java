@@ -1,7 +1,11 @@
 package org.opensearch.securityanalytics.transport;
 
+import com.wazuh.securityanalytics.action.WIndexDetectorAction;
+import com.wazuh.securityanalytics.action.WIndexDetectorRequest;
+import com.wazuh.securityanalytics.action.WIndexDetectorResponse;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
 import org.opensearch.action.support.ActionFilters;
 import org.opensearch.action.support.HandledTransportAction;
 import org.opensearch.common.inject.Inject;
@@ -15,10 +19,6 @@ import org.opensearch.securityanalytics.util.DetectorFactory;
 import org.opensearch.tasks.Task;
 import org.opensearch.transport.TransportService;
 import org.opensearch.transport.client.Client;
-
-import com.wazuh.securityanalytics.action.WIndexDetectorAction;
-import com.wazuh.securityanalytics.action.WIndexDetectorRequest;
-import com.wazuh.securityanalytics.action.WIndexDetectorResponse;
 
 /**
  * Transport action handler for indexing Wazuh detectors.
@@ -35,7 +35,9 @@ import com.wazuh.securityanalytics.action.WIndexDetectorResponse;
  * @see WIndexDetectorResponse
  * @see DetectorFactory
  */
-public class WTransportIndexDetectorAction extends HandledTransportAction<WIndexDetectorRequest, WIndexDetectorResponse> implements SecureTransportAction {
+public class WTransportIndexDetectorAction extends HandledTransportAction<WIndexDetectorRequest, WIndexDetectorResponse>
+    implements
+        SecureTransportAction {
     private final Client client;
     private static final Logger log = LogManager.getLogger(WTransportIndexDetectorAction.class);
 
@@ -47,9 +49,7 @@ public class WTransportIndexDetectorAction extends HandledTransportAction<WIndex
      * @param actionFilters    filters to apply to the action execution
      */
     @Inject
-    public WTransportIndexDetectorAction(TransportService transportService,
-                                            Client client,
-                                            ActionFilters actionFilters) {
+    public WTransportIndexDetectorAction(TransportService transportService, Client client, ActionFilters actionFilters) {
         super(WIndexDetectorAction.NAME, transportService, actionFilters, WIndexDetectorRequest::new);
         this.client = client;
     }
@@ -74,10 +74,11 @@ public class WTransportIndexDetectorAction extends HandledTransportAction<WIndex
         Detector detector = DetectorFactory.createDetector(request.getLogTypeName(), request.getCategory(), request.getRules());
         detector.setId(request.getDetectorId());
         IndexDetectorRequest indexDetectorRequest = new IndexDetectorRequest(
-                detector.getId(),
-                request.getRefreshPolicy(),
-                RestRequest.Method.PUT,
-                detector);
+            detector.getId(),
+            request.getRefreshPolicy(),
+            RestRequest.Method.PUT,
+            detector
+        );
         this.client.execute(IndexDetectorAction.INSTANCE, indexDetectorRequest, new ActionListener<>() {
             @Override
             public void onResponse(IndexDetectorResponse response) {
