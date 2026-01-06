@@ -4,31 +4,31 @@
  */
 package org.opensearch.securityanalytics.model;
 
+import java.io.IOException;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.opensearch.commons.alerting.model.CronSchedule;
+import org.opensearch.commons.alerting.model.Schedule;
+import org.opensearch.commons.authuser.User;
+import org.opensearch.core.ParseField;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
 import org.opensearch.core.common.io.stream.Writeable;
-import org.opensearch.core.xcontent.XContentParserUtils;
-import org.opensearch.core.ParseField;
 import org.opensearch.core.xcontent.NamedXContentRegistry;
 import org.opensearch.core.xcontent.ToXContent;
 import org.opensearch.core.xcontent.ToXContentObject;
 import org.opensearch.core.xcontent.XContentBuilder;
 import org.opensearch.core.xcontent.XContentParser;
-import org.opensearch.commons.alerting.model.CronSchedule;
-import org.opensearch.commons.alerting.model.Schedule;
-import org.opensearch.commons.authuser.User;
-
-import java.io.IOException;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Locale;
-import java.util.Objects;
+import org.opensearch.core.xcontent.XContentParserUtils;
 
 public class Detector implements Writeable, ToXContentObject {
 
@@ -662,6 +662,10 @@ public class Detector implements Writeable, ToXContentObject {
 
     public Boolean getThreatIntelEnabled() {
         return threatIntelEnabled;
+    }
+
+    public String getLogType() {
+        return logType;
     }
 
     @Override
