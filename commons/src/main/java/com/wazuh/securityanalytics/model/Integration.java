@@ -16,8 +16,24 @@ import org.opensearch.core.xcontent.XContentBuilder;
 import org.opensearch.core.xcontent.XContentParser;
 import org.opensearch.core.xcontent.XContentParserUtils;
 
+/**
+ * Represents a Wazuh integration configuration.
+ *
+ * An integration defines a log type with associated metadata including name, description,
+ * category, source, tags, and associated rule IDs. Integrations are used to configure
+ * how different log sources are processed and analyzed within Security Analytics.
+ *
+ * This class implements {@link Writeable} for cluster serialization and {@link ToXContentObject}
+ * for REST API responses.
+ *
+ * @see #WAZUH_CATEGORIES for the list of valid categories
+ */
 public class Integration implements Writeable, ToXContentObject {
 
+    /**
+     * List of valid Wazuh integration categories.
+     * Categories are used to classify integrations by their log type domain.
+     */
     public static final List<String> WAZUH_CATEGORIES = List.of(
         "Access Management",
         "Applications",
@@ -55,6 +71,18 @@ public class Integration implements Writeable, ToXContentObject {
 
     private Map<String, Object> tags;
 
+    /**
+     * Constructs a new Integration with all fields.
+     *
+     * @param id          the unique identifier for this integration
+     * @param version     the version number of this integration
+     * @param name        the display name of the integration
+     * @param description a description of what this integration does
+     * @param category    the category this integration belongs to (must be in WAZUH_CATEGORIES)
+     * @param source      the source identifier for this integration
+     * @param ruleIds     list of rule IDs associated with this integration
+     * @param tags        additional metadata tags for this integration
+     */
     public Integration(
         String id,
         Long version,
@@ -75,6 +103,12 @@ public class Integration implements Writeable, ToXContentObject {
         this.tags = tags;
     }
 
+    /**
+     * Constructs an Integration by deserializing from a stream.
+     *
+     * @param sin the stream input to read from
+     * @throws IOException if an I/O error occurs during deserialization
+     */
     public Integration(StreamInput sin) throws IOException {
         this(
             sin.readString(),
@@ -88,6 +122,11 @@ public class Integration implements Writeable, ToXContentObject {
         );
     }
 
+    /**
+     * Constructs an Integration from a map of field values.
+     *
+     * @param input the map containing integration field values
+     */
     @SuppressWarnings("unchecked")
     public Integration(Map<String, Object> input) {
         this(
@@ -126,6 +165,15 @@ public class Integration implements Writeable, ToXContentObject {
             .endObject();
     }
 
+    /**
+     * Parses an Integration from XContent.
+     *
+     * @param xcp     the XContent parser to read from
+     * @param id      the integration ID (defaults to empty string if null)
+     * @param version the version number (defaults to 1L if null)
+     * @return the parsed Integration instance
+     * @throws IOException if an I/O error occurs during parsing
+     */
     public static Integration parse(XContentParser xcp, String id, Long version) throws IOException {
         if (id == null) {
             id = "";

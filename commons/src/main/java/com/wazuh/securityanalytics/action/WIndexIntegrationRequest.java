@@ -12,8 +12,6 @@ import java.io.IOException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import com.wazuh.securityanalytics.model.Integration;
-
 import org.opensearch.action.ActionRequest;
 import org.opensearch.action.ActionRequestValidationException;
 import org.opensearch.action.support.WriteRequest;
@@ -21,6 +19,21 @@ import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
 import org.opensearch.rest.RestRequest;
 
+import com.wazuh.securityanalytics.model.Integration;
+
+/**
+ * Request for indexing a Wazuh integration (custom log type).
+ *
+ * This request contains all the information needed to create or update an integration,
+ * including the log type ID, refresh policy, HTTP method, and the integration data.
+ *
+ * The integration name must match the pattern [a-z0-9_-]{2,50} and the category
+ * must be one of the valid Wazuh categories defined in {@link Integration#WAZUH_CATEGORIES}.
+ *
+ * @see WIndexIntegrationAction
+ * @see WIndexIntegrationResponse
+ * @see Integration
+ */
 public class WIndexIntegrationRequest extends ActionRequest {
 
     private final String logTypeId;
@@ -31,8 +44,17 @@ public class WIndexIntegrationRequest extends ActionRequest {
 
     private final Integration customLogType;
 
+    /** Pattern for validating custom log type names. */
     private static final Pattern IS_VALID_CUSTOM_LOG_NAME = Pattern.compile("[a-z0-9_-]{2,50}");
 
+    /**
+     * Constructs a new WIndexIntegrationRequest.
+     *
+     * @param logTypeId     the unique identifier for the log type
+     * @param refreshPolicy the refresh policy for the index operation
+     * @param method        the HTTP method (PUT for update, POST for create)
+     * @param customLogType the integration data to index
+     */
     public WIndexIntegrationRequest(
         String logTypeId,
         WriteRequest.RefreshPolicy refreshPolicy,
@@ -46,6 +68,12 @@ public class WIndexIntegrationRequest extends ActionRequest {
         this.customLogType = customLogType;
     }
 
+    /**
+     * Constructs a WIndexIntegrationRequest by deserializing from a stream.
+     *
+     * @param sin the stream input to read from
+     * @throws IOException if an I/O error occurs during deserialization
+     */
     public WIndexIntegrationRequest(StreamInput sin) throws IOException {
         this(sin.readString(), WriteRequest.RefreshPolicy.readFrom(sin), sin.readEnum(RestRequest.Method.class), Integration.readFrom(sin));
     }
