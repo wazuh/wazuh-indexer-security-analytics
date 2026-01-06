@@ -8,15 +8,16 @@
 
 package com.wazuh.securityanalytics.action;
 
+import java.io.IOException;
+
+import com.wazuh.securityanalytics.model.Integration;
+
 import org.opensearch.core.action.ActionResponse;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
 import org.opensearch.core.rest.RestStatus;
 import org.opensearch.core.xcontent.ToXContentObject;
 import org.opensearch.core.xcontent.XContentBuilder;
-import com.wazuh.securityanalytics.model.Integration;
-
-import java.io.IOException;
 
 public class WIndexIntegrationResponse extends ActionResponse implements ToXContentObject {
 
@@ -30,12 +31,7 @@ public class WIndexIntegrationResponse extends ActionResponse implements ToXCont
 
     private final Integration customLogType;
 
-    public WIndexIntegrationResponse(
-            String id,
-            Long version,
-            RestStatus status,
-            Integration customLogType
-    ) {
+    public WIndexIntegrationResponse(String id, Long version, RestStatus status, Integration customLogType) {
         super();
         this.id = id;
         this.version = version;
@@ -44,12 +40,7 @@ public class WIndexIntegrationResponse extends ActionResponse implements ToXCont
     }
 
     public WIndexIntegrationResponse(StreamInput sin) throws IOException {
-        this(
-                sin.readString(),
-                sin.readLong(),
-                sin.readEnum(RestStatus.class),
-                Integration.readFrom(sin)
-        );
+        this(sin.readString(), sin.readLong(), sin.readEnum(RestStatus.class), Integration.readFrom(sin));
     }
 
     @Override
@@ -63,10 +54,10 @@ public class WIndexIntegrationResponse extends ActionResponse implements ToXCont
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
         return builder.startObject()
-                .field("_id", this.id)
-                .field("_version", this.version)
-                .field(CUSTOM_LOG_TYPES_FIELD, this.customLogType)
-                .endObject();
+            .field("_id", this.id)
+            .field("_version", this.version)
+            .field(CUSTOM_LOG_TYPES_FIELD, this.customLogType)
+            .endObject();
     }
 
     public String getId() {

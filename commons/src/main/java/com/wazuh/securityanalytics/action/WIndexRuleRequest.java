@@ -4,6 +4,7 @@
  */
 package com.wazuh.securityanalytics.action;
 
+import java.io.IOException;
 import java.util.Locale;
 
 import org.opensearch.action.ActionRequest;
@@ -12,8 +13,6 @@ import org.opensearch.action.support.WriteRequest;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
 import org.opensearch.rest.RestRequest;
-
-import java.io.IOException;
 
 import static org.opensearch.action.ValidateActions.addValidationError;
 
@@ -51,12 +50,12 @@ public class WIndexRuleRequest extends ActionRequest {
     private final Boolean forced;
 
     public WIndexRuleRequest(
-            String ruleId,
-            WriteRequest.RefreshPolicy refreshPolicy,
-            String logType,
-            RestRequest.Method method,
-            String rule,
-            Boolean forced
+        String ruleId,
+        WriteRequest.RefreshPolicy refreshPolicy,
+        String logType,
+        RestRequest.Method method,
+        String rule,
+        Boolean forced
     ) {
         super();
         this.ruleId = ruleId;
@@ -68,12 +67,14 @@ public class WIndexRuleRequest extends ActionRequest {
     }
 
     public WIndexRuleRequest(StreamInput sin) throws IOException {
-        this(sin.readString(),
-             WriteRequest.RefreshPolicy.readFrom(sin),
-             sin.readString(),
-             sin.readEnum(RestRequest.Method.class),
-             sin.readString(),
-             sin.readBoolean());
+        this(
+            sin.readString(),
+            WriteRequest.RefreshPolicy.readFrom(sin),
+            sin.readString(),
+            sin.readEnum(RestRequest.Method.class),
+            sin.readString(),
+            sin.readBoolean()
+        );
     }
 
     @Override

@@ -4,11 +4,11 @@
  */
 package com.wazuh.securityanalytics.action;
 
+import java.io.IOException;
+
 import org.opensearch.core.action.ActionResponse;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
-
-import java.io.IOException;
 
 public class WIndexDetectorResponse extends ActionResponse {
     private final String id;
@@ -21,8 +21,7 @@ public class WIndexDetectorResponse extends ActionResponse {
     }
 
     public WIndexDetectorResponse(StreamInput sin) throws IOException {
-        this(sin.readString(),
-             sin.readLong());
+        this(sin.readString(), sin.readLong());
     }
 
     @Override
@@ -30,7 +29,6 @@ public class WIndexDetectorResponse extends ActionResponse {
         out.writeString(this.id);
         out.writeLong(this.version);
     }
-
 
     public String getId() {
         return this.id;

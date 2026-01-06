@@ -4,14 +4,14 @@
  */
 package com.wazuh.securityanalytics.action;
 
+import java.io.IOException;
+
 import org.opensearch.core.action.ActionResponse;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
+import org.opensearch.core.rest.RestStatus;
 import org.opensearch.core.xcontent.ToXContentObject;
 import org.opensearch.core.xcontent.XContentBuilder;
-import org.opensearch.core.rest.RestStatus;
-
-import java.io.IOException;
 
 public class WIndexRuleResponse extends ActionResponse implements ToXContentObject {
 
@@ -30,7 +30,6 @@ public class WIndexRuleResponse extends ActionResponse implements ToXContentObje
      */
     private RestStatus status;
 
-
     public WIndexRuleResponse(String id, Long version, RestStatus status) {
         super();
         this.id = id;
@@ -39,9 +38,7 @@ public class WIndexRuleResponse extends ActionResponse implements ToXContentObje
     }
 
     public WIndexRuleResponse(StreamInput sin) throws IOException {
-        this(sin.readString(),
-             sin.readLong(),
-             sin.readEnum(RestStatus.class));
+        this(sin.readString(), sin.readLong(), sin.readEnum(RestStatus.class));
     }
 
     @Override
@@ -53,9 +50,7 @@ public class WIndexRuleResponse extends ActionResponse implements ToXContentObje
 
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
-        builder.startObject()
-            .field("_id", id)
-            .field("_version", version);
+        builder.startObject().field("_id", id).field("_version", version);
         return builder;
     }
 

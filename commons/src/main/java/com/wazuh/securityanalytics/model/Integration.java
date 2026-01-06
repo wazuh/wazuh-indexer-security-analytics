@@ -4,14 +4,14 @@
  */
 package com.wazuh.securityanalytics.model;
 
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
 import org.opensearch.core.common.io.stream.Writeable;
 import org.opensearch.core.xcontent.*;
-
-import java.io.IOException;
-import java.util.List;
-import java.util.Map;
 
 public class Integration implements Writeable, ToXContentObject {
 
@@ -52,14 +52,16 @@ public class Integration implements Writeable, ToXContentObject {
 
     private Map<String, Object> tags;
 
-    public Integration(String id,
-                       Long version,
-                       String name,
-                       String description,
-                       String category,
-                       String source,
-                       List<String> ruleIds,
-                       Map<String, Object> tags) {
+    public Integration(
+        String id,
+        Long version,
+        String name,
+        String description,
+        String category,
+        String source,
+        List<String> ruleIds,
+        Map<String, Object> tags
+    ) {
         this.id = id != null ? id : "";
         this.version = version != null ? version : 1L;
         this.name = name;
@@ -72,29 +74,28 @@ public class Integration implements Writeable, ToXContentObject {
 
     public Integration(StreamInput sin) throws IOException {
         this(
-                sin.readString(),
-                sin.readLong(),
-                sin.readString(),
-                sin.readString(),
-                sin.readString(),
-                sin.readString(),
-                sin.readStringList(),
-                sin.readMap()
+            sin.readString(),
+            sin.readLong(),
+            sin.readString(),
+            sin.readString(),
+            sin.readString(),
+            sin.readString(),
+            sin.readStringList(),
+            sin.readMap()
         );
     }
 
     @SuppressWarnings("unchecked")
     public Integration(Map<String, Object> input) {
         this(
-                null,
-                null,
-                input.get(NAME_FIELD).toString(),
-                input.get(DESCRIPTION_FIELD).toString(),
-                input.containsKey(CATEGORY_FIELD)? input.get(CATEGORY_FIELD).toString(): null,
-                input.get(SOURCE_FIELD).toString(),
-                input.get(RULES_FIELD) != null ?
-                        (List<String>) input.get(RULES_FIELD) : null,
-                (Map<String, Object>) input.get(TAGS_FIELD)
+            null,
+            null,
+            input.get(NAME_FIELD).toString(),
+            input.get(DESCRIPTION_FIELD).toString(),
+            input.containsKey(CATEGORY_FIELD) ? input.get(CATEGORY_FIELD).toString() : null,
+            input.get(SOURCE_FIELD).toString(),
+            input.get(RULES_FIELD) != null ? (List<String>) input.get(RULES_FIELD) : null,
+            (Map<String, Object>) input.get(TAGS_FIELD)
         );
     }
 
@@ -113,13 +114,13 @@ public class Integration implements Writeable, ToXContentObject {
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
         return builder.startObject()
-                .field(NAME_FIELD, this.name)
-                .field(DESCRIPTION_FIELD, this.description)
-                .field(CATEGORY_FIELD, this.category)
-                .field(SOURCE_FIELD, this.source)
-                .field(TAGS_FIELD, this.tags)
-                .array(RULES_FIELD, this.ruleIds)
-                .endObject();
+            .field(NAME_FIELD, this.name)
+            .field(DESCRIPTION_FIELD, this.description)
+            .field(CATEGORY_FIELD, this.category)
+            .field(SOURCE_FIELD, this.source)
+            .field(TAGS_FIELD, this.tags)
+            .array(RULES_FIELD, this.ruleIds)
+            .endObject();
     }
 
     public static Integration parse(XContentParser xcp, String id, Long version) throws IOException {
@@ -159,7 +160,7 @@ public class Integration implements Writeable, ToXContentObject {
                     tags = xcp.map();
                     break;
                 case RULES_FIELD:
-//                    rules = xcp.list();
+                    // rules = xcp.list();
                     break;
                 default:
                     xcp.skipChildren();

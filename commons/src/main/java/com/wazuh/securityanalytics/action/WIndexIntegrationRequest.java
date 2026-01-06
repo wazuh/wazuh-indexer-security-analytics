@@ -8,17 +8,18 @@
 
 package com.wazuh.securityanalytics.action;
 
+import java.io.IOException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 import com.wazuh.securityanalytics.model.Integration;
+
 import org.opensearch.action.ActionRequest;
 import org.opensearch.action.ActionRequestValidationException;
 import org.opensearch.action.support.WriteRequest;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
 import org.opensearch.rest.RestRequest;
-
-import java.io.IOException;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class WIndexIntegrationRequest extends ActionRequest {
 
@@ -33,10 +34,10 @@ public class WIndexIntegrationRequest extends ActionRequest {
     private static final Pattern IS_VALID_CUSTOM_LOG_NAME = Pattern.compile("[a-z0-9_-]{2,50}");
 
     public WIndexIntegrationRequest(
-            String logTypeId,
-            WriteRequest.RefreshPolicy refreshPolicy,
-            RestRequest.Method method,
-            Integration customLogType
+        String logTypeId,
+        WriteRequest.RefreshPolicy refreshPolicy,
+        RestRequest.Method method,
+        Integration customLogType
     ) {
         super();
         this.logTypeId = logTypeId;
@@ -46,12 +47,7 @@ public class WIndexIntegrationRequest extends ActionRequest {
     }
 
     public WIndexIntegrationRequest(StreamInput sin) throws IOException {
-        this(
-                sin.readString(),
-                WriteRequest.RefreshPolicy.readFrom(sin),
-                sin.readEnum(RestRequest.Method.class),
-                Integration.readFrom(sin)
-        );
+        this(sin.readString(), WriteRequest.RefreshPolicy.readFrom(sin), sin.readEnum(RestRequest.Method.class), Integration.readFrom(sin));
     }
 
     @Override

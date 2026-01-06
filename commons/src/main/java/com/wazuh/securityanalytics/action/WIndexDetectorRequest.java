@@ -4,14 +4,14 @@
  */
 package com.wazuh.securityanalytics.action;
 
+import java.io.IOException;
+import java.util.List;
+
 import org.opensearch.action.ActionRequest;
 import org.opensearch.action.ActionRequestValidationException;
 import org.opensearch.action.support.WriteRequest;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
-
-import java.io.IOException;
-import java.util.List;
 
 public class WIndexDetectorRequest extends ActionRequest {
     private final String detectorId;
@@ -21,11 +21,12 @@ public class WIndexDetectorRequest extends ActionRequest {
     private final WriteRequest.RefreshPolicy refreshPolicy;
 
     public WIndexDetectorRequest(
-            String detectorId,
-            String logTypeName,
-            String category,
-            List<String> rules,
-            WriteRequest.RefreshPolicy refreshPolicy) {
+        String detectorId,
+        String logTypeName,
+        String category,
+        List<String> rules,
+        WriteRequest.RefreshPolicy refreshPolicy
+    ) {
         super();
         this.detectorId = detectorId;
         this.logTypeName = logTypeName;
@@ -35,13 +36,7 @@ public class WIndexDetectorRequest extends ActionRequest {
     }
 
     public WIndexDetectorRequest(StreamInput sin) throws IOException {
-        this(
-            sin.readString(),
-            sin.readString(),
-            sin.readString(),
-            sin.readStringList(),
-            WriteRequest.RefreshPolicy.readFrom(sin)
-        );
+        this(sin.readString(), sin.readString(), sin.readString(), sin.readStringList(), WriteRequest.RefreshPolicy.readFrom(sin));
     }
 
     @Override
