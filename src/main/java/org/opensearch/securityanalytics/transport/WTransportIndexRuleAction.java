@@ -1,8 +1,14 @@
 package org.opensearch.securityanalytics.transport;
 
-import com.wazuh.securityanalytics.action.WIndexRuleAction;
-import com.wazuh.securityanalytics.action.WIndexRuleRequest;
-import com.wazuh.securityanalytics.action.WIndexRuleResponse;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -12,6 +18,7 @@ import org.opensearch.action.index.IndexRequest;
 import org.opensearch.action.index.IndexResponse;
 import org.opensearch.action.support.ActionFilters;
 import org.opensearch.action.support.HandledTransportAction;
+import org.opensearch.action.support.WriteRequest;
 import org.opensearch.common.inject.Inject;
 import org.opensearch.common.unit.TimeValue;
 import org.opensearch.common.xcontent.XContentFactory;
@@ -19,11 +26,12 @@ import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.rest.RestStatus;
 import org.opensearch.core.xcontent.ToXContent;
 import org.opensearch.securityanalytics.logtype.LogTypeService;
+import static org.opensearch.securityanalytics.model.Detector.NO_VERSION;
 import org.opensearch.securityanalytics.model.FieldMappingDoc;
 import org.opensearch.securityanalytics.model.Rule;
+import static org.opensearch.securityanalytics.model.Rule.PRE_PACKAGED_RULES_INDEX;
 import org.opensearch.securityanalytics.rules.backend.OSQueryBackend;
 import org.opensearch.securityanalytics.rules.backend.QueryBackend;
-import org.opensearch.securityanalytics.rules.exceptions.CompositeSigmaErrors;
 import org.opensearch.securityanalytics.rules.exceptions.SigmaConditionError;
 import org.opensearch.securityanalytics.rules.exceptions.SigmaError;
 import org.opensearch.securityanalytics.rules.exceptions.SigmaValueError;
@@ -35,14 +43,9 @@ import org.opensearch.threadpool.ThreadPool;
 import org.opensearch.transport.TransportService;
 import org.opensearch.transport.client.Client;
 
-import java.io.IOException;
-import java.util.*;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
-
-import org.opensearch.action.support.WriteRequest;
-import static org.opensearch.securityanalytics.model.Detector.NO_VERSION;
-import static org.opensearch.securityanalytics.model.Rule.PRE_PACKAGED_RULES_INDEX;
+import com.wazuh.securityanalytics.action.WIndexRuleAction;
+import com.wazuh.securityanalytics.action.WIndexRuleRequest;
+import com.wazuh.securityanalytics.action.WIndexRuleResponse;
 
 public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRuleRequest, WIndexRuleResponse> implements SecureTransportAction {
     private static final Logger log = LogManager.getLogger(WTransportIndexRuleAction.class);
@@ -139,136 +142,62 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
 
         /**
          * Process the rule after ensuring the index exists.
+         * Parses the rule once and converts it in a single pass to extract fields and queries.
          */
         private void processRule() {
             String category = this.request.getLogType();
             String ruleStr = this.request.getRule();
 
-            // Extract fields from the rule and create identity mappings
-            Map<String, String> fieldMappings = this.extractFieldsAsIdentityMappings(ruleStr);
-            
-            // If no fields could be extracted, try to index the rule anyway
-            if (fieldMappings.isEmpty()) {
+            try {
+                SigmaRule parsedRule = SigmaRule.fromYaml(ruleStr, true);
+                if (parsedRule == null) {
+                    this.onFailures(new SigmaError("Failed to parse rule for log type: " + category));
+                    return;
+                }
+                if (parsedRule.getErrors() != null && !parsedRule.getErrors().getErrors().isEmpty()) {
+                    this.onFailures(parsedRule.getErrors());
+                    return;
+                }
+
+                List<Object> queries = Collections.emptyList();
+                Set<String> queryFieldNames = Collections.emptySet();
+                Map<String, String> fieldMappings = new HashMap<>();
+
                 try {
-                    SigmaRule parsedRule = SigmaRule.fromYaml(ruleStr, true);
-                    if (parsedRule == null) {
-                        this.onFailures(new SigmaError("Failed to parse rule for log type: " + category));
-                        return;
-                    }
+                    // Single-pass conversion to get both queries and field names
+                    QueryBackend backend = new OSQueryBackend(Collections.emptyMap(), true, false);
+                    queries = backend.convertRule(parsedRule);
+                    queryFieldNames = backend.getQueryFields().keySet();
 
-                    if (parsedRule.getErrors() != null && !parsedRule.getErrors().getErrors().isEmpty()) {
-                        this.onFailures(parsedRule.getErrors());
-                        return;
-                    }
-
-                    // Convert rule without field mappings
-                    QueryBackend backend = new OSQueryBackend(new HashMap<>(), true, false);
-                    List<Object> queries = backend.convertRule(parsedRule);
-                    Set<String> queryFieldNames = backend.getQueryFields().keySet();
-                    
-                    // Create identity mappings from fields
+                    // Build identity mappings (field -> field) from discovered fields
                     for (String field : queryFieldNames) {
                         fieldMappings.put(field, field);
                     }
-
-                    if (fieldMappings.isEmpty()) {
-                        // Rule has no field-based conditions (keyword-only rule)
-                        log.debug("Rule has no field-based conditions (keyword-only). Indexing with empty field mappings for log type: {}", category);
-                    }
-
-                    Rule rule = new Rule(
-                            parsedRule.getId().toString(),
-                            NO_VERSION,
-                            parsedRule,
-                            category,
-                            queries,
-                            new ArrayList<>(queryFieldNames),
-                            ruleStr
-                    );
-
-                    this.indexRule(rule, fieldMappings);
-                    return;
-
                 } catch (IOException | SigmaConditionError | SigmaValueError e) {
-                    this.onFailures(new SigmaError("Could not process rule for log type: " + category + ". Error: " + e.getMessage()));
-                    return;
+                    // Log warning but continue - rule can still be indexed with empty queries/fields
+                    log.warn("Failed to convert rule for log type {}: {}. Indexing with empty field mappings.", category, e.getMessage());
                 }
-            }
-            
-            try {
-                Rule rule = this.getRule(fieldMappings, ruleStr, category);
-                if (rule == null) {
-                    throw new SigmaError("Failed to parse rule");
+
+                if (fieldMappings.isEmpty()) {
+                    // Rule has no field-based conditions (keyword-only rule) or conversion failed
+                    log.debug("Rule has no field-based conditions (keyword-only). Indexing with empty field mappings for log type: {}", category);
                 }
+
+                Rule rule = new Rule(
+                        parsedRule.getId().toString(),
+                        NO_VERSION,
+                        parsedRule,
+                        category,
+                        queries,
+                        new ArrayList<>(queryFieldNames),
+                        ruleStr
+                );
+
                 this.indexRule(rule, fieldMappings);
-            } catch (IOException | SigmaError | CompositeSigmaErrors e) {
-                this.onFailures(e);
+
+            } catch (IOException e) {
+                this.onFailures(new SigmaError("Could not process rule for log type: " + category + ". Error: " + e.getMessage()));
             }
-        }
-
-        /**
-         * Extracts field names from a Sigma rule and creates identity mappings.
-         * Identity mapping means raw_field = ecs field (the field name stays the same).
-         * This is used when the rule fields match the target index fields directly.
-         */
-        private Map<String, String> extractFieldsAsIdentityMappings(String ruleStr) {
-            Map<String, String> identityMappings = new HashMap<>();
-            try {
-                SigmaRule sigmaRule = SigmaRule.fromYaml(ruleStr, true);
-
-                if (sigmaRule == null) {
-                    log.debug("SigmaRule.fromYaml returned null for rule {}", ruleStr);
-                    return identityMappings;
-                }
-
-                if (sigmaRule.getErrors() != null && !sigmaRule.getErrors().getErrors().isEmpty()) {
-                    log.debug("SigmaRule has errors for rule {}: {}", ruleStr, sigmaRule.getErrors().getErrors());
-                    return identityMappings;
-                }
-
-                QueryBackend backend = new OSQueryBackend(new HashMap<>(), true, false);
-                backend.convertRule(sigmaRule);
-
-                Map<String, Object> queryFields = backend.getQueryFields();
-
-                if (queryFields == null || queryFields.isEmpty()) {
-                    // No fields could be extracted, might be a keyword-only rule
-                    return identityMappings;
-                }
-
-                for (String field : queryFields.keySet()) {
-                    identityMappings.put(field, field);
-                }
-                        
-            } catch (IOException | SigmaError e) {
-                throw new RuntimeException("Field extraction failed", e);
-            }
-            return identityMappings;
-        }
-
-        /**
-         * Parses a Sigma rule from YAML and converts it to an OpenSearch Rule.
-         * Uses the provided field mappings to transform rule fields to query fields.
-         */
-        private Rule getRule(Map<String, String> fieldMappings, String ruleStr, String category) throws IOException, SigmaValueError, SigmaConditionError {
-            SigmaRule parsedRule = SigmaRule.fromYaml(ruleStr, true);
-            if (parsedRule.getErrors() != null && !parsedRule.getErrors().getErrors().isEmpty()) {
-                this.onFailures(parsedRule.getErrors());
-                return null;
-            }
-            QueryBackend backend = new OSQueryBackend(fieldMappings, true, true);
-            List<Object> queries = backend.convertRule(parsedRule);
-            Set<String> queryFieldNames = backend.getQueryFields().keySet();
-
-            return new Rule(
-                    parsedRule.getId().toString(),
-                    NO_VERSION,
-                    parsedRule,
-                    category,
-                    queries,
-                    new ArrayList<>(queryFieldNames),
-                    ruleStr
-            );
         }
 
         /**

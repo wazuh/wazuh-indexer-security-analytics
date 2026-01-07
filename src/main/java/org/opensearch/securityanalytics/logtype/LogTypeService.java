@@ -239,21 +239,21 @@ public class LogTypeService {
             List<FieldMappingDoc> mergedFieldMappings = new ArrayList<>();
             // Disabled pre-packaged log types loading for production builds, enabled only on test environments.
             // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
-            if (this.enabledPrepackaged != null && this.enabledPrepackaged.equals("true")) {
+            if (LogTypeService.enabledPrepackaged != null && LogTypeService.enabledPrepackaged.equals("true")) {
                 mergedFieldMappings = mergeFieldMappings(existingFieldMappings, fieldMappingDocs);
             }
             BulkRequest bulkRequest = new BulkRequest();
-            mergedFieldMappings.stream()
-                    .filter(e -> e.isDirty())
-                    .forEach(fieldMappingDoc -> {
+            bulkRequest.setRefreshPolicy(WriteRequest.RefreshPolicy.IMMEDIATE);
 
+            mergedFieldMappings.stream()
+                    .filter(FieldMappingDoc::isDirty)
+                    .forEach(fieldMappingDoc -> {
                         IndexRequest indexRequest = new IndexRequest(LOG_TYPE_INDEX);
                         try {
                             indexRequest.id(fieldMappingDoc.getId() == null ? generateFieldMappingDocId(fieldMappingDoc) : fieldMappingDoc.getId());
                             indexRequest.source(fieldMappingDoc.toXContent(XContentFactory.jsonBuilder(), null));
                             indexRequest.opType(DocWriteRequest.OpType.INDEX);
                             bulkRequest.add(indexRequest);
-                            bulkRequest.setRefreshPolicy(WriteRequest.RefreshPolicy.IMMEDIATE);
                         } catch (IOException ex) {
                             logger.error("Failed converting FieldMappingDoc to XContent!", ex);
                         }
@@ -263,7 +263,7 @@ public class LogTypeService {
 
             // Disabled pre-packaged log types loading for production builds, enabled only on test environments.
             // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
-            if (this.enabledPrepackaged != null && this.enabledPrepackaged.equals("true")) {
+            if (LogTypeService.enabledPrepackaged != null && LogTypeService.enabledPrepackaged.equals("true")) {
                 client.bulk(
                         bulkRequest,
                         ActionListener.delegateFailure(listener, (l, r) -> {
