@@ -84,6 +84,7 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
 
             @Override
             public void onFailure(Exception e) {
+                log.warn("Failed to index rule [{}]: {}", request.getRuleId(), e.getMessage());
                 listener.onFailure(e);
             }
         });
