@@ -4,11 +4,12 @@
  */
 package org.opensearch.securityanalytics.transport;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.OpenSearchStatusException;
-import org.opensearch.action.support.clustermanager.AcknowledgedResponse;
-import org.opensearch.core.action.ActionListener;
 import org.opensearch.action.ActionRunnable;
 import org.opensearch.action.admin.indices.create.CreateIndexResponse;
 import org.opensearch.action.bulk.BulkResponse;
@@ -18,12 +19,14 @@ import org.opensearch.action.search.ShardSearchFailure;
 import org.opensearch.action.support.ActionFilters;
 import org.opensearch.action.support.HandledTransportAction;
 import org.opensearch.action.support.WriteRequest;
+import org.opensearch.action.support.clustermanager.AcknowledgedResponse;
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.inject.Inject;
 import org.opensearch.common.settings.Settings;
 import org.opensearch.common.unit.TimeValue;
-import org.opensearch.index.reindex.BulkByScrollResponse;
+import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.rest.RestStatus;
+import org.opensearch.index.reindex.BulkByScrollResponse;
 import org.opensearch.search.internal.InternalSearchResponse;
 import org.opensearch.securityanalytics.action.SearchRuleAction;
 import org.opensearch.securityanalytics.action.SearchRuleRequest;
@@ -34,9 +37,6 @@ import org.opensearch.tasks.Task;
 import org.opensearch.threadpool.ThreadPool;
 import org.opensearch.transport.TransportService;
 import org.opensearch.transport.client.Client;
-
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 
 public class TransportSearchRuleAction extends HandledTransportAction<SearchRuleRequest, SearchResponse> {
 
@@ -89,77 +89,17 @@ public class TransportSearchRuleAction extends HandledTransportAction<SearchRule
 
         void start() {
             TransportSearchRuleAction.this.threadPool.getThreadContext().stashContext();
+
             if (request.isPrepackaged()) {
-                ruleIndices.initPrepackagedRulesIndex(
-                        new ActionListener<>() {
-                            @Override
-                            public void onResponse(CreateIndexResponse response) {
-                                ruleIndices.onCreateMappingsResponse(response, true);
-                                ruleIndices.importRules(WriteRequest.RefreshPolicy.IMMEDIATE, indexTimeout,
-                                        new ActionListener<>() {
-                                            @Override
-                                            public void onResponse(BulkResponse response) {
-                                                if (!response.hasFailures()) {
-                                                    search(request.getSearchRequest());
-                                                } else {
-                                                    onFailures(new OpenSearchStatusException(response.buildFailureMessage(), RestStatus.INTERNAL_SERVER_ERROR));
-                                                }
-                                            }
-
-                                            @Override
-                                            public void onFailure(Exception e) {
-                                                onFailures(e);
-                                            }
-                                        });
-                            }
-
-                            @Override
-                            public void onFailure(Exception e) {
-                                onFailures(e);
-                            }
-                        },
-                        new ActionListener<>() {
-                            @Override
-                            public void onResponse(AcknowledgedResponse response) {
-                                ruleIndices.onUpdateMappingsResponse(response, true);
-                                ruleIndices.deleteRules(new ActionListener<>() {
-                                    @Override
-                                    public void onResponse(BulkByScrollResponse response) {
-                                        ruleIndices.importRules(WriteRequest.RefreshPolicy.IMMEDIATE, indexTimeout,
-                                                new ActionListener<>() {
-                                                    @Override
-                                                    public void onResponse(BulkResponse response) {
-                                                        if (!response.hasFailures()) {
-                                                            search(request.getSearchRequest());
-                                                        } else {
-                                                            onFailures(new OpenSearchStatusException(response.buildFailureMessage(), RestStatus.INTERNAL_SERVER_ERROR));
-                                                        }
-                                                    }
-
-                                                    @Override
-                                                    public void onFailure(Exception e) {
-                                                        onFailures(e);
-                                                    }
-                                                });
-                                    }
-
-                                    @Override
-                                    public void onFailure(Exception e) {
-                                        onFailures(e);
-                                    }
-                                });
-                            }
-
-                            @Override
-                            public void onFailure(Exception e) {
-                                onFailures(e);
-                            }
-                        },
-                        new ActionListener<>() {
-                            @Override
-                            public void onResponse(SearchResponse response) {
-                                long count = response.getHits().getTotalHits().value();
-                                if (count == 0) {
+                // Disabled pre-packaged log types loading for production builds, enabled only on test environments.
+                // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
+                String enabledPrepackaged = System.getProperty("default_rules.enabled");
+                if (enabledPrepackaged != null &&  enabledPrepackaged.equals("true")) {
+                    ruleIndices.initPrepackagedRulesIndex(
+                            new ActionListener<>() {
+                                @Override
+                                public void onResponse(CreateIndexResponse response) {
+                                    ruleIndices.onCreateMappingsResponse(response, true);
                                     ruleIndices.importRules(WriteRequest.RefreshPolicy.IMMEDIATE, indexTimeout,
                                             new ActionListener<>() {
                                                 @Override
@@ -167,7 +107,7 @@ public class TransportSearchRuleAction extends HandledTransportAction<SearchRule
                                                     if (!response.hasFailures()) {
                                                         search(request.getSearchRequest());
                                                     } else {
-                                                        onFailures(new RuntimeException(response.buildFailureMessage()));
+                                                        onFailures(new OpenSearchStatusException(response.buildFailureMessage(), RestStatus.INTERNAL_SERVER_ERROR));
                                                     }
                                                 }
 
@@ -176,32 +116,100 @@ public class TransportSearchRuleAction extends HandledTransportAction<SearchRule
                                                     onFailures(e);
                                                 }
                                             });
-                                } else {
-                                    search(request.getSearchRequest());
+                                }
+                                @Override
+                                public void onFailure(Exception e) {
+                                    onFailures(e);
+                                }
+                            },
+                            new ActionListener<>() {
+                                @Override
+                                public void onResponse(AcknowledgedResponse response) {
+                                    ruleIndices.onUpdateMappingsResponse(response, true);
+                                    ruleIndices.deleteRules(new ActionListener<>() {
+                                        @Override
+                                        public void onResponse(BulkByScrollResponse response) {
+                                            ruleIndices.importRules(WriteRequest.RefreshPolicy.IMMEDIATE, indexTimeout,
+                                                    new ActionListener<>() {
+                                                        @Override
+                                                        public void onResponse(BulkResponse response) {
+                                                            if (!response.hasFailures()) {
+                                                                search(request.getSearchRequest());
+                                                            } else {
+                                                                onFailures(new OpenSearchStatusException(response.buildFailureMessage(), RestStatus.INTERNAL_SERVER_ERROR));
+                                                            }
+                                                        }
+
+                                                        @Override
+                                                        public void onFailure(Exception e) {
+                                                            onFailures(e);
+                                                        }
+                                                    });
+                                        }
+                                        @Override
+                                        public void onFailure(Exception e) {
+                                            onFailures(e);
+                                        }
+                                    });
+                                }
+                                @Override
+                                public void onFailure(Exception e) {
+                                    onFailures(e);
+                                }
+                            },
+                            new ActionListener<>() {
+                                @Override
+                                public void onResponse(SearchResponse response) {
+                                    long count = response.getHits().getTotalHits().value();
+                                    if (count == 0) {
+                                        ruleIndices.importRules(WriteRequest.RefreshPolicy.IMMEDIATE, indexTimeout,
+                                                new ActionListener<>() {
+                                                    @Override
+                                                    public void onResponse(BulkResponse response) {
+                                                        if (!response.hasFailures()) {
+                                                            search(request.getSearchRequest());
+                                                        } else {
+                                                            onFailures(new RuntimeException(response.buildFailureMessage()));
+                                                        }
+                                                    }
+                                                    @Override
+                                                    public void onFailure(Exception e) {
+                                                        onFailures(e);
+                                                    }
+                                                });
+                                    } else {
+                                        search(request.getSearchRequest());
+                                    }
+                                }
+                                @Override
+                                public void onFailure(Exception e) {
+                                    onFailures(e);
                                 }
                             }
-
-                            @Override
-                            public void onFailure(Exception e) {
-                                onFailures(e);
-                            }
-                        }
-                );
-            } else {
-                if (ruleIndices.ruleIndexExists(false)) {
-                    search(request.getSearchRequest());
+                    );
                 } else {
-                    this.listener.onResponse(new SearchResponse(
-                            InternalSearchResponse.empty(),
-                            null,
-                            1,
-                            1,
-                            0,
-                            1,
-                            ShardSearchFailure.EMPTY_ARRAY,
-                            SearchResponse.Clusters.EMPTY
-                    ));
-                }
+                    // Simply check if index exists and search, don't reimport rules
+                    this.searchOrReturnEmpty(true);
+                } 
+            } else {
+                this.searchOrReturnEmpty(false);
+            }
+        }
+
+        private void searchOrReturnEmpty(boolean isPrepackaged) {
+            if (ruleIndices.ruleIndexExists(isPrepackaged)) {
+                search(request.getSearchRequest());
+            } else {
+                this.listener.onResponse(new SearchResponse(
+                        InternalSearchResponse.empty(),
+                        null,
+                        1,
+                        1,
+                        0,
+                        1,
+                        ShardSearchFailure.EMPTY_ARRAY,
+                        SearchResponse.Clusters.EMPTY
+                ));
             }
         }
 
