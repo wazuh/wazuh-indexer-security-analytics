@@ -48,7 +48,7 @@ public class DetectorFactory {
         String description = "Detector for " + integration + " integration";
         String dataStream = "wazuh-events-v5-" + category.toLowerCase(Locale.ROOT);
         IntervalSchedule schedule = new IntervalSchedule(1, ChronoUnit.MINUTES, null);
-        DetectorInput detectorInput = new DetectorInput(description, List.of(dataStream), rules, new ArrayList<>());
+        DetectorInput detectorInput = new DetectorInput(description, List.of(dataStream), new ArrayList<>(), rules);
         // Generate Detector object with this template
         return new Detector(
             "Detector for " + integration,

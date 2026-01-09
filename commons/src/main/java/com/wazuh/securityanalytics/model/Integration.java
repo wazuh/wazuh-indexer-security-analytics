@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
+import org.opensearch.common.xcontent.XContentFactory;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
 import org.opensearch.core.common.io.stream.Writeable;
@@ -163,6 +164,18 @@ public class Integration implements Writeable, ToXContentObject {
             .field(TAGS_FIELD, this.tags)
             .array(RULES_FIELD, this.ruleIds)
             .endObject();
+    }
+
+    /**
+     * Convenience method to convert this Integration to XContent using a default JSON builder.
+     * This method creates a new JSON builder internally and delegates to the main
+     * {@link #toXContent(XContentBuilder, Params)} method.
+     *
+     * @return An XContentBuilder containing the JSON representation of this integration.
+     * @throws IOException If an error occurs during serialization.
+     */
+    public XContentBuilder toXContent() throws IOException {
+        return this.toXContent(XContentFactory.jsonBuilder(), null);
     }
 
     /**
