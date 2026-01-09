@@ -21,10 +21,10 @@ import org.opensearch.core.xcontent.XContentBuilder;
 
 /**
  * Response for a Wazuh integration indexing operation.
- *
+ * <p>
  * Contains the result of an integration create/update operation, including the
  * integration's ID, version number, REST status, and the complete integration data.
- *
+ * <p>
  * This class implements {@link ToXContentObject} to support REST API serialization.
  *
  * @see WIndexIntegrationAction
@@ -87,6 +87,11 @@ public class WIndexIntegrationResponse extends ActionResponse implements ToXCont
             .endObject();
     }
 
+    /**
+     * Gets the ID of the indexed integration.
+     *
+     * @return the integration ID
+     */
     public String getId() {
         return this.id;
     }

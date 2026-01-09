@@ -8,10 +8,10 @@ import org.opensearch.action.ActionType;
 
 /**
  * Action type for indexing Wazuh rules.
- *
+ * <p>
  * This action is registered under the cluster admin namespace and provides
  * the entry point for rule write operations through the transport layer.
- *
+ * <p>
  * Action name: cluster:admin/wazuh/securityanalytics/rule/write
  *
  * @see WIndexRuleRequest

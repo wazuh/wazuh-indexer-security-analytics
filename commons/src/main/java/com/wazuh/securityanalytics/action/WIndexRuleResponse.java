@@ -15,10 +15,10 @@ import org.opensearch.core.xcontent.XContentBuilder;
 
 /**
  * Response for a Wazuh rule indexing operation.
- *
+ * <p>
  * Contains the result of a rule create/update operation, including the
  * rule's ID, version number, and REST status.
- *
+ * <p>
  * This class implements {@link ToXContentObject} to support REST API serialization.
  *
  * @see WIndexRuleAction
@@ -61,18 +61,23 @@ public class WIndexRuleResponse extends ActionResponse implements ToXContentObje
 
     @Override
     public void writeTo(StreamOutput out) throws IOException {
-        out.writeString(id);
-        out.writeLong(version);
-        out.writeEnum(status);
+        out.writeString(this.id);
+        out.writeLong(this.version);
+        out.writeEnum(this.status);
     }
 
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
-        builder.startObject().field("_id", id).field("_version", version);
+        builder.startObject().field("_id", this.id).field("_version", this.version);
         return builder;
     }
 
+    /**
+     * Gets the ID of the indexed rule.
+     *
+     * @return the rule ID
+     */
     public String getId() {
-        return id;
+        return this.id;
     }
 }

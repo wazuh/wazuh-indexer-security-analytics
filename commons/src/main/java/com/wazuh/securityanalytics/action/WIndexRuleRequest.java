@@ -98,7 +98,7 @@ public class WIndexRuleRequest extends ActionRequest {
     public ActionRequestValidationException validate() {
         ActionRequestValidationException validationException = null;
 
-        if (this.logType == null || this.logType.length() == 0) {
+        if (this.logType == null || this.logType.isEmpty()) {
             validationException = addValidationError("rule category is missing", validationException);
         }
         return validationException;
@@ -114,26 +114,56 @@ public class WIndexRuleRequest extends ActionRequest {
         out.writeBoolean(this.forced);
     }
 
+    /**
+    * Gets the rule ID to update.
+    *
+    * @return the rule ID
+    */
     public String getRuleId() {
         return this.ruleId;
     }
 
+    /**
+     * Gets the refresh policy for the index operation.
+     *
+     * @return the refresh policy
+     */
     public WriteRequest.RefreshPolicy getRefreshPolicy() {
         return this.refreshPolicy;
     }
 
+    /**
+     * Gets the log type category for this rule.
+     *
+     * @return the log type
+     */
     public String getLogType() {
         return this.logType;
     }
 
+    /**
+     * Gets the HTTP method for the request.
+     *
+     * @return the HTTP method (PUT for update, POST for create)
+     */
     public RestRequest.Method getMethod() {
         return this.method;
     }
 
+    /**
+     * Gets the Sigma rule YAML content.
+     *
+     * @return the rule content
+     */
     public String getRule() {
         return this.rule;
     }
 
+    /**
+     * Indicates whether to force updating the rule even if it is used by running detectors.
+     *
+     * @return true if the update should be forced, false otherwise
+     */
     public Boolean isForced() {
         return this.forced;
     }

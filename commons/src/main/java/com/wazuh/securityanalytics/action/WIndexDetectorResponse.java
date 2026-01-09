@@ -12,7 +12,7 @@ import org.opensearch.core.common.io.stream.StreamOutput;
 
 /**
  * Response for a Wazuh detector indexing operation.
- *
+ * <p>
  * Contains the result of a detector create/update operation, including the
  * detector's ID and version number.
  *
@@ -51,10 +51,20 @@ public class WIndexDetectorResponse extends ActionResponse {
         out.writeLong(this.version);
     }
 
+    /**
+     * Gets the ID of the indexed detector.
+     *
+     * @return the detector ID
+     */
     public String getId() {
         return this.id;
     }
 
+    /**
+     * Gets the version number of the indexed detector.
+     *
+     * @return the detector version
+     */
     public Long getVersion() {
         return this.version;
     }

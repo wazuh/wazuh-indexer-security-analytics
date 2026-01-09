@@ -221,50 +221,112 @@ public class Integration implements Writeable, ToXContentObject {
         return new Integration(id, version, name, description, category, source, rules, tags);
     }
 
+    /**
+     * Reads an Integration from the given StreamInput.
+     *
+     * @param sin the StreamInput to read from
+     * @return the deserialized Integration instance
+     * @throws IOException if an I/O error occurs during reading
+     */
     public static Integration readFrom(StreamInput sin) throws IOException {
         return new Integration(sin);
     }
 
+    /**
+     * Sets the ID of the integration.
+     *
+     * @param id the integration ID
+     */
     public void setId(String id) {
         this.id = id;
     }
 
+    /**
+     * Gets the ID of the integration.
+     *
+     * @return the integration ID
+     */
     public String getId() {
         return this.id;
     }
 
+    /**
+     * Sets the version number of the integration.
+     *
+     * @param version the version number
+     */
     public void setVersion(Long version) {
         this.version = version;
     }
 
+    /**
+     * Gets the version number of the integration.
+     *
+     * @return the version number
+     */
     public Long getVersion() {
         return this.version;
     }
 
+    /**
+     * Gets the name of the integration.
+     *
+     * @return the integration name
+     */
     public String getName() {
         return this.name;
     }
 
+    /**
+     * Gets the description of the integration.
+     *
+     * @return the integration description
+     */
     public String getDescription() {
         return this.description;
     }
 
+    /**
+     * Gets the category of the integration.
+     *
+     * @return the integration category
+     */
     public String getCategory() {
         return this.category;
     }
 
+    /**
+     * Gets the source of the integration.
+     *
+     * @return the integration source
+     */
     public String getSource() {
         return this.source;
     }
 
+    /**
+     * Sets the tags associated with this integration.
+     *
+     * @param tags a map of tag key-value pairs
+     */
     public void setTags(Map<String, Object> tags) {
         this.tags = tags;
     }
 
+    /**
+     * Gets the tags associated with this integration.
+     *
+     * @return a map of tag key-value pairs
+     */
     public Map<String, Object> getTags() {
         return this.tags;
     }
 
+    /**
+     * Gets the list of rule IDs associated with this integration.
+     *
+     * @return a list of rule IDs
+     */
     public List<String> getRuleIds() {
         return this.ruleIds;
     }

@@ -78,7 +78,7 @@ public class WIndexDetectorRequest extends ActionRequest {
     }
 
     public String getDetectorId() {
-        return detectorId;
+        return this.detectorId;
     }
 
     public String getLogTypeName() {
