@@ -4,6 +4,7 @@
  */
 package com.wazuh.securityanalytics.model;
 
+import org.opensearch.common.xcontent.XContentFactory;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
 import org.opensearch.core.common.io.stream.Writeable;
@@ -121,6 +122,10 @@ public class Integration implements Writeable, ToXContentObject {
                 .field(TAGS_FIELD, this.tags)
                 .field(RULES_FIELD, this.ruleIds)
                 .endObject();
+    }
+
+    public XContentBuilder toXContent() throws IOException {
+        return this.toXContent(XContentFactory.jsonBuilder(), null);
     }
 
     public static Integration parse(XContentParser xcp, String id, Long version) throws IOException {
