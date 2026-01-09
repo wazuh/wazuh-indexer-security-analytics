@@ -9,7 +9,6 @@ import java.util.Collections;
 import java.util.List;
 
 import org.junit.Assert;
-
 import org.opensearch.commons.alerting.model.IntervalSchedule;
 import org.opensearch.securityanalytics.model.Detector;
 import org.opensearch.securityanalytics.model.DetectorInput;
@@ -76,7 +75,7 @@ public class DetectorFactoryTests extends OpenSearchTestCase {
         Detector detector = DetectorFactory.createDetector(integration, category, ruleIds);
 
         DetectorInput input = detector.getInputs().get(0);
-        List<DetectorRule> rules = input.getCustomRules();
+        List<DetectorRule> rules = input.getPrePackagedRules();
         Assert.assertEquals(2, rules.size());
         Assert.assertEquals("rule-1", rules.get(0).getId());
         Assert.assertEquals("rule-2", rules.get(1).getId());
@@ -90,7 +89,7 @@ public class DetectorFactoryTests extends OpenSearchTestCase {
         Detector detector = DetectorFactory.createDetector(integration, category, ruleIds);
 
         DetectorInput input = detector.getInputs().get(0);
-        Assert.assertTrue(input.getCustomRules().isEmpty());
+        Assert.assertTrue(input.getPrePackagedRules().isEmpty());
     }
 
     public void testCreateDetector_scheduleIsOneMinute() {
