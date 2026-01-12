@@ -30,11 +30,7 @@ import org.opensearch.rest.RestRequest;
 import org.opensearch.core.rest.RestStatus;
 import org.opensearch.search.SearchHit;
 import org.opensearch.search.builder.SearchSourceBuilder;
-import org.opensearch.securityanalytics.action.DeleteRuleRequest;
-import org.opensearch.securityanalytics.action.DeleteRuleResponse;
-import org.opensearch.securityanalytics.action.IndexDetectorAction;
-import org.opensearch.securityanalytics.action.IndexDetectorRequest;
-import org.opensearch.securityanalytics.action.IndexDetectorResponse;
+import org.opensearch.securityanalytics.action.*;
 import org.opensearch.securityanalytics.model.Detector;
 import org.opensearch.securityanalytics.model.DetectorRule;
 import org.opensearch.securityanalytics.model.Rule;
@@ -68,6 +64,16 @@ public class TransportDeleteRuleAction extends HandledTransportAction<DeleteRule
     private final ThreadPool threadPool;
 
     @Inject
+    public TransportDeleteRuleAction(TransportService transportService, Client client, DetectorIndices detectorIndices, ActionFilters actionFilters, NamedXContentRegistry xContentRegistry) {
+        super(DeleteRuleAction.NAME, transportService, actionFilters, DeleteRuleRequest::new);
+        this.client = client;
+        this.detectorIndices = detectorIndices;
+        this.xContentRegistry = xContentRegistry;
+        this.threadPool = client.threadPool();
+        this.ruleIndex  = Rule.CUSTOM_RULES_INDEX;
+    }
+
+    // Adds the new actionName String to avoid the IllegalArgumentException when creating a new WTransportDeleteRuleAction
     public TransportDeleteRuleAction(String actionName, TransportService transportService, Client client, DetectorIndices detectorIndices, ActionFilters actionFilters, NamedXContentRegistry xContentRegistry, String ruleIndex) {
         super(actionName, transportService, actionFilters, DeleteRuleRequest::new);
         this.client = client;

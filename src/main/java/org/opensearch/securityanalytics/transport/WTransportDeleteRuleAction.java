@@ -58,9 +58,7 @@ public class WTransportDeleteRuleAction extends HandledTransportAction<WDeleteRu
      *
      * Method created to allow tests to mock the action
      */
-    protected TransportDeleteRuleAction createInternalAction(TransportService transportService, Client client,
-                                                             DetectorIndices detectorIndices, ActionFilters actionFilters,
-                                                             NamedXContentRegistry xContentRegistry){
+    protected TransportDeleteRuleAction createInternalAction(TransportService transportService, Client client, DetectorIndices detectorIndices, ActionFilters actionFilters, NamedXContentRegistry xContentRegistry){
         return new TransportDeleteRuleAction(
                 WDeleteRuleAction.NAME + "/internal",
                 transportService,

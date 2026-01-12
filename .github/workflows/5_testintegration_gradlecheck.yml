@@ -22,7 +22,7 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-      
+
       - name: Publish commons library to mavenLocal
         run: |
           cd commons
