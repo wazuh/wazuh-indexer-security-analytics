@@ -1,33 +1,75 @@
+/*
+ * Dynamic Spotless configuration for fork-safe formatting.
+ * Only formats files that have been modified compared to the main branch.
+ * This prevents reformatting the entire codebase when working on a fork.
+ */
 allprojects {
     project.apply plugin: "com.diffplug.spotless"
+
+    // Get list of changed Java files from git (compared to main branch)
+    def getChangedFiles = { String extension ->
+        try {
+            def stdout = new ByteArrayOutputStream()
+            exec {
+                commandLine 'git', 'diff', '--name-only', 'main...HEAD', '--', "*${extension}"
+                standardOutput = stdout
+                ignoreExitValue = true
+            }
+            def files = stdout.toString().trim().split('\n').findAll { it.endsWith(extension) && !it.isEmpty() }
+            return files
+        } catch (Exception e) {
+            logger.warn("Failed to get changed files from git: ${e.message}")
+            return []
+        }
+    }
+
     spotless {
         java {
-            // Normally this isn't necessary, but we have Java sources in
-            // non-standard places
-            target '*/com/amazon/dlic/auth/**/*.java'
+            def changedJavaFiles = getChangedFiles('.java')
+            if (changedJavaFiles.isEmpty()) {
+                // No Java changes detected, target Wazuh-specific packages only (safe defaults)
+                target(
+                    'src/main/java/com/wazuh/**/*.java',
+                    'commons/src/main/java/com/wazuh/**/*.java'
+                )
+            } else {
+                logger.lifecycle("Spotless targeting ${changedJavaFiles.size()} changed Java file(s)")
+                target(changedJavaFiles)
+            }
 
             removeUnusedImports()
             eclipse().configFile rootProject.file('formatter/formatterConfig.xml')
             trimTrailingWhitespace()
-            endWithNewline();
+            endWithNewline()
 
-            // note: you can use an empty string for all the imports you didn't specify explicitly, and '\\#` prefix for static imports
             importOrder('java', 'javax', '', 'com.amazon', 'org.opensearch', '\\#')
 
-            custom 'Refuse wildcard imports', {
-                // Wildcard imports can't be resolved; fail the build
-                if (it =~ /\s+import .*\*;/) {
-                    throw new AssertionError("Do not use wildcard imports.  'spotlessApply' cannot resolve this issue.")
-                }
-            }
+           custom 'Refuse wildcard imports', {
+               if (it =~ /\s+import .*\*;/) {
+                   throw new AssertionError("Do not use wildcard imports.  'spotlessApply' cannot resolve this issue.")
+               }
+           }
 
-            // See DEVELOPER_GUIDE.md for details of when to enable this.
             if (System.getProperty('spotless.paddedcell') != null) {
                 paddedCell()
             }
         }
         format 'misc', {
-            target '*.md', '*.gradle', '**/*.json', '**/*.yaml', '**/*.yml', '**/*.svg'
+            def changedMiscFiles = (
+                getChangedFiles('.md') +
+                getChangedFiles('.gradle') +
+                getChangedFiles('.json') +
+                getChangedFiles('.yaml') +
+                getChangedFiles('.yml')
+            ).findAll { !it.isEmpty() }
+
+            if (changedMiscFiles.isEmpty()) {
+                // No misc changes, target nothing
+                target()
+            } else {
+                logger.lifecycle("Spotless targeting ${changedMiscFiles.size()} changed misc file(s)")
+                target(changedMiscFiles)
+            }
 
             trimTrailingWhitespace()
             endWithNewline()
