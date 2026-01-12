@@ -23,5 +23,13 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      - name: Publish commons library to mavenLocal
+        run: |
+          PROJECT_VERSION=$(jq -r '.version' VERSION.json)
+          cd commons
+          ../gradlew publishToMavenLocal -x check \
+          -Dversion=$PROJECT_VERSION \
+          -Drevision=0
+
       - name: Run Gradle check
         run: ./gradlew check
