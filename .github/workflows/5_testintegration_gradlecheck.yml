@@ -25,10 +25,11 @@ jobs:
 
       - name: Publish commons library to mavenLocal
         run: |
+          PROJECT_VERSION=$(jq -r '.version' VERSION.json)
           cd commons
           ../gradlew publishToMavenLocal -x check \
-          -Dversion=${{ steps.version.outputs.version }} \
-          -Drevision=${{ inputs.revision }}
+          -Dversion=$PROJECT_VERSION \
+          -Drevision=0
 
       - name: Run Gradle check
         run: ./gradlew check
