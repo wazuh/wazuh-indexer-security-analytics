@@ -9,6 +9,7 @@ import com.wazuh.securityanalytics.action.WDeleteDetectorRequest;
 import com.wazuh.securityanalytics.action.WDeleteDetectorResponse;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
 import org.opensearch.action.support.ActionFilters;
 import org.opensearch.action.support.HandledTransportAction;
 import org.opensearch.common.inject.Inject;
@@ -20,24 +21,21 @@ import org.opensearch.tasks.Task;
 import org.opensearch.transport.TransportService;
 import org.opensearch.transport.client.Client;
 
-public class WTransportDeleteDetectorAction extends HandledTransportAction<WDeleteDetectorRequest, WDeleteDetectorResponse> implements SecureTransportAction {
+public class WTransportDeleteDetectorAction extends HandledTransportAction<WDeleteDetectorRequest, WDeleteDetectorResponse>
+    implements
+        SecureTransportAction {
     private final Client client;
     private static final Logger log = LogManager.getLogger(WTransportDeleteDetectorAction.class);
 
     @Inject
-    public WTransportDeleteDetectorAction(TransportService transportService,
-                                          Client client,
-                                          ActionFilters actionFilters) {
+    public WTransportDeleteDetectorAction(TransportService transportService, Client client, ActionFilters actionFilters) {
         super(WDeleteDetectorAction.NAME, transportService, actionFilters, WDeleteDetectorRequest::new);
         this.client = client;
     }
 
     @Override
     protected void doExecute(Task task, WDeleteDetectorRequest request, ActionListener<WDeleteDetectorResponse> listener) {
-        DeleteDetectorRequest internalRequest = new DeleteDetectorRequest(
-                request.getDetectorId(),
-                request.getRefreshPolicy()
-        );
+        DeleteDetectorRequest internalRequest = new DeleteDetectorRequest(request.getDetectorId(), request.getRefreshPolicy());
         this.client.execute(DeleteDetectorAction.INSTANCE, internalRequest, new ActionListener<DeleteDetectorResponse>() {
             @Override
             public void onResponse(DeleteDetectorResponse response) {

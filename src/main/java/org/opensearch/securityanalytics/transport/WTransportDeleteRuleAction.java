@@ -7,6 +7,7 @@ package org.opensearch.securityanalytics.transport;
 import com.wazuh.securityanalytics.action.WDeleteRuleAction;
 import com.wazuh.securityanalytics.action.WDeleteRuleRequest;
 import com.wazuh.securityanalytics.action.WDeleteRuleResponse;
+
 import org.opensearch.action.support.ActionFilters;
 import org.opensearch.action.support.HandledTransportAction;
 import org.opensearch.common.inject.Inject;
@@ -20,12 +21,20 @@ import org.opensearch.tasks.Task;
 import org.opensearch.transport.TransportService;
 import org.opensearch.transport.client.Client;
 
-public class WTransportDeleteRuleAction extends HandledTransportAction<WDeleteRuleRequest, WDeleteRuleResponse> implements SecureTransportAction {
+public class WTransportDeleteRuleAction extends HandledTransportAction<WDeleteRuleRequest, WDeleteRuleResponse>
+    implements
+        SecureTransportAction {
 
     private final TransportDeleteRuleAction internalAction;
 
     @Inject
-    public WTransportDeleteRuleAction(TransportService transportService, Client client, DetectorIndices detectorIndices, ActionFilters actionFilters, NamedXContentRegistry xContentRegistry) {
+    public WTransportDeleteRuleAction(
+        TransportService transportService,
+        Client client,
+        DetectorIndices detectorIndices,
+        ActionFilters actionFilters,
+        NamedXContentRegistry xContentRegistry
+    ) {
         super(WDeleteRuleAction.NAME, transportService, actionFilters, WDeleteRuleRequest::new);
 
         // Initialize the internal action configured for the PRE_PACKAGED_RULES_INDEX.
@@ -34,11 +43,7 @@ public class WTransportDeleteRuleAction extends HandledTransportAction<WDeleteRu
 
     @Override
     protected void doExecute(Task task, WDeleteRuleRequest request, ActionListener<WDeleteRuleResponse> listener) {
-        DeleteRuleRequest internalRequest = new DeleteRuleRequest(
-                request.getRuleId(),
-                request.getRefreshPolicy(),
-                request.isForced()
-        );
+        DeleteRuleRequest internalRequest = new DeleteRuleRequest(request.getRuleId(), request.getRefreshPolicy(), request.isForced());
         internalAction.doExecute(task, internalRequest, new ActionListener<>() {
             @Override
             public void onResponse(DeleteRuleResponse response) {
@@ -58,15 +63,21 @@ public class WTransportDeleteRuleAction extends HandledTransportAction<WDeleteRu
      *
      * Method created to allow tests to mock the action
      */
-    protected TransportDeleteRuleAction createInternalAction(TransportService transportService, Client client, DetectorIndices detectorIndices, ActionFilters actionFilters, NamedXContentRegistry xContentRegistry){
+    protected TransportDeleteRuleAction createInternalAction(
+        TransportService transportService,
+        Client client,
+        DetectorIndices detectorIndices,
+        ActionFilters actionFilters,
+        NamedXContentRegistry xContentRegistry
+    ) {
         return new TransportDeleteRuleAction(
-                WDeleteRuleAction.NAME + "/internal",
-                transportService,
-                client,
-                detectorIndices,
-                actionFilters,
-                xContentRegistry,
-                Rule.PRE_PACKAGED_RULES_INDEX
+            WDeleteRuleAction.NAME + "/internal",
+            transportService,
+            client,
+            detectorIndices,
+            actionFilters,
+            xContentRegistry,
+            Rule.PRE_PACKAGED_RULES_INDEX
         );
     }
 

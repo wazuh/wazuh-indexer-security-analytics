@@ -1,6 +1,7 @@
 package com.wazuh.securityanalytics.action;
 
 import java.io.IOException;
+
 import org.opensearch.core.action.ActionResponse;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
@@ -18,7 +19,7 @@ public class WDeleteDetectorResponse extends ActionResponse {
     }
 
     public WDeleteDetectorResponse(StreamInput sin) throws IOException {
-        this(sin.readString(), sin.readLong(), (RestStatus)sin.readEnum(RestStatus.class));
+        this(sin.readString(), sin.readLong(), (RestStatus) sin.readEnum(RestStatus.class));
     }
 
     public void writeTo(StreamOutput out) throws IOException {

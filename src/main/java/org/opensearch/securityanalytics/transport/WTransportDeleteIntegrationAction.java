@@ -13,6 +13,7 @@ import com.wazuh.securityanalytics.action.WDeleteIntegrationRequest;
 import com.wazuh.securityanalytics.action.WDeleteIntegrationResponse;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
 import org.opensearch.action.support.ActionFilters;
 import org.opensearch.action.support.HandledTransportAction;
 import org.opensearch.common.inject.Inject;
@@ -24,24 +25,21 @@ import org.opensearch.tasks.Task;
 import org.opensearch.transport.TransportService;
 import org.opensearch.transport.client.Client;
 
-public class WTransportDeleteIntegrationAction extends HandledTransportAction<WDeleteIntegrationRequest, WDeleteIntegrationResponse> implements SecureTransportAction {
+public class WTransportDeleteIntegrationAction extends HandledTransportAction<WDeleteIntegrationRequest, WDeleteIntegrationResponse>
+    implements
+        SecureTransportAction {
     private final Client client;
     private static final Logger log = LogManager.getLogger(WTransportDeleteIntegrationAction.class);
 
     @Inject
-    public WTransportDeleteIntegrationAction(TransportService transportService,
-                                             Client client,
-                                             ActionFilters actionFilters) {
+    public WTransportDeleteIntegrationAction(TransportService transportService, Client client, ActionFilters actionFilters) {
         super(WDeleteIntegrationAction.NAME, transportService, actionFilters, WDeleteIntegrationRequest::new);
         this.client = client;
     }
 
     @Override
     protected void doExecute(Task task, WDeleteIntegrationRequest request, ActionListener<WDeleteIntegrationResponse> listener) {
-        DeleteCustomLogTypeRequest internalRequest = new DeleteCustomLogTypeRequest(
-                request.getLogTypeId(),
-                request.getRefreshPolicy()
-        );
+        DeleteCustomLogTypeRequest internalRequest = new DeleteCustomLogTypeRequest(request.getLogTypeId(), request.getRefreshPolicy());
         this.client.execute(DeleteCustomLogTypeAction.INSTANCE, internalRequest, new ActionListener<DeleteCustomLogTypeResponse>() {
             @Override
             public void onResponse(DeleteCustomLogTypeResponse response) {
