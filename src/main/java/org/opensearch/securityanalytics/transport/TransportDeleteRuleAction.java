@@ -4,8 +4,6 @@
  */
 package org.opensearch.securityanalytics.transport;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.apache.lucene.search.join.ScoreMode;
 import org.opensearch.OpenSearchStatusException;
 import org.opensearch.cluster.routing.Preference;
@@ -32,7 +30,6 @@ import org.opensearch.rest.RestRequest;
 import org.opensearch.core.rest.RestStatus;
 import org.opensearch.search.SearchHit;
 import org.opensearch.search.builder.SearchSourceBuilder;
-import org.opensearch.securityanalytics.action.DeleteRuleAction;
 import org.opensearch.securityanalytics.action.DeleteRuleRequest;
 import org.opensearch.securityanalytics.action.DeleteRuleResponse;
 import org.opensearch.securityanalytics.action.IndexDetectorAction;
@@ -60,7 +57,7 @@ import static org.opensearch.securityanalytics.model.Detector.NO_VERSION;
 
 public class TransportDeleteRuleAction extends HandledTransportAction<DeleteRuleRequest, DeleteRuleResponse> {
 
-    private static final Logger log = LogManager.getLogger(TransportDeleteDetectorAction.class);
+    protected final String ruleIndex;
 
     private final Client client;
 
@@ -71,12 +68,13 @@ public class TransportDeleteRuleAction extends HandledTransportAction<DeleteRule
     private final ThreadPool threadPool;
 
     @Inject
-    public TransportDeleteRuleAction(TransportService transportService, Client client, DetectorIndices detectorIndices, ActionFilters actionFilters, NamedXContentRegistry xContentRegistry) {
-        super(DeleteRuleAction.NAME, transportService, actionFilters, DeleteRuleRequest::new);
+    public TransportDeleteRuleAction(String actionName, TransportService transportService, Client client, DetectorIndices detectorIndices, ActionFilters actionFilters, NamedXContentRegistry xContentRegistry, String ruleIndex) {
+        super(actionName, transportService, actionFilters, DeleteRuleRequest::new);
         this.client = client;
         this.detectorIndices = detectorIndices;
         this.xContentRegistry = xContentRegistry;
         this.threadPool = client.threadPool();
+        this.ruleIndex = ruleIndex;
     }
 
     @Override
@@ -104,7 +102,7 @@ public class TransportDeleteRuleAction extends HandledTransportAction<DeleteRule
 
         void start() {
             String ruleId = request.getRuleId();
-            GetRequest getRequest = new GetRequest(Rule.CUSTOM_RULES_INDEX, ruleId);
+            GetRequest getRequest = new GetRequest(ruleIndex, ruleId);
 
             client.get(getRequest, new ActionListener<>() {
                 @Override
@@ -225,7 +223,7 @@ public class TransportDeleteRuleAction extends HandledTransportAction<DeleteRule
 
         private void deleteRule(String ruleId) {
             new DeleteByQueryRequestBuilder(client, DeleteByQueryAction.INSTANCE)
-                .source(Rule.CUSTOM_RULES_INDEX)
+                .source(ruleIndex)
                 .filter(QueryBuilders.matchQuery("_id", ruleId))
                 .refresh(true)
                 .execute(new ActionListener<>() {
