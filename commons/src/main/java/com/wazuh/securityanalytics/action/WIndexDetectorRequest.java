@@ -4,15 +4,24 @@
  */
 package com.wazuh.securityanalytics.action;
 
+import java.io.IOException;
+import java.util.List;
+
 import org.opensearch.action.ActionRequest;
 import org.opensearch.action.ActionRequestValidationException;
 import org.opensearch.action.support.WriteRequest;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
 
-import java.io.IOException;
-import java.util.List;
-
+/**
+ * Request for indexing a Wazuh detector.
+ *
+ * This request contains all the information needed to create or update a detector,
+ * including the detector ID, log type name, category, associated rules, and refresh policy.
+ *
+ * @see WIndexDetectorAction
+ * @see WIndexDetectorResponse
+ */
 public class WIndexDetectorRequest extends ActionRequest {
     private final String detectorId;
     private final String logTypeName;
@@ -20,12 +29,22 @@ public class WIndexDetectorRequest extends ActionRequest {
     private final List<String> rules;
     private final WriteRequest.RefreshPolicy refreshPolicy;
 
+    /**
+     * Constructs a new WIndexDetectorRequest.
+     *
+     * @param detectorId    the unique identifier for the detector
+     * @param logTypeName   the name of the log type this detector monitors
+     * @param category      the category of logs this detector analyzes
+     * @param rules         list of rule IDs to associate with this detector
+     * @param refreshPolicy the refresh policy for the index operation
+     */
     public WIndexDetectorRequest(
-            String detectorId,
-            String logTypeName,
-            String category,
-            List<String> rules,
-            WriteRequest.RefreshPolicy refreshPolicy) {
+        String detectorId,
+        String logTypeName,
+        String category,
+        List<String> rules,
+        WriteRequest.RefreshPolicy refreshPolicy
+    ) {
         super();
         this.detectorId = detectorId;
         this.logTypeName = logTypeName;
@@ -34,14 +53,14 @@ public class WIndexDetectorRequest extends ActionRequest {
         this.refreshPolicy = refreshPolicy;
     }
 
+    /**
+     * Constructs a WIndexDetectorRequest by deserializing from a stream.
+     *
+     * @param sin the stream input to read from
+     * @throws IOException if an I/O error occurs during deserialization
+     */
     public WIndexDetectorRequest(StreamInput sin) throws IOException {
-        this(
-            sin.readString(),
-            sin.readString(),
-            sin.readString(),
-            sin.readStringList(),
-            WriteRequest.RefreshPolicy.readFrom(sin)
-        );
+        this(sin.readString(), sin.readString(), sin.readString(), sin.readStringList(), WriteRequest.RefreshPolicy.readFrom(sin));
     }
 
     @Override
@@ -59,7 +78,7 @@ public class WIndexDetectorRequest extends ActionRequest {
     }
 
     public String getDetectorId() {
-        return detectorId;
+        return this.detectorId;
     }
 
     public String getLogTypeName() {
