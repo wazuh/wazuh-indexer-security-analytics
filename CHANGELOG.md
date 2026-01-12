@@ -10,6 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Add transport classes to the "commons" lib to create integrations [(#14)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/14)
 - Initialize threat detectors [(#15)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/15)
 - Fix integrations not being created under the correct category [(#18)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/18)
+- Add new actions to security-analytics-commons [(#22)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/22)
 
 ### Dependencies
 -

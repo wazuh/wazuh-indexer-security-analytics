@@ -4,8 +4,15 @@
  */
 package org.opensearch.securityanalytics.transport;
 
+import java.util.Collection;
+import java.util.List;
+import java.util.Locale;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
 import org.opensearch.OpenSearchStatusException;
 import org.opensearch.action.ActionRunnable;
 import org.opensearch.action.StepListener;
@@ -52,21 +59,15 @@ import org.opensearch.transport.TransportService;
 import org.opensearch.transport.client.Client;
 import org.opensearch.transport.client.node.NodeClient;
 
-import java.util.Collection;
-import java.util.List;
-import java.util.Locale;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
-
 import static org.opensearch.securityanalytics.model.Detector.NO_VERSION;
 
 public class TransportDeleteDetectorAction extends HandledTransportAction<DeleteDetectorRequest, DeleteDetectorResponse> {
 
     private static final Logger log = LogManager.getLogger(TransportDeleteDetectorAction.class);
     private static final List<ThrowableCheckingPredicates> ACCEPTABLE_ENTITY_MISSING_THROWABLE_MATCHERS = List.of(
-            ThrowableCheckingPredicates.MONITOR_NOT_FOUND,
-            ThrowableCheckingPredicates.WORKFLOW_NOT_FOUND,
-            ThrowableCheckingPredicates.ALERTING_CONFIG_INDEX_NOT_FOUND
+        ThrowableCheckingPredicates.MONITOR_NOT_FOUND,
+        ThrowableCheckingPredicates.WORKFLOW_NOT_FOUND,
+        ThrowableCheckingPredicates.ALERTING_CONFIG_INDEX_NOT_FOUND
     );
 
     private final Client client;
@@ -93,10 +94,18 @@ public class TransportDeleteDetectorAction extends HandledTransportAction<Delete
     private final ExceptionChecker exceptionChecker;
 
     @Inject
-    public TransportDeleteDetectorAction(TransportService transportService, IndexTemplateManager indexTemplateManager, Client client,
-                                         ActionFilters actionFilters, NamedXContentRegistry xContentRegistry, RuleTopicIndices ruleTopicIndices,
-                                         DetectorIndices detectorIndices, ClusterService clusterService, Settings settings,
-                                         ExceptionChecker exceptionChecker) {
+    public TransportDeleteDetectorAction(
+        TransportService transportService,
+        IndexTemplateManager indexTemplateManager,
+        Client client,
+        ActionFilters actionFilters,
+        NamedXContentRegistry xContentRegistry,
+        RuleTopicIndices ruleTopicIndices,
+        DetectorIndices detectorIndices,
+        ClusterService clusterService,
+        Settings settings,
+        ExceptionChecker exceptionChecker
+    ) {
         super(DeleteDetectorAction.NAME, transportService, actionFilters, DeleteDetectorRequest::new);
         this.client = client;
         this.ruleTopicIndices = ruleTopicIndices;
@@ -110,7 +119,8 @@ public class TransportDeleteDetectorAction extends HandledTransportAction<Delete
         this.settings = settings;
 
         this.enabledWorkflowUsage = SecurityAnalyticsSettings.ENABLE_WORKFLOW_USAGE.get(this.settings);
-        this.clusterService.getClusterSettings().addSettingsUpdateConsumer(SecurityAnalyticsSettings.ENABLE_WORKFLOW_USAGE, this::setEnabledWorkflowUsage);
+        this.clusterService.getClusterSettings()
+            .addSettingsUpdateConsumer(SecurityAnalyticsSettings.ENABLE_WORKFLOW_USAGE, this::setEnabledWorkflowUsage);
         this.exceptionChecker = exceptionChecker;
     }
 
@@ -120,14 +130,17 @@ public class TransportDeleteDetectorAction extends HandledTransportAction<Delete
         asyncAction.start();
     }
 
-    private void deleteAlertingMonitor(String monitorId, WriteRequest.RefreshPolicy refreshPolicy, ActionListener<DeleteMonitorResponse> listener) {
+    private void deleteAlertingMonitor(
+        String monitorId,
+        WriteRequest.RefreshPolicy refreshPolicy,
+        ActionListener<DeleteMonitorResponse> listener
+    ) {
         DeleteMonitorRequest request = new DeleteMonitorRequest(monitorId, refreshPolicy);
         AlertingPluginInterface.INSTANCE.deleteMonitor((NodeClient) client, request, listener);
     }
 
     private void deleteDetector(String detectorId, WriteRequest.RefreshPolicy refreshPolicy, ActionListener<DeleteResponse> listener) {
-        DeleteRequest request = new DeleteRequest(Detector.DETECTORS_INDEX, detectorId)
-                .setRefreshPolicy(refreshPolicy);
+        DeleteRequest request = new DeleteRequest(Detector.DETECTORS_INDEX, detectorId).setRefreshPolicy(refreshPolicy);
         client.delete(request, listener);
     }
 
@@ -141,10 +154,11 @@ public class TransportDeleteDetectorAction extends HandledTransportAction<Delete
         private final Task task;
 
         AsyncDeleteDetectorAction(
-                Task task,
-                DeleteDetectorRequest request,
-                ActionListener<DeleteDetectorResponse> listener,
-                DetectorIndices detectorIndices) {
+            Task task,
+            DeleteDetectorRequest request,
+            ActionListener<DeleteDetectorResponse> listener,
+            DetectorIndices detectorIndices
+        ) {
             this.task = task;
             this.request = request;
             this.listener = listener;
@@ -154,41 +168,55 @@ public class TransportDeleteDetectorAction extends HandledTransportAction<Delete
 
         void start() {
             if (!detectorIndices.detectorIndexExists()) {
-                onFailures(new OpenSearchStatusException(
-                        String.format(Locale.getDefault(),
-                                "Detector with %s is not found",
-                                request.getDetectorId()),
-                        RestStatus.NOT_FOUND));
+                onFailures(
+                    new OpenSearchStatusException(
+                        String.format(Locale.getDefault(), "Detector with %s is not found", request.getDetectorId()),
+                        RestStatus.NOT_FOUND
+                    )
+                );
                 return;
 
             }
             TransportDeleteDetectorAction.this.threadPool.getThreadContext().stashContext();
             String detectorId = request.getDetectorId();
             GetRequest getRequest = new GetRequest(Detector.DETECTORS_INDEX, detectorId);
-            client.get(getRequest,
-                    new ActionListener<>() {
-                        @Override
-                        public void onResponse(GetResponse response) {
-                            if (!response.isExists()) {
-                                onFailures(new OpenSearchStatusException(String.format(Locale.getDefault(), "Detector with %s is not found", detectorId), RestStatus.NOT_FOUND));
-                                return;
-                            }
+            client.get(getRequest, new ActionListener<>() {
+                @Override
+                public void onResponse(GetResponse response) {
+                    if (!response.isExists()) {
+                        onFailures(
+                            new OpenSearchStatusException(
+                                String.format(Locale.getDefault(), "Detector with %s is not found", detectorId),
+                                RestStatus.NOT_FOUND
+                            )
+                        );
+                        return;
+                    }
 
-                            try {
-                                XContentParser xcp = XContentHelper.createParser(xContentRegistry, LoggingDeprecationHandler.INSTANCE,
-                                        response.getSourceAsBytesRef(), XContentType.JSON);
-                                Detector detector = Detector.docParse(xcp, response.getId(), response.getVersion());
-                                onGetResponse(detector);
-                            } catch (Exception e) {
-                                onFailures(e);
-                            }
-                        }
+                    try {
+                        XContentParser xcp = XContentHelper.createParser(
+                            xContentRegistry,
+                            LoggingDeprecationHandler.INSTANCE,
+                            response.getSourceAsBytesRef(),
+                            XContentType.JSON
+                        );
+                        Detector detector = Detector.docParse(xcp, response.getId(), response.getVersion());
+                        onGetResponse(detector);
+                    } catch (Exception e) {
+                        onFailures(e);
+                    }
+                }
 
-                        @Override
-                        public void onFailure(Exception t) {
-                            onFailures(new OpenSearchStatusException(String.format(Locale.getDefault(), "Detector with %s is not found", detectorId), RestStatus.NOT_FOUND));
-                        }
-                    });
+                @Override
+                public void onFailure(Exception t) {
+                    onFailures(
+                        new OpenSearchStatusException(
+                            String.format(Locale.getDefault(), "Detector with %s is not found", detectorId),
+                            RestStatus.NOT_FOUND
+                        )
+                    );
+                }
+            });
         }
 
         private void onGetResponse(Detector detector) {
@@ -197,39 +225,51 @@ public class TransportDeleteDetectorAction extends HandledTransportAction<Delete
             deleteWorkflow(detector, onDeleteWorkflowStep);
             onDeleteWorkflowStep.whenComplete(acknowledgedResponse -> {
                 List<String> monitorIds = detector.getMonitorIds();
-                ActionListener<DeleteMonitorResponse> deletesListener = new GroupedActionListener<>(new ActionListener<>() {
-                    @Override
-                    public void onResponse(Collection<DeleteMonitorResponse> responses) {
-                        SetOnce<RestStatus> errorStatusSupplier = new SetOnce<>();
-                        if (responses.stream().filter(response -> {
-                            if (response.getStatus() != RestStatus.OK) {
-                                log.error("Detector not being deleted because monitor [{}] could not be deleted. Status [{}]", response.getId(), response.getStatus());
-                                errorStatusSupplier.trySet(response.getStatus());
-                                return true;
+                if (monitorIds == null || monitorIds.isEmpty()) {
+                    deleteDetectorFromConfig(detector.getId(), request.getRefreshPolicy());
+                } else {
+                    ActionListener<DeleteMonitorResponse> deletesListener = new GroupedActionListener<>(new ActionListener<>() {
+                        @Override
+                        public void onResponse(Collection<DeleteMonitorResponse> responses) {
+                            SetOnce<RestStatus> errorStatusSupplier = new SetOnce<>();
+                            if (responses.stream().filter(response -> {
+                                if (response.getStatus() != RestStatus.OK) {
+                                    log.error(
+                                        "Detector not being deleted because monitor [{}] could not be deleted. Status [{}]",
+                                        response.getId(),
+                                        response.getStatus()
+                                    );
+                                    errorStatusSupplier.trySet(response.getStatus());
+                                    return true;
+                                }
+                                return false;
+                            }).count() > 0) {
+                                onFailures(
+                                    new OpenSearchStatusException(
+                                        "Monitor associated with detected could not be deleted",
+                                        errorStatusSupplier.get()
+                                    )
+                                );
                             }
-                            return false;
-                        }).count() > 0) {
-                            onFailures(new OpenSearchStatusException("Monitor associated with detected could not be deleted", errorStatusSupplier.get()));
-                        }
-                        deleteDetectorFromConfig(detector.getId(), request.getRefreshPolicy());
-                    }
-
-                    @Override
-                    public void onFailure(Exception e) {
-                        if (exceptionChecker.doesGroupedActionListenerExceptionMatch(e, ACCEPTABLE_ENTITY_MISSING_THROWABLE_MATCHERS)) {
-                            logAcceptableEntityMissingException(e, detector.getId());
                             deleteDetectorFromConfig(detector.getId(), request.getRefreshPolicy());
-                        } else {
-                            log.error(String.format(Locale.ROOT, "Failed to delete detector %s", detector.getId()), e.getMessage());
-                            if (counter.compareAndSet(false, true)) {
-                                finishHim(null, e);
+                        }
+
+                        @Override
+                        public void onFailure(Exception e) {
+                            if (exceptionChecker.doesGroupedActionListenerExceptionMatch(e, ACCEPTABLE_ENTITY_MISSING_THROWABLE_MATCHERS)) {
+                                logAcceptableEntityMissingException(e, detector.getId());
+                                deleteDetectorFromConfig(detector.getId(), request.getRefreshPolicy());
+                            } else {
+                                log.error(String.format(Locale.ROOT, "Failed to delete detector %s", detector.getId()), e.getMessage());
+                                if (counter.compareAndSet(false, true)) {
+                                    finishHim(null, e);
+                                }
                             }
                         }
+                    }, monitorIds.size());
+                    for (String monitorId : monitorIds) {
+                        deleteAlertingMonitor(monitorId, request.getRefreshPolicy(), deletesListener);
                     }
-                }, monitorIds.size());
-                for (String monitorId : monitorIds) {
-                    deleteAlertingMonitor(monitorId, request.getRefreshPolicy(),
-                            deletesListener);
                 }
             }, e -> {
                 if (counter.compareAndSet(false, true)) {
@@ -245,8 +285,8 @@ public class TransportDeleteDetectorAction extends HandledTransportAction<Delete
                 StepListener<DeleteWorkflowResponse> onDeleteWorkflowStep = new StepListener<>();
                 workflowService.deleteWorkflow(workflowId, onDeleteWorkflowStep);
                 onDeleteWorkflowStep.whenComplete(
-                        deleteWorkflowResponse -> actionListener.onResponse(new AcknowledgedResponse(true)),
-                        deleteWorkflowResponse -> handleDeleteWorkflowFailure(detector.getId(), deleteWorkflowResponse, actionListener)
+                    deleteWorkflowResponse -> actionListener.onResponse(new AcknowledgedResponse(true)),
+                    deleteWorkflowResponse -> handleDeleteWorkflowFailure(detector.getId(), deleteWorkflowResponse, actionListener)
                 );
             } else {
                 // If detector doesn't have the workflows it means that older version of the plugin is used and just skip the step
@@ -254,9 +294,15 @@ public class TransportDeleteDetectorAction extends HandledTransportAction<Delete
             }
         }
 
-        private void handleDeleteWorkflowFailure(final String detectorId, final Exception deleteWorkflowException,
-                                                 final ActionListener<AcknowledgedResponse> actionListener) {
-            if (exceptionChecker.doesGroupedActionListenerExceptionMatch(deleteWorkflowException, ACCEPTABLE_ENTITY_MISSING_THROWABLE_MATCHERS)) {
+        private void handleDeleteWorkflowFailure(
+            final String detectorId,
+            final Exception deleteWorkflowException,
+            final ActionListener<AcknowledgedResponse> actionListener
+        ) {
+            if (exceptionChecker.doesGroupedActionListenerExceptionMatch(
+                deleteWorkflowException,
+                ACCEPTABLE_ENTITY_MISSING_THROWABLE_MATCHERS
+            )) {
                 logAcceptableEntityMissingException(deleteWorkflowException, detectorId);
                 actionListener.onResponse(new AcknowledgedResponse(true));
             } else {
@@ -265,31 +311,30 @@ public class TransportDeleteDetectorAction extends HandledTransportAction<Delete
         }
 
         private void deleteDetectorFromConfig(String detectorId, WriteRequest.RefreshPolicy refreshPolicy) {
-            deleteDetector(detectorId, refreshPolicy,
-                    new ActionListener<>() {
+            deleteDetector(detectorId, refreshPolicy, new ActionListener<>() {
+                @Override
+                public void onResponse(DeleteResponse response) {
+
+                    indexTemplateManager.deleteAllUnusedTemplates(new ActionListener<Void>() {
                         @Override
-                        public void onResponse(DeleteResponse response) {
-
-                            indexTemplateManager.deleteAllUnusedTemplates(new ActionListener<Void>() {
-                                @Override
-                                public void onResponse(Void unused) {
-                                    onOperation(response);
-                                }
-
-                                @Override
-                                public void onFailure(Exception e) {
-                                    log.error("Error deleting unused templates: " + e.getMessage());
-                                    onOperation(response);
-                                }
-                            });
-
+                        public void onResponse(Void unused) {
+                            onOperation(response);
                         }
 
                         @Override
-                        public void onFailure(Exception t) {
-                            onFailures(t);
+                        public void onFailure(Exception e) {
+                            log.error("Error deleting unused templates: " + e.getMessage());
+                            onOperation(response);
                         }
                     });
+
+                }
+
+                @Override
+                public void onFailure(Exception t) {
+                    onFailures(t);
+                }
+            });
         }
 
         private void onOperation(DeleteResponse response) {
@@ -322,8 +367,11 @@ public class TransportDeleteDetectorAction extends HandledTransportAction<Delete
     }
 
     private void logAcceptableEntityMissingException(final Exception e, final String detectorId) {
-        final String errorMsg = String.format(Locale.ROOT, "Workflow, monitor, or jobs index already deleted." +
-                " Proceeding with detector %s deletion", detectorId);
+        final String errorMsg = String.format(
+            Locale.ROOT,
+            "Workflow, monitor, or jobs index already deleted." + " Proceeding with detector %s deletion",
+            detectorId
+        );
         log.error(errorMsg, e.getMessage());
     }
 

@@ -5,6 +5,7 @@
 package com.wazuh.securityanalytics.model;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -162,7 +163,7 @@ public class Integration implements Writeable, ToXContentObject {
             .field(CATEGORY_FIELD, this.category)
             .field(SOURCE_FIELD, this.source)
             .field(TAGS_FIELD, this.tags)
-            .array(RULES_FIELD, this.ruleIds)
+            .field(RULES_FIELD, this.ruleIds)
             .endObject();
     }
 
@@ -200,7 +201,7 @@ public class Integration implements Writeable, ToXContentObject {
         String category = null;
         String source = null;
         Map<String, Object> tags = null;
-        List<String> rules = null;
+        List<String> rules = new ArrayList<>();
 
         XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
         while (xcp.nextToken() != XContentParser.Token.END_OBJECT) {
@@ -208,14 +209,30 @@ public class Integration implements Writeable, ToXContentObject {
             xcp.nextToken();
 
             switch (fieldName) {
-                case NAME_FIELD -> name = xcp.text();
-                case DESCRIPTION_FIELD -> description = xcp.text();
-                case CATEGORY_FIELD -> category = xcp.textOrNull();
-                case SOURCE_FIELD -> source = xcp.text();
-                case TAGS_FIELD -> tags = xcp.map();
-                case RULES_FIELD -> {
-                }
-                default -> xcp.skipChildren();
+                case NAME_FIELD:
+                    name = xcp.text();
+                    break;
+                case DESCRIPTION_FIELD:
+                    description = xcp.text();
+                    break;
+                case CATEGORY_FIELD:
+                    category = xcp.textOrNull();
+                    break;
+                case SOURCE_FIELD:
+                    source = xcp.text();
+                    break;
+                case TAGS_FIELD:
+                    tags = xcp.map();
+                    break;
+                case RULES_FIELD:
+                    if (xcp.currentToken() == XContentParser.Token.START_ARRAY) {
+                        while (xcp.nextToken() != XContentParser.Token.END_ARRAY) {
+                            rules.add(xcp.text());
+                        }
+                    }
+                    break;
+                default:
+                    xcp.skipChildren();
             }
         }
         return new Integration(id, version, name, description, category, source, rules, tags);
