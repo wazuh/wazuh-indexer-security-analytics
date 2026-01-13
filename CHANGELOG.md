@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Load Wazuh Integrations and Rules as standard [(#23)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/23)
 - Improve logging of security-analytics resources [(#24)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/24)
 - Improve SAP code quality [(#26)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/26)
+- Rename commons library [(#28)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/28)
 
 ### Deprecated
 -
