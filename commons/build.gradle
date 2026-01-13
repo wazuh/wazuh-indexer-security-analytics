@@ -61,8 +61,8 @@ dependencies {
     testImplementation "org.opensearch.test:framework:${opensearch_version}"
 }
 
-def projectName = 'wazuh-indexer-common'
-def projectDescription = 'Wazuh Indexer Common Library'
+def projectName = 'wazuh-indexer-security-analytics-commons'
+def projectDescription = 'Wazuh Indexer Security Analytics Common Library'
 def projectPath = System.getProperty('projectPath', 'com.wazuh')
 def wazuh_version = System.getProperty('wazuh.version', '5.0.0')
 def revision = System.getProperty('revision', '0')
