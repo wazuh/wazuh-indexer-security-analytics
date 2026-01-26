@@ -15,6 +15,10 @@ runs:
       with:
         distribution: temurin
         java-version: 21
+
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v4
+
     - id: publish-security-analytics-commons
       shell: bash
       working-directory: ./commons/
