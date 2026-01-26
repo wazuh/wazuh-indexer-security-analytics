@@ -11,6 +11,10 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: 21
     - id: publish-security-analytics-commons
       shell: bash
       working-directory: ./commons/
