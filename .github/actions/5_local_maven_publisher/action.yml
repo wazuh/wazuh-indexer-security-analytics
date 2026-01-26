@@ -6,7 +6,7 @@ inputs:
     required: true
   revision:
     description: "The revision of the artifact to publish."
-    required: true
+    required: false
     default: "0"
 runs:
   using: "composite"
@@ -22,9 +22,9 @@ runs:
     - id: publish-security-analytics-commons
       shell: bash
       working-directory: ./commons/
-      run: ../gradlew publishToMavenLocal -x check -Dversion=${{ inputs.version }} -Drevision=${{ inputs.revision || '0' }}
+      run: ../gradlew publishToMavenLocal -x check -Dversion=${{ inputs.version }} -Drevision=${{ inputs.revision }}
 
     - id: publish-security-analytics
       shell: bash
       working-directory: ./
-      run: ./gradlew publishToMavenLocal -x check -Dversion=${{ inputs.version }} -Drevision=${{ inputs.revision || '0' }}
+      run: ./gradlew publishToMavenLocal -x check -Dversion=${{ inputs.version }} -Drevision=${{ inputs.revision }}
