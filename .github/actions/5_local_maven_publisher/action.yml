@@ -13,10 +13,10 @@ runs:
   steps:
     - id: publish-security-analytics-commons
       shell: bash
-      working-directory: wazuh-indexer-security-analytics/commons
+      working-directory: ./commons/
       run: ../gradlew publishToMavenLocal -x check -Dversion=${{ inputs.version }} -Drevision=${{ inputs.revision || '0' }}
 
     - id: publish-security-analytics
       shell: bash
-      working-directory: wazuh-indexer-security-analytics
+      working-directory: ./
       run: ./gradlew publishToMavenLocal -x check -Dversion=${{ inputs.version }} -Drevision=${{ inputs.revision || '0' }}
