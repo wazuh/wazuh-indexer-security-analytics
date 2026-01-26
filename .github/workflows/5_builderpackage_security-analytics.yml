@@ -59,11 +59,10 @@ jobs:
         run: echo "version=$(jq -r .version<VERSION.json)" >> "$GITHUB_OUTPUT"
 
       - name: Publish commons library to mavenLocal
-        run: |
-          cd commons
-          ../gradlew publishToMavenLocal -x check \
-          -Dversion=${{ steps.version.outputs.version }} \
-          -Drevision=${{ inputs.revision }}
+        uses: ./.github/actions/5_builderpackage_indexer_branch_resolver
+        with:
+          version: ${{ steps.version.outputs.version }}
+          revision: ${{ inputs.revision }}
 
       - name: Build with Gradle
         run: ./gradlew build -Dversion=${{ steps.version.outputs.version }} -Drevision=${{ inputs.revision }} -x integTest
