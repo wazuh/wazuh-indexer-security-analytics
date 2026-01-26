@@ -1,0 +1,22 @@
+name: "SAP - Publish to Local Maven"
+description: "Publishes artifacts to a local Maven repository."
+inputs:
+  version:
+    description: "The version of the artifact to publish."
+    required: true
+  revision:
+    description: "The revision of the artifact to publish."
+    required: true
+    default: "0"
+runs:
+  using: "composite"
+  steps:
+    - id: publish-security-analytics-commons
+      shell: bash
+      working-directory: wazuh-indexer-security-analytics/commons
+      run: ../gradlew publishToMavenLocal -x check -Dversion=${{ inputs.version }} -Drevision=${{ inputs.revision || '0' }}
+
+    - id: publish-security-analytics
+      shell: bash
+      working-directory: wazuh-indexer-security-analytics
+      run: ./gradlew publishToMavenLocal -x check -Dversion=${{ inputs.version }} -Drevision=${{ inputs.revision || '0' }}
