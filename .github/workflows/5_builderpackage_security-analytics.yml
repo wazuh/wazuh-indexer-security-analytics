@@ -59,7 +59,7 @@ jobs:
         run: echo "version=$(jq -r .version<VERSION.json)" >> "$GITHUB_OUTPUT"
 
       - name: Publish commons library to mavenLocal
-        uses: ./.github/actions/5_builderpackage_indexer_branch_resolver
+        uses: ./.github/actions/5_local_maven_publisher
         with:
           version: ${{ steps.version.outputs.version }}
           revision: ${{ inputs.revision }}
