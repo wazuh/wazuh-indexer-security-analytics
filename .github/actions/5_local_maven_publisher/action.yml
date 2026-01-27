@@ -1,0 +1,39 @@
+name: "SAP - Publish to Local Maven"
+description: "Publishes artifacts to a local Maven repository."
+inputs:
+  version:
+    description: "The version of the artifact to publish."
+    required: true
+  revision:
+    description: "The revision of the artifact to publish."
+    required: false
+    default: "0"
+  reference:
+    description: "The reference branch or tag for the build."
+    required: false
+    default: "main"
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/checkout@v6
+      with:
+        repository: wazuh/wazuh-indexer-security-analytics
+        ref: ${{ inputs.reference }}
+    # Set up JDK 21
+    - uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: 21
+    # Set up Gradle
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v4
+    # Publish SAP commons library to Local Maven
+    - id: publish-security-analytics-commons
+      shell: bash
+      working-directory: ./commons/
+      run: ../gradlew publishToMavenLocal -x check -Dversion=${{ inputs.version }} -Drevision=${{ inputs.revision }}
+    # Publish Wazuh Indexer Security Analytics plugin to Local Maven
+    - id: publish-security-analytics
+      shell: bash
+      working-directory: ./
+      run: ./gradlew publishToMavenLocal -x check -Dversion=${{ inputs.version }} -Drevision=${{ inputs.revision }}
