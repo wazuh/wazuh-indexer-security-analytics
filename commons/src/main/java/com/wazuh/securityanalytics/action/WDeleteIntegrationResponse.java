@@ -38,4 +38,8 @@ public class WDeleteIntegrationResponse extends ActionResponse implements ToXCon
     public String getId() {
         return this.id;
     }
+
+    public RestStatus getStatus() {
+        return status;
+    }
 }

@@ -95,4 +95,12 @@ public class WIndexIntegrationResponse extends ActionResponse implements ToXCont
     public String getId() {
         return this.id;
     }
+
+    /**
+     * Gets the status of the Response
+     * @return The RestStatus of the response
+     */
+    public RestStatus getStatus() {
+        return status;
+    }
 }
