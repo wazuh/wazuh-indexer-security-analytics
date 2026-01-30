@@ -11,14 +11,14 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
 
+import com.wazuh.securityanalytics.action.WDeleteCustomRuleAction;
 import com.wazuh.securityanalytics.action.WDeleteDetectorAction;
 import com.wazuh.securityanalytics.action.WDeleteIntegrationAction;
 import com.wazuh.securityanalytics.action.WDeleteRuleAction;
+import com.wazuh.securityanalytics.action.WIndexCustomRuleAction;
 import com.wazuh.securityanalytics.action.WIndexDetectorAction;
 import com.wazuh.securityanalytics.action.WIndexIntegrationAction;
 import com.wazuh.securityanalytics.action.WIndexRuleAction;
-import com.wazuh.securityanalytics.action.WIndexCustomRuleAction;
-import com.wazuh.securityanalytics.action.WDeleteCustomRuleAction;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -153,14 +153,14 @@ import org.opensearch.securityanalytics.transport.TransportSearchDetectorAction;
 import org.opensearch.securityanalytics.transport.TransportSearchRuleAction;
 import org.opensearch.securityanalytics.transport.TransportUpdateIndexMappingsAction;
 import org.opensearch.securityanalytics.transport.TransportValidateRulesAction;
+import org.opensearch.securityanalytics.transport.WTransportDeleteCustomRuleAction;
 import org.opensearch.securityanalytics.transport.WTransportDeleteDetectorAction;
 import org.opensearch.securityanalytics.transport.WTransportDeleteIntegrationAction;
 import org.opensearch.securityanalytics.transport.WTransportDeleteRuleAction;
+import org.opensearch.securityanalytics.transport.WTransportIndexCustomRuleAction;
 import org.opensearch.securityanalytics.transport.WTransportIndexDetectorAction;
 import org.opensearch.securityanalytics.transport.WTransportIndexIntegrationAction;
 import org.opensearch.securityanalytics.transport.WTransportIndexRuleAction;
-import org.opensearch.securityanalytics.transport.WTransportIndexCustomRuleAction;
-import org.opensearch.securityanalytics.transport.WTransportDeleteCustomRuleAction;
 import org.opensearch.securityanalytics.util.CorrelationIndices;
 import org.opensearch.securityanalytics.util.CorrelationRuleIndices;
 import org.opensearch.securityanalytics.util.CustomLogTypeIndices;
@@ -277,21 +277,27 @@ public class SecurityAnalyticsPlugin extends Plugin
         this.correlationIndices = new CorrelationIndices(client, clusterService);
         this.customLogTypeIndices = new CustomLogTypeIndices(client.admin(), clusterService);
         this.indexTemplateManager = new IndexTemplateManager(client, clusterService, indexNameExpressionResolver, xContentRegistry);
-        this.mapperService = new MapperService(client, clusterService, indexNameExpressionResolver, this.indexTemplateManager, this.logTypeService);
+        this.mapperService = new MapperService(
+            client,
+            clusterService,
+            indexNameExpressionResolver,
+            this.indexTemplateManager,
+            this.logTypeService
+        );
         this.ruleIndices = new RuleIndices(this.logTypeService, client, clusterService, threadPool);
         this.correlationRuleIndices = new CorrelationRuleIndices(client, clusterService);
         CorrelationAlertService correlationAlertService = new CorrelationAlertService(client, xContentRegistry);
         NotificationService notificationService = new NotificationService((NodeClient) client, scriptService);
         return List.of(
-                this.detectorIndices,
-                this.correlationIndices,
-                this.correlationRuleIndices,
-                this.ruleTopicIndices,
-                this.customLogTypeIndices,
-                this.ruleIndices,
-                this.mapperService,
-                this.indexTemplateManager,
-                this.builtinLogTypeLoader,
+            this.detectorIndices,
+            this.correlationIndices,
+            this.correlationRuleIndices,
+            this.ruleTopicIndices,
+            this.customLogTypeIndices,
+            this.ruleIndices,
+            this.mapperService,
+            this.indexTemplateManager,
+            this.builtinLogTypeLoader,
             correlationAlertService,
             notificationService
         );

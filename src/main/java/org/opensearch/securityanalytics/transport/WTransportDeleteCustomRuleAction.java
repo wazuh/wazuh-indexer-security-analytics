@@ -7,7 +7,6 @@ package org.opensearch.securityanalytics.transport;
 import com.wazuh.securityanalytics.action.WDeleteCustomRuleAction;
 import com.wazuh.securityanalytics.action.WDeleteCustomRuleRequest;
 import com.wazuh.securityanalytics.action.WDeleteRuleResponse;
-
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -23,17 +22,14 @@ import org.opensearch.transport.TransportService;
 import org.opensearch.transport.client.Client;
 
 public class WTransportDeleteCustomRuleAction extends HandledTransportAction<WDeleteCustomRuleRequest, WDeleteRuleResponse>
-        implements SecureTransportAction {
+    implements
+        SecureTransportAction {
 
     private static final Logger log = LogManager.getLogger(WTransportDeleteCustomRuleAction.class);
     private final Client client;
 
     @Inject
-    public WTransportDeleteCustomRuleAction(
-            TransportService transportService,
-            Client client,
-            ActionFilters actionFilters
-    ) {
+    public WTransportDeleteCustomRuleAction(TransportService transportService, Client client, ActionFilters actionFilters) {
         super(WDeleteCustomRuleAction.NAME, transportService, actionFilters, WDeleteCustomRuleRequest::new);
         this.client = client;
     }

@@ -42,7 +42,15 @@ public class WDeleteCustomRuleRequest extends ActionRequest {
         out.writeBoolean(this.forced);
     }
 
-    public String getRuleId() { return this.ruleId; }
-    public WriteRequest.RefreshPolicy getRefreshPolicy() { return this.refreshPolicy; }
-    public Boolean isForced() { return this.forced; }
+    public String getRuleId() {
+        return this.ruleId;
+    }
+
+    public WriteRequest.RefreshPolicy getRefreshPolicy() {
+        return this.refreshPolicy;
+    }
+
+    public Boolean isForced() {
+        return this.forced;
+    }
 }

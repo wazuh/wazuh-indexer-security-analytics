@@ -26,12 +26,12 @@ public class WIndexCustomRuleRequest extends ActionRequest {
     private final Boolean forced;
 
     public WIndexCustomRuleRequest(
-            String ruleId,
-            WriteRequest.RefreshPolicy refreshPolicy,
-            String logType,
-            RestRequest.Method method,
-            String rule,
-            Boolean forced
+        String ruleId,
+        WriteRequest.RefreshPolicy refreshPolicy,
+        String logType,
+        RestRequest.Method method,
+        String rule,
+        Boolean forced
     ) {
         super();
         this.ruleId = ruleId;
@@ -44,12 +44,12 @@ public class WIndexCustomRuleRequest extends ActionRequest {
 
     public WIndexCustomRuleRequest(StreamInput sin) throws IOException {
         this(
-                sin.readString(),
-                WriteRequest.RefreshPolicy.readFrom(sin),
-                sin.readString(),
-                sin.readEnum(RestRequest.Method.class),
-                sin.readString(),
-                sin.readBoolean()
+            sin.readString(),
+            WriteRequest.RefreshPolicy.readFrom(sin),
+            sin.readString(),
+            sin.readEnum(RestRequest.Method.class),
+            sin.readString(),
+            sin.readBoolean()
         );
     }
 
@@ -72,10 +72,27 @@ public class WIndexCustomRuleRequest extends ActionRequest {
         out.writeBoolean(this.forced);
     }
 
-    public String getRuleId() { return this.ruleId; }
-    public WriteRequest.RefreshPolicy getRefreshPolicy() { return this.refreshPolicy; }
-    public String getLogType() { return this.logType; }
-    public RestRequest.Method getMethod() { return this.method; }
-    public String getRule() { return this.rule; }
-    public Boolean isForced() { return this.forced; }
+    public String getRuleId() {
+        return this.ruleId;
+    }
+
+    public WriteRequest.RefreshPolicy getRefreshPolicy() {
+        return this.refreshPolicy;
+    }
+
+    public String getLogType() {
+        return this.logType;
+    }
+
+    public RestRequest.Method getMethod() {
+        return this.method;
+    }
+
+    public String getRule() {
+        return this.rule;
+    }
+
+    public Boolean isForced() {
+        return this.forced;
+    }
 }
