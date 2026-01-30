@@ -11,9 +11,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
 
+import com.wazuh.securityanalytics.action.WDeleteCustomRuleAction;
 import com.wazuh.securityanalytics.action.WDeleteDetectorAction;
 import com.wazuh.securityanalytics.action.WDeleteIntegrationAction;
 import com.wazuh.securityanalytics.action.WDeleteRuleAction;
+import com.wazuh.securityanalytics.action.WIndexCustomRuleAction;
 import com.wazuh.securityanalytics.action.WIndexDetectorAction;
 import com.wazuh.securityanalytics.action.WIndexIntegrationAction;
 import com.wazuh.securityanalytics.action.WIndexRuleAction;
@@ -151,9 +153,11 @@ import org.opensearch.securityanalytics.transport.TransportSearchDetectorAction;
 import org.opensearch.securityanalytics.transport.TransportSearchRuleAction;
 import org.opensearch.securityanalytics.transport.TransportUpdateIndexMappingsAction;
 import org.opensearch.securityanalytics.transport.TransportValidateRulesAction;
+import org.opensearch.securityanalytics.transport.WTransportDeleteCustomRuleAction;
 import org.opensearch.securityanalytics.transport.WTransportDeleteDetectorAction;
 import org.opensearch.securityanalytics.transport.WTransportDeleteIntegrationAction;
 import org.opensearch.securityanalytics.transport.WTransportDeleteRuleAction;
+import org.opensearch.securityanalytics.transport.WTransportIndexCustomRuleAction;
 import org.opensearch.securityanalytics.transport.WTransportIndexDetectorAction;
 import org.opensearch.securityanalytics.transport.WTransportIndexIntegrationAction;
 import org.opensearch.securityanalytics.transport.WTransportIndexRuleAction;
@@ -266,28 +270,34 @@ public class SecurityAnalyticsPlugin extends Plugin
     ) {
         this.client = client;
         this.threadPool = threadPool;
-        builtinLogTypeLoader = new BuiltinLogTypeLoader();
-        logTypeService = new LogTypeService(client, clusterService, xContentRegistry, builtinLogTypeLoader);
-        detectorIndices = new DetectorIndices(client.admin(), clusterService, threadPool);
-        ruleTopicIndices = new RuleTopicIndices(client, clusterService, logTypeService);
-        correlationIndices = new CorrelationIndices(client, clusterService);
-        customLogTypeIndices = new CustomLogTypeIndices(client.admin(), clusterService);
-        indexTemplateManager = new IndexTemplateManager(client, clusterService, indexNameExpressionResolver, xContentRegistry);
-        mapperService = new MapperService(client, clusterService, indexNameExpressionResolver, indexTemplateManager, logTypeService);
-        ruleIndices = new RuleIndices(logTypeService, client, clusterService, threadPool);
-        correlationRuleIndices = new CorrelationRuleIndices(client, clusterService);
+        this.builtinLogTypeLoader = new BuiltinLogTypeLoader();
+        this.logTypeService = new LogTypeService(client, clusterService, xContentRegistry, this.builtinLogTypeLoader);
+        this.detectorIndices = new DetectorIndices(client.admin(), clusterService, threadPool);
+        this.ruleTopicIndices = new RuleTopicIndices(client, clusterService, this.logTypeService);
+        this.correlationIndices = new CorrelationIndices(client, clusterService);
+        this.customLogTypeIndices = new CustomLogTypeIndices(client.admin(), clusterService);
+        this.indexTemplateManager = new IndexTemplateManager(client, clusterService, indexNameExpressionResolver, xContentRegistry);
+        this.mapperService = new MapperService(
+            client,
+            clusterService,
+            indexNameExpressionResolver,
+            this.indexTemplateManager,
+            this.logTypeService
+        );
+        this.ruleIndices = new RuleIndices(this.logTypeService, client, clusterService, threadPool);
+        this.correlationRuleIndices = new CorrelationRuleIndices(client, clusterService);
         CorrelationAlertService correlationAlertService = new CorrelationAlertService(client, xContentRegistry);
         NotificationService notificationService = new NotificationService((NodeClient) client, scriptService);
         return List.of(
-            detectorIndices,
-            correlationIndices,
-            correlationRuleIndices,
-            ruleTopicIndices,
-            customLogTypeIndices,
-            ruleIndices,
-            mapperService,
-            indexTemplateManager,
-            builtinLogTypeLoader,
+            this.detectorIndices,
+            this.correlationIndices,
+            this.correlationRuleIndices,
+            this.ruleTopicIndices,
+            this.customLogTypeIndices,
+            this.ruleIndices,
+            this.mapperService,
+            this.indexTemplateManager,
+            this.builtinLogTypeLoader,
             correlationAlertService,
             notificationService
         );
@@ -423,6 +433,8 @@ public class SecurityAnalyticsPlugin extends Plugin
             new ActionHandler<>(WDeleteIntegrationAction.INSTANCE, WTransportDeleteIntegrationAction.class),
             new ActionHandler<>(WIndexRuleAction.INSTANCE, WTransportIndexRuleAction.class),
             new ActionHandler<>(WIndexIntegrationAction.INSTANCE, WTransportIndexIntegrationAction.class),
+            new ActionHandler<>(WIndexCustomRuleAction.INSTANCE, WTransportIndexCustomRuleAction.class),
+            new ActionHandler<>(WDeleteCustomRuleAction.INSTANCE, WTransportDeleteCustomRuleAction.class),
             new ActionPlugin.ActionHandler<>(AckAlertsAction.INSTANCE, TransportAcknowledgeAlertsAction.class),
             new ActionPlugin.ActionHandler<>(UpdateIndexMappingsAction.INSTANCE, TransportUpdateIndexMappingsAction.class),
             new ActionPlugin.ActionHandler<>(CreateIndexMappingsAction.INSTANCE, TransportCreateIndexMappingsAction.class),
@@ -457,7 +469,7 @@ public class SecurityAnalyticsPlugin extends Plugin
     @Override
     public void onNodeStarted(DiscoveryNode localNode) {
         // Trigger initialization of log types
-        logTypeService.ensureConfigIndexIsInitialized(new ActionListener<>() {
+        this.logTypeService.ensureConfigIndexIsInitialized(new ActionListener<>() {
             @Override
             public void onResponse(Void unused) {
                 log.info("LogType config index successfully created and builtin log types loaded");
