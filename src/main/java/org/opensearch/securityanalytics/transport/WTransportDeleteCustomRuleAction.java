@@ -7,6 +7,7 @@ package org.opensearch.securityanalytics.transport;
 import com.wazuh.securityanalytics.action.WDeleteCustomRuleAction;
 import com.wazuh.securityanalytics.action.WDeleteCustomRuleRequest;
 import com.wazuh.securityanalytics.action.WDeleteRuleResponse;
+
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -14,25 +15,27 @@ import org.opensearch.action.support.ActionFilters;
 import org.opensearch.action.support.HandledTransportAction;
 import org.opensearch.common.inject.Inject;
 import org.opensearch.core.action.ActionListener;
+import org.opensearch.securityanalytics.action.DeleteRuleAction;
 import org.opensearch.securityanalytics.action.DeleteRuleRequest;
 import org.opensearch.securityanalytics.action.DeleteRuleResponse;
 import org.opensearch.tasks.Task;
 import org.opensearch.transport.TransportService;
+import org.opensearch.transport.client.Client;
 
 public class WTransportDeleteCustomRuleAction extends HandledTransportAction<WDeleteCustomRuleRequest, WDeleteRuleResponse>
         implements SecureTransportAction {
 
     private static final Logger log = LogManager.getLogger(WTransportDeleteCustomRuleAction.class);
-    private final TransportDeleteRuleAction transportDeleteRuleAction;
+    private final Client client;
 
     @Inject
     public WTransportDeleteCustomRuleAction(
             TransportService transportService,
-            ActionFilters actionFilters,
-            TransportDeleteRuleAction transportDeleteRuleAction
+            Client client,
+            ActionFilters actionFilters
     ) {
         super(WDeleteCustomRuleAction.NAME, transportService, actionFilters, WDeleteCustomRuleRequest::new);
-        this.transportDeleteRuleAction = transportDeleteRuleAction;
+        this.client = client;
     }
 
     @Override
@@ -40,7 +43,7 @@ public class WTransportDeleteCustomRuleAction extends HandledTransportAction<WDe
         DeleteRuleRequest internalRequest = new DeleteRuleRequest(request.getRuleId(), request.getRefreshPolicy(), request.isForced());
 
         // Delegate to the default action
-        this.transportDeleteRuleAction.execute(internalRequest, new ActionListener<>() {
+        this.client.execute(DeleteRuleAction.INSTANCE, internalRequest, new ActionListener<DeleteRuleResponse>() {
             @Override
             public void onResponse(DeleteRuleResponse response) {
                 log.info("Successfully deleted custom rule with id: {}", response.getId());
