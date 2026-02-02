@@ -101,8 +101,8 @@ public class WTransportIndexIntegrationAction extends HandledTransportAction<WIn
                         integration.getId(),
                         integration.getVersion(),
                         integration.getName(),
+                        integration.getDescription(),
                         integration.getCategory(),
-                        integration.getSource(),
                         integration.getSource(),
                         integration.getTags()
                     )
