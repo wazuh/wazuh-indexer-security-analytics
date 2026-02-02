@@ -14,7 +14,6 @@ import java.util.Objects;
 import com.wazuh.securityanalytics.action.WIndexIntegrationAction;
 import com.wazuh.securityanalytics.action.WIndexIntegrationRequest;
 import com.wazuh.securityanalytics.action.WIndexIntegrationResponse;
-import com.wazuh.securityanalytics.action.WIndexRuleResponse;
 import com.wazuh.securityanalytics.model.Integration;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -50,7 +49,7 @@ import static org.opensearch.securityanalytics.logtype.LogTypeService.LOG_TYPE_I
  * integration is available for use promptly after creation.
  */
 public class WTransportIndexIntegrationAction extends HandledTransportAction<WIndexIntegrationRequest, WIndexIntegrationResponse>
-        implements
+    implements
         SecureTransportAction {
     /**
      * OpenSearch client for executing index operations.
@@ -95,23 +94,26 @@ public class WTransportIndexIntegrationAction extends HandledTransportAction<WIn
         if (!Objects.equals(integration.getSource(), "Sigma")) {
             try {
                 IndexCustomLogTypeRequest internalRequest = new IndexCustomLogTypeRequest(
+                    integration.getId(),
+                    WriteRequest.RefreshPolicy.IMMEDIATE,
+                    RestRequest.Method.POST,
+                    new CustomLogType(
                         integration.getId(),
-                        WriteRequest.RefreshPolicy.IMMEDIATE,
-                        RestRequest.Method.POST,
-                        new CustomLogType(
-                                integration.getId(),
-                                integration.getVersion(),
-                                integration.getName(),
-                                integration.getCategory(),
-                                integration.getSource(),
-                                integration.getSource(),
-                                integration.getTags())
+                        integration.getVersion(),
+                        integration.getName(),
+                        integration.getCategory(),
+                        integration.getSource(),
+                        integration.getSource(),
+                        integration.getTags()
+                    )
                 );
                 this.client.execute(IndexCustomLogTypeAction.INSTANCE, internalRequest, new ActionListener<IndexCustomLogTypeResponse>() {
                     @Override
                     public void onResponse(IndexCustomLogTypeResponse response) {
                         log.info("Successfully indexed custom integration with id: {}", response.getId());
-                        listener.onResponse(new WIndexIntegrationResponse(response.getId(), response.getVersion(), response.getStatus(), integration));
+                        listener.onResponse(
+                            new WIndexIntegrationResponse(response.getId(), response.getVersion(), response.getStatus(), integration)
+                        );
                     }
 
                     @Override
@@ -126,16 +128,14 @@ public class WTransportIndexIntegrationAction extends HandledTransportAction<WIn
         } else {
             // Standard integrations
             try {
-                IndexRequest indexRequest = new IndexRequest().index(LOG_TYPE_INDEX)
-                        .id(request.getId())
-                        .source(integration.toXContent());
+                IndexRequest indexRequest = new IndexRequest().index(LOG_TYPE_INDEX).id(request.getId()).source(integration.toXContent());
 
                 this.client.index(indexRequest, ActionListener.wrap(indexResponse -> {
                     WIndexIntegrationResponse response = new WIndexIntegrationResponse(
-                            integration.getId(),
-                            integration.getVersion(),
-                            indexResponse.status(),
-                            integration
+                        integration.getId(),
+                        integration.getVersion(),
+                        indexResponse.status(),
+                        integration
                     );
                     listener.onResponse(response);
                 }, exception -> {
