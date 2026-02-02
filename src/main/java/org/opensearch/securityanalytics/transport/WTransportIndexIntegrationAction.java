@@ -123,7 +123,7 @@ public class WTransportIndexIntegrationAction extends HandledTransportAction<WIn
             } catch (Exception e) {
                 throw new RuntimeException(e);
             }
-
+        } else {
             // Standard integrations
             try {
                 IndexRequest indexRequest = new IndexRequest().index(LOG_TYPE_INDEX)
