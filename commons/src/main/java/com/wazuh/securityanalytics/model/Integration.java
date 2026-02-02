@@ -28,7 +28,7 @@ import org.opensearch.core.xcontent.XContentParserUtils;
  * This class implements {@link Writeable} for cluster serialization and {@link ToXContentObject}
  * for REST API responses.
  *
- * @see #WAZUH_CATEGORIES for the list of valid categories
+ * @see #LOG_CATEGORIES for the list of valid categories
  */
 public class Integration implements Writeable, ToXContentObject {
 
@@ -36,7 +36,7 @@ public class Integration implements Writeable, ToXContentObject {
      * List of valid Wazuh integration categories.
      * Categories are used to classify integrations by their log type domain.
      */
-    public static final List<String> WAZUH_CATEGORIES = List.of(
+    public static final List<String> LOG_CATEGORIES = List.of(
         "Access Management",
         "Applications",
         "Cloud Services",
@@ -55,8 +55,6 @@ public class Integration implements Writeable, ToXContentObject {
 
     private static final String TAGS_FIELD = "tags";
 
-    private static final String RULES_FIELD = "rules";
-
     private String id;
 
     private Long version;
@@ -69,8 +67,6 @@ public class Integration implements Writeable, ToXContentObject {
 
     private final String source;
 
-    private final List<String> ruleIds;
-
     private Map<String, Object> tags;
 
     /**
@@ -82,26 +78,15 @@ public class Integration implements Writeable, ToXContentObject {
      * @param description a description of what this integration does
      * @param category    the category this integration belongs to (must be in WAZUH_CATEGORIES)
      * @param source      the source identifier for this integration
-     * @param ruleIds     list of rule IDs associated with this integration
      * @param tags        additional metadata tags for this integration
      */
-    public Integration(
-        String id,
-        Long version,
-        String name,
-        String description,
-        String category,
-        String source,
-        List<String> ruleIds,
-        Map<String, Object> tags
-    ) {
+    public Integration(String id, Long version, String name, String description, String category, String source, Map<String, Object> tags) {
         this.id = id != null ? id : "";
         this.version = version != null ? version : 1L;
         this.name = name;
         this.description = description;
         this.category = category;
         this.source = source;
-        this.ruleIds = ruleIds;
         this.tags = tags;
     }
 
@@ -112,16 +97,7 @@ public class Integration implements Writeable, ToXContentObject {
      * @throws IOException if an I/O error occurs during deserialization
      */
     public Integration(StreamInput sin) throws IOException {
-        this(
-            sin.readString(),
-            sin.readLong(),
-            sin.readString(),
-            sin.readString(),
-            sin.readString(),
-            sin.readString(),
-            sin.readStringList(),
-            sin.readMap()
-        );
+        this(sin.readString(), sin.readLong(), sin.readString(), sin.readString(), sin.readString(), sin.readString(), sin.readMap());
     }
 
     /**
@@ -138,7 +114,6 @@ public class Integration implements Writeable, ToXContentObject {
             input.get(DESCRIPTION_FIELD).toString(),
             input.containsKey(CATEGORY_FIELD) ? input.get(CATEGORY_FIELD).toString() : null,
             input.get(SOURCE_FIELD).toString(),
-            input.get(RULES_FIELD) != null ? (List<String>) input.get(RULES_FIELD) : null,
             (Map<String, Object>) input.get(TAGS_FIELD)
         );
     }
@@ -151,7 +126,6 @@ public class Integration implements Writeable, ToXContentObject {
         out.writeString(this.description);
         out.writeString(this.category);
         out.writeString(this.source);
-        out.writeStringCollection(this.ruleIds);
         out.writeMap(this.tags);
     }
 
@@ -163,7 +137,6 @@ public class Integration implements Writeable, ToXContentObject {
             .field(CATEGORY_FIELD, this.category)
             .field(SOURCE_FIELD, this.source)
             .field(TAGS_FIELD, this.tags)
-            .field(RULES_FIELD, this.ruleIds)
             .endObject();
     }
 
@@ -224,18 +197,11 @@ public class Integration implements Writeable, ToXContentObject {
                 case TAGS_FIELD:
                     tags = xcp.map();
                     break;
-                case RULES_FIELD:
-                    if (xcp.currentToken() == XContentParser.Token.START_ARRAY) {
-                        while (xcp.nextToken() != XContentParser.Token.END_ARRAY) {
-                            rules.add(xcp.text());
-                        }
-                    }
-                    break;
                 default:
                     xcp.skipChildren();
             }
         }
-        return new Integration(id, version, name, description, category, source, rules, tags);
+        return new Integration(id, version, name, description, category, source, tags);
     }
 
     /**
@@ -339,12 +305,4 @@ public class Integration implements Writeable, ToXContentObject {
         return this.tags;
     }
 
-    /**
-     * Gets the list of rule IDs associated with this integration.
-     *
-     * @return a list of rule IDs
-     */
-    public List<String> getRuleIds() {
-        return this.ruleIds;
-    }
 }

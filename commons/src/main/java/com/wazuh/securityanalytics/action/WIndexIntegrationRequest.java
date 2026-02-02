@@ -22,13 +22,13 @@ import org.opensearch.core.common.io.stream.StreamOutput;
 import org.opensearch.rest.RestRequest;
 
 /**
- * Request for indexing a Wazuh integration (custom log type).
+ * Request for indexing a Wazuh integration (log type).
  * <p>
  * This request contains all the information needed to create or update an integration,
- * including the log type ID, refresh policy, HTTP method, and the integration data.
+ * including the integration ID, refresh policy, HTTP method, and the integration data.
  * <p>
  * The integration name must match the pattern [a-z0-9_-]{2,50} and the category
- * must be one of the valid Wazuh categories defined in {@link Integration#WAZUH_CATEGORIES}.
+ * must be one of the valid Wazuh categories defined in {@link Integration#LOG_CATEGORIES}.
  *
  * @see WIndexIntegrationAction
  * @see WIndexIntegrationResponse
@@ -36,36 +36,36 @@ import org.opensearch.rest.RestRequest;
  */
 public class WIndexIntegrationRequest extends ActionRequest {
 
-    private final String logTypeId;
+    private final String id;
 
     private final WriteRequest.RefreshPolicy refreshPolicy;
 
     private final RestRequest.Method method;
 
-    private final Integration customLogType;
+    private final Integration integration;
 
-    /** Pattern for validating custom log type names. */
-    private static final Pattern IS_VALID_CUSTOM_LOG_NAME = Pattern.compile("[a-z0-9_-]{2,50}");
+    /** Pattern for validating log type names. */
+    private static final Pattern IS_VALID_NAME = Pattern.compile("[a-z0-9_-]{2,50}");
 
     /**
      * Constructs a new WIndexIntegrationRequest.
      *
-     * @param logTypeId     the unique identifier for the log type
+     * @param id     the unique identifier for the integration
      * @param refreshPolicy the refresh policy for the index operation
      * @param method        the HTTP method (PUT for update, POST for create)
-     * @param customLogType the integration data to index
+     * @param integration the integration data to index
      */
     public WIndexIntegrationRequest(
-        String logTypeId,
+        String id,
         WriteRequest.RefreshPolicy refreshPolicy,
         RestRequest.Method method,
-        Integration customLogType
+        Integration integration
     ) {
         super();
-        this.logTypeId = logTypeId;
+        this.id = id;
         this.refreshPolicy = refreshPolicy;
         this.method = method;
-        this.customLogType = customLogType;
+        this.integration = integration;
     }
 
     /**
@@ -92,39 +92,39 @@ public class WIndexIntegrationRequest extends ActionRequest {
      */
     @Override
     public ActionRequestValidationException validate() {
-        Matcher matcher = IS_VALID_CUSTOM_LOG_NAME.matcher(this.customLogType.getName());
+        Matcher matcher = IS_VALID_NAME.matcher(this.integration.getName());
         boolean find = matcher.matches();
         if (!find) {
             throw new ActionRequestValidationException();
         }
-        String category = this.customLogType.getCategory();
-        if (!Integration.WAZUH_CATEGORIES.contains(category)) {
+        String category = this.integration.getCategory();
+        if (!Integration.LOG_CATEGORIES.contains(category)) {
             throw new ActionRequestValidationException();
         }
         return null;
     }
 
     /**
-     * Serializes this request to the given stream output for inter-node communication.
+     * Serializes this request to the given stream output for internode communication.
      *
      * @param out the stream output to write to
      * @throws IOException if an I/O error occurs during serialization
      */
     @Override
     public void writeTo(StreamOutput out) throws IOException {
-        out.writeString(this.logTypeId);
+        out.writeString(this.id);
         this.refreshPolicy.writeTo(out);
         out.writeEnum(this.method);
-        this.customLogType.writeTo(out);
+        this.integration.writeTo(out);
     }
 
     /**
-     * Gets the unique identifier for the log type.
+     * Gets the unique identifier for the integration.
      *
-     * @return the log type ID
+     * @return the integration ID
      */
-    public String getLogTypeId() {
-        return this.logTypeId;
+    public String getId() {
+        return this.id;
     }
 
     /**
@@ -146,11 +146,11 @@ public class WIndexIntegrationRequest extends ActionRequest {
     }
 
     /**
-     * Gets the integration (custom log type) data to be indexed.
+     * Gets the integration (log type) data to be indexed.
      *
      * @return the integration instance
      */
-    public Integration getCustomLogType() {
-        return this.customLogType;
+    public Integration getIntegration() {
+        return this.integration;
     }
 }
