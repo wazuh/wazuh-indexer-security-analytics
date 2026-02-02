@@ -96,7 +96,7 @@ public class WTransportIndexIntegrationAction extends HandledTransportAction<WIn
                 IndexCustomLogTypeRequest internalRequest = new IndexCustomLogTypeRequest(
                     integration.getId(),
                     WriteRequest.RefreshPolicy.IMMEDIATE,
-                    RestRequest.Method.POST,
+                    request.getMethod(),
                     new CustomLogType(
                         integration.getId(),
                         integration.getVersion(),
