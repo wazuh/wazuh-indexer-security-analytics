@@ -42,7 +42,7 @@ public class WIndexIntegrationResponse extends ActionResponse implements ToXCont
 
     private final RestStatus status;
 
-    private final Integration customLogType;
+    private final Integration integration;
 
     /**
      * Constructs a new WIndexIntegrationResponse.
@@ -50,14 +50,14 @@ public class WIndexIntegrationResponse extends ActionResponse implements ToXCont
      * @param id            the ID of the indexed integration
      * @param version       the version number of the indexed integration
      * @param status        the REST status of the operation
-     * @param customLogType the complete integration data
+     * @param integration the complete integration data
      */
-    public WIndexIntegrationResponse(String id, Long version, RestStatus status, Integration customLogType) {
+    public WIndexIntegrationResponse(String id, Long version, RestStatus status, Integration integration) {
         super();
         this.id = id;
         this.version = version;
         this.status = status;
-        this.customLogType = customLogType;
+        this.integration = integration;
     }
 
     /**
@@ -75,7 +75,7 @@ public class WIndexIntegrationResponse extends ActionResponse implements ToXCont
         out.writeString(this.id);
         out.writeLong(this.version);
         out.writeEnum(this.status);
-        this.customLogType.writeTo(out);
+        this.integration.writeTo(out);
     }
 
     @Override
@@ -83,7 +83,7 @@ public class WIndexIntegrationResponse extends ActionResponse implements ToXCont
         return builder.startObject()
             .field("_id", this.id)
             .field("_version", this.version)
-            .field(CUSTOM_LOG_TYPES_FIELD, this.customLogType)
+            .field(CUSTOM_LOG_TYPES_FIELD, this.integration)
             .endObject();
     }
 
