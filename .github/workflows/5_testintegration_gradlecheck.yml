@@ -23,12 +23,16 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      - name: Get version
+        id: version
+        run: echo "version=$(jq -r '.version' VERSION.json)" >> "$GITHUB_OUTPUT"
+
       - name: Publish SAP and commons library to mavenLocal
         uses: ./.github/actions/5_local_maven_publisher
         with:
           version: ${{ steps.version.outputs.version }}
-          revision: ${{ inputs.revision }}
-          reference: ${{ inputs.reference }}
+          revision: '0'
+          reference: ${{ github.ref }}
 
       - name: Run Gradle check
         run: ./gradlew check
