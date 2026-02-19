@@ -58,12 +58,12 @@ jobs:
         id: version
         run: echo "version=$(jq -r .version<VERSION.json)" >> "$GITHUB_OUTPUT"
 
-      - name: Publish commons library to mavenLocal
-        run: |
-          cd commons
-          ../gradlew publishToMavenLocal -x check \
-          -Dversion=${{ steps.version.outputs.version }} \
-          -Drevision=${{ inputs.revision }}
+      - name: Publish SAP and commons library to mavenLocal
+        uses: ./.github/actions/5_local_maven_publisher
+        with:
+          version: ${{ steps.version.outputs.version }}
+          revision: ${{ inputs.revision }}
+          reference: ${{ inputs.reference }}
 
       - name: Build with Gradle
         run: ./gradlew build -Dversion=${{ steps.version.outputs.version }} -Drevision=${{ inputs.revision }} -x integTest
