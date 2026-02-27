@@ -35,7 +35,8 @@ public class CustomLogType implements Writeable, ToXContentObject {
             "Network Activity",
             "Security",
             "System Activity",
-            "Other"
+            "Other",
+            "Unclassified"
     );
 
     public static final String CUSTOM_LOG_TYPE_ID_FIELD = "custom_logtype_id";

@@ -43,7 +43,8 @@ public class Integration implements Writeable, ToXContentObject {
         "Network Activity",
         "Security",
         "System Activity",
-        "Other"
+        "Other",
+        "Unclassified"
     );
 
     private static final String NAME_FIELD = "name";
