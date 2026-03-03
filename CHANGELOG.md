@@ -16,7 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Add Unclassified log category for integrations and custom log types [(#42)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/42)
 
 ### Dependencies
--
+- Update to JDK 25 [(#49)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/49)
 
 ### Changed
 - Rename folder for pre-packaged rules [(#10)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/10)
