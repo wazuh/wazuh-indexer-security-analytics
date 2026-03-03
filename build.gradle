@@ -27,6 +27,8 @@ buildscript {
         opensearch_build = version_tokens[0] + '.0'
         plugin_no_snapshot = opensearch_build
         opensearch_no_snapshot = opensearch_version.replace("-SNAPSHOT","")
+        wazuh_version = System.getProperty("version", "5.0.0")
+        revision = System.getProperty("revision", "0")
         sa_commons_version = '1.0.0'
         if (buildVersionQualifier) {
             opensearch_build += "-${buildVersionQualifier}"
@@ -109,10 +111,10 @@ validateNebulaPom.enabled = false
 loggerUsageCheck.enabled = false
 
 opensearchplugin {
-    name 'opensearch-security-analytics'
-    description 'OpenSearch Security Analytics plugin'
+    name 'wazuh-indexer-security-analytics'
+    description 'Wazuh Indexer Security Analytics plugin'
     classname 'org.opensearch.securityanalytics.SecurityAnalyticsPlugin'
-    extendedPlugins = ['opensearch-job-scheduler', 'opensearch-alerting']
+    extendedPlugins = ['opensearch-alerting']
 }
 
 javaRestTest {
@@ -122,17 +124,14 @@ javaRestTest {
 
 testClusters.javaRestTest {
     testDistribution = 'INTEG_TEST'
+    // Enable prepackaged rules for testing environments.
+    // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
+     systemProperty 'default_rules.enabled', 'true'
 }
 
 allprojects {
     group = 'org.opensearch'
-    version = opensearch_version.tokenize('-')[0] + '.0'
-    if (buildVersionQualifier) {
-        version += "-${buildVersionQualifier}"
-    }
-    if (isSnapshot) {
-        version += "-SNAPSHOT"
-    }
+    version = "${wazuh_version}" + ".${revision}"
 
     apply from: "$rootDir/build-tools/repositories.gradle"
 
@@ -146,9 +145,9 @@ publishing {
     publications {
         pluginZip(MavenPublication) { publication ->
             pom {
-                groupId = "org.opensearch.plugin"
-                name = "opensearch-security-analytics"
-                description = "OpenSearch Security Analytics plugin"
+                groupId = "org.opensearch"
+                name = "wazuh-indexer-security-analytics"
+                description = "Wazuh Indexer Security Analytics plugin"
                 licenses {
                     license {
                         name = "The Apache License, Version 2.0"
@@ -157,8 +156,8 @@ publishing {
                 }
                 developers {
                     developer {
-                        name = "OpenSearch"
-                        url = "https://github.com/opensearch-project/security-analytics"
+                        name = "wazuh-indexer"
+                        url = "https://github.com/wazuh/wazuh-indexer-security-analytics"
                     }
                 }
             }
@@ -206,7 +205,6 @@ dependencies {
     compileOnly "org.opensearch:common-utils:${common_utils_version}@jar"
     compileOnly "org.opensearch.client:opensearch-rest-client:${opensearch_version}"
     compileOnly "org.jetbrains.kotlin:kotlin-stdlib:${kotlin_version}"
-    compileOnly "org.opensearch:opensearch-job-scheduler-spi:${opensearch_build}"
     compileOnly "org.opensearch.alerting:alerting-spi:${alerting_spi_build}"
     implementation "org.apache.commons:commons-csv:1.10.0"
     implementation 'com.jayway.jsonpath:json-path:2.9.0'
@@ -215,16 +213,17 @@ dependencies {
     implementation "com.google.guava:guava:32.1.3-jre"
 
     // TODO uncomment once SA commons is published to maven central
-//    api "org.opensearch:security-analytics-commons:${sa_commons_version}@jar"
+    // api "org.opensearch:security-analytics-commons:${sa_commons_version}@jar"
 
     // TODO remove once SA commons is published to maven central
     api files(sa_commons_file_path)
+
+    implementation group: 'com.wazuh', name: 'wazuh-indexer-security-analytics-commons', version: "${version}"
 
     // Needed for integ tests
     zipArchive group: 'org.opensearch.plugin', name:'alerting', version: "${opensearch_build}"
     zipArchive group: 'org.opensearch.plugin', name:'opensearch-notifications-core', version: "${opensearch_build}"
     zipArchive group: 'org.opensearch.plugin', name:'notifications', version: "${opensearch_build}"
-    zipArchive group: 'org.opensearch.plugin', name:'opensearch-job-scheduler', version: "${opensearch_build}"
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
 
     // Needed for security tests
@@ -255,6 +254,14 @@ task integTest(type: RestIntegTestTask) {
     }
 }
 tasks.named("check").configure { dependsOn(integTest) }
+
+tasks.named("publishNebulaPublicationToMavenLocal").configure { dependsOn("generatePomFileForPluginZipPublication") }
+
+tasks.named("test").configure {
+    // Enable prepackaged rules for testing environments.
+    // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
+    systemProperty 'default_rules.enabled', 'true'
+}
 
 integTest {
     if (project.hasProperty('excludeTests')) {
@@ -313,6 +320,9 @@ integTest.getClusters().forEach{c -> {
 }}
 
 testClusters.integTest {
+    // Enable prepackaged rules for testing environments.
+    // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
+    systemProperty 'default_rules.enabled', 'true'
     testDistribution = 'ARCHIVE'
 
     // Cluster shrink exception thrown if we try to set numberOfNodes to 1, so only apply if > 1
@@ -353,16 +363,6 @@ testClusters.integTest {
             File getAsFile() {
                 return configurations.zipArchive.asFileTree.matching {
                     include '**/alerting*'
-                }.singleFile
-            }
-        }
-    }))
-    plugin(provider({
-        new RegularFile() {
-            @Override
-            File getAsFile() {
-                return configurations.zipArchive.asFileTree.matching {
-                    include '**/opensearch-job-scheduler*'
                 }.singleFile
             }
         }
@@ -432,6 +432,10 @@ run {
 }
 
 task integTestRemote(type: RestIntegTestTask) {
+    // Enable prepackaged rules for testing environments.
+    // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
+    systemProperty 'default_rules.enabled', 'true'
+
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
     systemProperty 'tests.security.manager', 'false'
@@ -487,11 +491,10 @@ afterEvaluate {
         prefix '/usr'
 
         license 'ASL-2.0'
-        maintainer 'OpenSearch Team <opensearch@amazon.com>'
-        url 'https://opensearch.org/downloads.html'
+        maintainer 'Wazuh-Indexer Team'
+        url 'https://wazuh.com/'
         summary '''
-         Security Analytics plugin for OpenSearch.
-         Reference documentation can be found at https://docs-beta.opensearch.org/.
+         Security Analytics plugin for Wazuh-Indexer.
     '''.stripIndent().replace('\n', ' ').trim()
     }
 

@@ -18,7 +18,7 @@ Fork this repository on GitHub, and clone locally with `git clone`.
 
 #### JDK 11
 
-OpenSearch builds using Java 11 at a minimum, using the Adoptium distribution. This means you must have a JDK 11 installed with the environment variable `JAVA_HOME` referencing the path to Java home for your JDK 11 installation, e.g. `JAVA_HOME=/usr/lib/jvm/jdk-11`. This is configured in [buildSrc/build.gradle](buildSrc/build.gradle) and [distribution/tools/java-version-checker/build.gradle](distribution/tools/java-version-checker/build.gradle).
+Wazuh-indexer builds using Java 11 at a minimum, using the Adoptium distribution. This means you must have a JDK 11 installed with the environment variable `JAVA_HOME` referencing the path to Java home for your JDK 11 installation, e.g. `JAVA_HOME=/usr/lib/jvm/jdk-11`. This is configured in [buildSrc/build.gradle](buildSrc/build.gradle) and [distribution/tools/java-version-checker/build.gradle](distribution/tools/java-version-checker/build.gradle).
 
 ```
 allprojects {
@@ -58,7 +58,3 @@ When launching a cluster using one of the above commands, logs are placed in `bu
 #### Building from the IDE
 
 Currently, the only IDE we support is IntelliJ IDEA.  It's free, it's open source, it works. The gradle tasks above can also be launched from IntelliJ's Gradle toolbar and the extra parameters can be passed in via the Launch Configurations VM arguments.
-
-### Backport
-
-- [Link to backport documentation](https://github.com/opensearch-project/opensearch-plugins/blob/main/BACKPORT.md)

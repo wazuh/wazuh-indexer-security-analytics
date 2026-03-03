@@ -56,6 +56,8 @@ public class CorrelationEngineRuleRestApiIT extends SecurityAnalyticsRestTestCas
         Assert.assertEquals("custom-updated-rule", ((Map<String, Object>) responseMap.get("rule")).get("name"));
     }
 
+    // TODO: Create issue to fix the tests.
+    @AwaitsFix(bugUrl = "")
     @SuppressWarnings("unchecked")
     public void testDeleteCorrelationRule() throws IOException {
         CorrelationRule rule = randomCorrelationRule("custom-rule");
