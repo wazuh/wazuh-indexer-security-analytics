@@ -19,7 +19,7 @@ runs:
       with:
         repository: wazuh/wazuh-indexer-security-analytics
         ref: ${{ inputs.reference }}
-    # Set up JDK 21
+    # Set up JDK
     - uses: actions/setup-java@v5
       with:
         distribution: temurin
