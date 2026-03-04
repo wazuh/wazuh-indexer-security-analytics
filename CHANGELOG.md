@@ -39,7 +39,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Fixed
 - Fix typo in revision variable [(#4)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/4)
-- Fix link-checker workflow[(#50)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/50)
+- Fix link-checker workflow [(#50)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/50)
 
 ### Security
 -
