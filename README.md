@@ -33,7 +33,6 @@ The OpenSearch Security Analytics aims to enable you to run security operations 
 * [Quickstart](https://documentation.wazuh.com/current/quickstart.html)
 * [Documentation](https://documentation.wazuh.com)
 * Need help? Try [Slack](https://wazuh.com/community/join-us-on-slack)
-* [Security](SECURITY.md)
 
 
 ## Contributing
