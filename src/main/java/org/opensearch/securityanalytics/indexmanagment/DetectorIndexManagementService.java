@@ -549,27 +549,37 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
             TimeValue ageCondition,
             Boolean isCorrelation
     ) {
+        rolloverIndex(initialized, index, pattern, map, docsCondition, ageCondition, isCorrelation, true);
+    }
+
+        private void rolloverIndex(
+            Boolean initialized,
+            String index,
+            String pattern,
+            String map,
+            Long docsCondition,
+            TimeValue ageCondition,
+            Boolean isCorrelation,
+            Boolean hidden
+    ) {
         if (!initialized) {
             return;
         }
 
         // We have to pass null for newIndexName in order to get Elastic to increment the index count.
         RolloverRequest request = new RolloverRequest(index, null);
+        Settings.Builder settingsBuilder = Settings.builder()
+                .put(IndexMetadata.SETTING_NUMBER_OF_SHARDS, 1)
+                .put("index.auto_expand_replicas", minSystemIndexReplicas + "-" + maxSystemIndexReplicas);
+        if (hidden) {
+            settingsBuilder.put("index.hidden", true);
+        }
+        if (isCorrelation) {
+            settingsBuilder.put("index.correlation", true);
+        }
         request.getCreateIndexRequest().index(pattern)
                 .mapping(map)
-                .settings(isCorrelation?
-                        Settings.builder()
-                                .put("index.hidden", true)
-                                .put("index.correlation", true)
-                                .put(IndexMetadata.SETTING_NUMBER_OF_SHARDS, 1)
-                                .put("index.auto_expand_replicas", minSystemIndexReplicas + "-" + maxSystemIndexReplicas)
-                                .build():
-                        Settings.builder()
-                                .put("index.hidden", true)
-                                .put(IndexMetadata.SETTING_NUMBER_OF_SHARDS, 1)
-                                .put("index.auto_expand_replicas", minSystemIndexReplicas + "-" + maxSystemIndexReplicas)
-                                .build()
-                );
+                .settings(settingsBuilder.build());
         request.addMaxIndexDocsCondition(docsCondition);
         request.addMaxIndexAgeCondition(ageCondition);
         client.admin().indices().rolloverIndex(
@@ -604,7 +614,7 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
             rolloverIndex(
                 h.isInitialized, h.indexAlias,
                 h.indexPattern, h.indexMappings,
-                h.maxDocs, h.maxAge, false
+                h.maxDocs, h.maxAge, false, false
             );
         }
     }
