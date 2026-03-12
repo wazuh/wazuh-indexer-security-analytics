@@ -48,15 +48,15 @@ public class DetectorMonitorConfig {
     }
 
     public static String getFindingsIndexPattern(String logType) {
-        return String.format(Locale.getDefault(), "<.opensearch-sap-%s-findings-{now/d}-1>", logType);
+        return String.format(Locale.getDefault(), "<wazuh-findings-v5-%s-{now/d}-1>", logType);
     }
 
     public static String getFindingsIndex(String logType) {
-        return String.format(Locale.getDefault(), ".opensearch-sap-%s-findings", logType);
+        return String.format(Locale.getDefault(), "wazuh-findings-v5-%s", logType);
     }
 
     public static String getAllFindingsIndicesPattern(String logType) {
-        return String.format(Locale.getDefault(), ".opensearch-sap-%s-findings*", logType);
+        return String.format(Locale.getDefault(), "wazuh-findings-v5-%s*", logType);
     }
 
     public static Map<String, Map<String, String>> getRuleIndexMappingsByType() {
