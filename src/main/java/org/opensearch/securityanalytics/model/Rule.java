@@ -21,15 +21,15 @@ import org.opensearch.securityanalytics.rules.aggregation.AggregationItem;
 import org.opensearch.securityanalytics.rules.backend.OSQueryBackend.AggregationQueries;
 import org.opensearch.securityanalytics.rules.condition.ConditionItem;
 import org.opensearch.securityanalytics.rules.exceptions.SigmaConditionError;
-import org.opensearch.securityanalytics.rules.exceptions.CompositeSigmaErrors;
 import org.opensearch.securityanalytics.rules.objects.SigmaCondition;
 import org.opensearch.securityanalytics.rules.objects.SigmaRule;
-
 import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
@@ -60,6 +60,10 @@ public class Rule implements Writeable, ToXContentObject {
     public static final String QUERY_FIELD_NAMES = "query_field_names";
 
     public static final String RULE = "rule";
+
+    public static final String MITRE = "mitre";
+    public static final String COMPLIANCE = "compliance";
+    public static final String METADATA = "metadata";
 
     public static final String PRE_PACKAGED_RULES_INDEX = ".opensearch-sap-pre-packaged-rules-config";
     public static final String CUSTOM_RULES_INDEX = ".opensearch-sap-custom-rules-config";
@@ -105,10 +109,26 @@ public class Rule implements Writeable, ToXContentObject {
 
     private List<Value> aggregationQueries;
 
+    private Map<String, Object> mitre;
+
+    private Map<String, Object> complianceMap;
+
+    private Map<String, Object> metadata;
+
     public Rule(String id, Long version, String title, String category, String logSource,
                 String description, List<Value> references, List<Value> tags, String level,
                 List<Value> falsePositives, String author, String status, Instant date,
                 List<Value> queries, List<Value> queryFieldNames, String rule, List<Value> aggregationQueries) {
+        this(id, version, title, category, logSource, description, references, tags, level,
+                falsePositives, author, status, date, queries, queryFieldNames, rule, aggregationQueries,
+                Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap());
+    }
+
+    public Rule(String id, Long version, String title, String category, String logSource,
+                String description, List<Value> references, List<Value> tags, String level,
+                List<Value> falsePositives, String author, String status, Instant date,
+                List<Value> queries, List<Value> queryFieldNames, String rule, List<Value> aggregationQueries,
+                Map<String, Object> mitre, Map<String, Object> complianceMap, Map<String, Object> metadata) {
         this.id = id != null? id: NO_ID;
         this.version = version != null? version: NO_VERSION;
 
@@ -132,6 +152,9 @@ public class Rule implements Writeable, ToXContentObject {
         this.queryFieldNames = queryFieldNames;
         this.rule = rule;
         this.aggregationQueries = aggregationQueries;
+        this.mitre = mitre != null ? mitre : Collections.emptyMap();
+        this.complianceMap = complianceMap != null ? complianceMap : Collections.emptyMap();
+        this.metadata = metadata != null ? metadata : Collections.emptyMap();
     }
 
     public Rule(String id, Long version, SigmaRule rule, String category,
@@ -156,9 +179,14 @@ public class Rule implements Writeable, ToXContentObject {
                 queryFieldNames.stream().map(Value::new).collect(Collectors.toList()),
                 original,
                 // If one of the queries is AggregationQuery -> the whole rule can be considered as Agg
-                queries.stream().filter(query -> query instanceof AggregationQueries).map(it -> new Value(it.toString())).collect(Collectors.toList()));
+                queries.stream().filter(query -> query instanceof AggregationQueries).map(it -> new Value(it.toString())).collect(Collectors.toList()),
+
+                rule.getMitre() != null ? rule.getMitre().toMitreMap() : Collections.emptyMap(),
+                rule.getCompliance() != null ? rule.getCompliance().toComplianceMap() : Collections.emptyMap(),
+                rule.getMetadata() != null ? rule.getMetadata().toMap() : Collections.emptyMap());
     }
 
+    @SuppressWarnings("unchecked")
     public Rule(StreamInput sin) throws IOException {
         this(
                 sin.readString(),
@@ -177,7 +205,10 @@ public class Rule implements Writeable, ToXContentObject {
                 sin.readList(Value::readFrom),
                 sin.readList(Value::readFrom),
                 sin.readString(),
-                sin.readList(Value::readFrom)
+                sin.readList(Value::readFrom),
+                (Map<String, Object>) sin.readGenericValue(), // mitre
+                (Map<String, Object>) sin.readGenericValue(), // compliance
+                (Map<String, Object>) sin.readGenericValue()  // metadata
         );
     }
 
@@ -206,6 +237,9 @@ public class Rule implements Writeable, ToXContentObject {
 
         out.writeString(rule);
         out.writeCollection(aggregationQueries);
+        out.writeGenericValue(mitre);
+        out.writeGenericValue(complianceMap);
+        out.writeGenericValue(metadata);
     }
 
     @Override
@@ -254,6 +288,17 @@ public class Rule implements Writeable, ToXContentObject {
         builder.field(AGGREGATION_QUERIES, aggregationsArray);
 
         builder.field(RULE, rule);
+
+        if (mitre != null && !mitre.isEmpty()) {
+            builder.field(MITRE, mitre);
+        }
+        if (complianceMap != null && !complianceMap.isEmpty()) {
+            builder.field(COMPLIANCE, complianceMap);
+        }
+        if (metadata != null && !metadata.isEmpty()) {
+            builder.field(METADATA, metadata);
+        }
+
         if (params.paramAsBoolean("with_type", false)) {
             builder.endObject();
         }
@@ -299,6 +344,9 @@ public class Rule implements Writeable, ToXContentObject {
         List<Value> queryFields = new ArrayList<>();
         String original = null;
         List<Value> aggregationQueries = new ArrayList<>();
+        Map<String, Object> mitre = Collections.emptyMap();
+        Map<String, Object> compliance = Collections.emptyMap();
+        Map<String, Object> metadata = Collections.emptyMap();
 
         XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
         while (xcp.nextToken() != XContentParser.Token.END_OBJECT) {
@@ -368,6 +416,16 @@ public class Rule implements Writeable, ToXContentObject {
                     while (xcp.nextToken() != XContentParser.Token.END_ARRAY) {
                         aggregationQueries.add(Value.parse(xcp));
                     }
+                    break;
+                case MITRE:
+                    mitre = xcp.map();
+                    break;
+                case COMPLIANCE:
+                    compliance = xcp.map();
+                    break;
+                case METADATA:
+                    metadata = xcp.map();
+                    break;
                 default:
                     xcp.skipChildren();
             }
@@ -390,7 +448,10 @@ public class Rule implements Writeable, ToXContentObject {
                 queries,
                 queryFields,
                 Objects.requireNonNull(original, "Rule String is null"),
-                aggregationQueries
+                aggregationQueries,
+                mitre,
+                compliance,
+                metadata
         );
     }
 
@@ -474,6 +535,18 @@ public class Rule implements Writeable, ToXContentObject {
 
     public boolean isAggregationRule() {
         return aggregationQueries != null && !aggregationQueries.isEmpty();
+    }
+
+    public Map<String, Object> getMitre() {
+        return mitre;
+    }
+
+    public Map<String, Object> getComplianceMap() {
+        return complianceMap;
+    }
+
+    public Map<String, Object> getMetadata() {
+        return metadata;
     }
 
     public List<AggregationItem> getAggregationItemsFromRule () throws SigmaConditionError {
