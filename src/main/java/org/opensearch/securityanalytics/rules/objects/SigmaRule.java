@@ -57,9 +57,23 @@ public class SigmaRule {
 
     private CompositeSigmaErrors errors;
 
+    private SigmaMetadata metadata;
+
+    private SigmaMitre mitre;
+
+    private SigmaCompliance compliance;
+
     public SigmaRule(String title, SigmaLogSource logSource, SigmaDetections detection, UUID id, SigmaStatus status,
                      String description, List<String> references, List<SigmaRuleTag> tags, String author, Date date,
                      List<String> fields, List<String> falsePositives, SigmaLevel level, CompositeSigmaErrors errors) {
+        this(title, logSource, detection, id, status, description, references, tags, author, date,
+                fields, falsePositives, level, errors, null, null, null);
+    }
+
+    public SigmaRule(String title, SigmaLogSource logSource, SigmaDetections detection, UUID id, SigmaStatus status,
+                     String description, List<String> references, List<SigmaRuleTag> tags, String author, Date date,
+                     List<String> fields, List<String> falsePositives, SigmaLevel level, CompositeSigmaErrors errors,
+                     SigmaMetadata metadata, SigmaMitre mitre, SigmaCompliance compliance) {
         this.title = title;
         this.logSource = logSource;
         this.detection = detection;
@@ -75,6 +89,20 @@ public class SigmaRule {
         this.level = level;
 
         this.errors = errors;
+
+        this.metadata = metadata;
+        this.mitre = mitre;
+        this.compliance = compliance;
+
+        // Metadata title/description take precedence
+        if (this.metadata != null) {
+            if (this.metadata.getTitle() != null) {
+                this.title = this.metadata.getTitle();
+            }
+            if (this.metadata.getDescription() != null) {
+                this.description = this.metadata.getDescription();
+            }
+        }
 
         if (this.references == null) {
             this.references = new ArrayList<>();
@@ -185,14 +213,59 @@ public class SigmaRule {
             }
         }
 
+        // Parse optional Wazuh-specific blocks
+        SigmaMetadata metadata = null;
+        if (rule.containsKey("metadata")) {
+            try {
+                metadata = SigmaMetadata.fromDict((Map<String, Object>) rule.get("metadata"));
+            } catch (Exception ex) {
+                errors.addError(new SigmaError("Invalid metadata block: " + ex.getMessage()));
+            }
+        }
+
+        SigmaMitre mitre = null;
+        if (rule.containsKey("mitre")) {
+            try {
+                mitre = SigmaMitre.fromDict((Map<String, Object>) rule.get("mitre"));
+            } catch (SigmaError ex) {
+                errors.addError(ex);
+            }
+        }
+
+        SigmaCompliance compliance = null;
+        if (rule.containsKey("compliance")) {
+            Object compObj = rule.get("compliance");
+            if (compObj instanceof Map) {
+                try {
+                    compliance = SigmaCompliance.fromMap((Map<String, Object>) compObj);
+                } catch (SigmaError ex) {
+                    errors.addError(ex);
+                }
+            } else {
+                errors.addError(new SigmaError("Compliance block must be an object containing framework lists"));
+            }
+        }
+
+        // WCS field validation on detection stanza
+        if (rule.containsKey("detection")) {
+            try {
+                WCSFieldValidator.validateDetectionFields((Map<String, Object>) rule.get("detection"));
+            } catch (SigmaError ex) {
+                errors.addError(ex);
+            }
+        }
+
         if (!collectErrors && !errors.getErrors().isEmpty()) {
             throw errors;
         }
 
         return new SigmaRule(title, logSource, detections, ruleId, status,
-                rule.get("description").toString(), rule.get("references") != null? (List<String>) rule.get("references"): null, ruleTags,
-                rule.get("author").toString(), ruleDate, rule.get("fields") != null? (List<String>) rule.get("fields"): null,
-                rule.get("falsepositives") != null? (List<String>) rule.get("falsepositives"): null, level, errors);
+                rule.get("description") != null ? rule.get("description").toString() : null,
+                rule.get("references") != null? (List<String>) rule.get("references"): null, ruleTags,
+                rule.get("author") != null ? rule.get("author").toString() : null, ruleDate,
+                rule.get("fields") != null? (List<String>) rule.get("fields"): null,
+                rule.get("falsepositives") != null? (List<String>) rule.get("falsepositives"): null, level, errors,
+                metadata, mitre, compliance);
     }
 
     public static SigmaRule fromYaml(String rule, boolean collectErrors) {
@@ -258,5 +331,17 @@ public class SigmaRule {
 
     public CompositeSigmaErrors getErrors() {
         return errors;
+    }
+
+    public SigmaMetadata getMetadata() {
+        return metadata;
+    }
+
+    public SigmaMitre getMitre() {
+        return mitre;
+    }
+
+    public SigmaCompliance getCompliance() {
+        return compliance;
     }
 }

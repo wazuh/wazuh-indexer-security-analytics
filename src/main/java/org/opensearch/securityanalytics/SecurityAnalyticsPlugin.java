@@ -24,6 +24,7 @@ import org.apache.logging.log4j.Logger;
 
 import org.opensearch.action.ActionRequest;
 import org.opensearch.cluster.metadata.IndexMetadata;
+import org.opensearch.securityanalytics.rules.objects.WCSFieldValidator;
 import org.opensearch.cluster.metadata.IndexNameExpressionResolver;
 import org.opensearch.cluster.node.DiscoveryNode;
 import org.opensearch.cluster.node.DiscoveryNodes;
@@ -288,6 +289,10 @@ public class SecurityAnalyticsPlugin extends Plugin
         this.correlationRuleIndices = new CorrelationRuleIndices(client, clusterService);
         CorrelationAlertService correlationAlertService = new CorrelationAlertService(client, xContentRegistry);
         NotificationService notificationService = new NotificationService((NodeClient) client, scriptService);
+
+        // Initialize WCS field validator from cluster index mappings
+        initWCSFieldValidator(clusterService);
+
         return List.of(
             this.detectorIndices,
             this.correlationIndices,
@@ -301,6 +306,41 @@ public class SecurityAnalyticsPlugin extends Plugin
             correlationAlertService,
             notificationService
         );
+    }
+
+    /**
+     * Initializes the WCS field validator by resolving fields from the first available
+     * {@code wazuh-events-*} index mapping. Registers a cluster state listener to retry
+     * if the index doesn't exist yet at startup.
+     */
+    private static void initWCSFieldValidator(ClusterService clusterService) {
+        final String WCS_INDEX_PREFIX = ".ds-wazuh-events-";
+
+        // Try immediately from current state
+        if (tryInitWCSFromClusterState(clusterService, WCS_INDEX_PREFIX)) {
+            return;
+        }
+
+        // Not available yet, listen for cluster state changes
+        clusterService.addListener(event -> {
+            if (!WCSFieldValidator.isInitialized()) {
+                tryInitWCSFromClusterState(clusterService, WCS_INDEX_PREFIX);
+            }
+        });
+    }
+
+    private static boolean tryInitWCSFromClusterState(ClusterService clusterService, String indexPrefix) {
+        try {
+            for (var cursor : clusterService.state().metadata().indices().entrySet()) {
+                if (cursor.getKey().startsWith(indexPrefix)) {
+                    WCSFieldValidator.initFromIndexMetadata(cursor.getValue());
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to initialize WCS field validator from cluster state", e);
+        }
+        return false;
     }
 
     @Override
