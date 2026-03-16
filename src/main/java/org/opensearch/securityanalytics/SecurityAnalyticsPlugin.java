@@ -291,8 +291,8 @@ public class SecurityAnalyticsPlugin extends Plugin
         NotificationService notificationService = new NotificationService((NodeClient) client, scriptService);
         WazuhEnrichedFindingService enrichedFindingService = new WazuhEnrichedFindingService(
                 client,
-                SecurityAnalyticsSettings.ENRICHED_FINDINGS_ENABLED.get(settings),
-                SecurityAnalyticsSettings.INDEX_TIMEOUT.get(settings)
+                SecurityAnalyticsSettings.ENRICHED_FINDINGS_ENABLED.get(environment.settings()),
+                SecurityAnalyticsSettings.INDEX_TIMEOUT.get(environment.settings())
         );
         return List.of(
             this.detectorIndices,
