@@ -56,7 +56,7 @@ public class WazuhEnrichedFindingService {
      * resolved. All work is async; the caller is not blocked.
      */
     public void enrich(Finding finding, String logType) {
-        if (!enabled) {
+        if (!this.enabled) {
             return;
         }
 
@@ -67,14 +67,14 @@ public class WazuhEnrichedFindingService {
         }
 
         String sourceIndex = finding.getIndex();
-        String docId = relatedDocIds.get(0);
+        String docId = relatedDocIds.getFirst();
 
-        fetchTriggeringEvent(sourceIndex, docId, ActionListener.wrap(
-            eventSource -> fetchRuleMetadataAndIndex(finding, logType, eventSource),
+        this.fetchTriggeringEvent(sourceIndex, docId, ActionListener.wrap(
+            eventSource -> this.fetchRuleMetadataAndIndex(finding, logType, eventSource),
             e -> {
                 log.warn("Failed to fetch triggering event {}/{} for finding {}, indexing without event source",
                         sourceIndex, docId, finding.getId(), e);
-                fetchRuleMetadataAndIndex(finding, logType, Map.of());
+                this.fetchRuleMetadataAndIndex(finding, logType, Map.of());
             }
         ));
     }
@@ -86,7 +86,7 @@ public class WazuhEnrichedFindingService {
         MultiGetRequest mget = new MultiGetRequest();
         mget.add(new MultiGetRequest.Item(index, docId));
 
-        client.multiGet(mget, ActionListener.wrap(response -> {
+        this.client.multiGet(mget, ActionListener.wrap(response -> {
             MultiGetItemResponse[] items = response.getResponses();
             if (items.length > 0 && !items[0].isFailed() && items[0].getResponse().isExists()) {
                 listener.onResponse(items[0].getResponse().getSourceAsMap());
@@ -103,23 +103,23 @@ public class WazuhEnrichedFindingService {
                                             Map<String, Object> eventSource) {
         List<DocLevelQuery> queries = finding.getDocLevelQueries();
         if (queries.isEmpty()) {
-            buildAndIndex(finding, logType, eventSource, null, Map.of());
+            this.buildAndIndex(finding, logType, eventSource, null, Map.of());
             return;
         }
 
-        DocLevelQuery primaryQuery = queries.get(0);
+        DocLevelQuery primaryQuery = queries.getFirst();
         String ruleId = primaryQuery.getId();
 
         MultiGetRequest mget = new MultiGetRequest();
         mget.add(new MultiGetRequest.Item(Rule.PRE_PACKAGED_RULES_INDEX, ruleId));
         mget.add(new MultiGetRequest.Item(Rule.CUSTOM_RULES_INDEX, ruleId));
 
-        client.multiGet(mget, ActionListener.wrap(response -> {
-            Map<String, Object> ruleMetadata = extractFirstHit(response);
-            buildAndIndex(finding, logType, eventSource, primaryQuery, ruleMetadata);
+        this.client.multiGet(mget, ActionListener.wrap(response -> {
+            Map<String, Object> ruleMetadata = this.extractFirstHit(response);
+            this.buildAndIndex(finding, logType, eventSource, primaryQuery, ruleMetadata);
         }, e -> {
             log.warn("Failed to fetch rule metadata for rule {}, indexing without rule fields", ruleId, e);
-            buildAndIndex(finding, logType, eventSource, primaryQuery, Map.of());
+            this.buildAndIndex(finding, logType, eventSource, primaryQuery, Map.of());
         }));
     }
 
@@ -143,10 +143,10 @@ public class WazuhEnrichedFindingService {
         Map<String, Object> doc = new HashMap<>(eventSource);
 
         // Top-level finding metadata
-        doc.put("@timestamp", finding.getTimestamp().toEpochMilli());
-        doc.put("monitor_id", finding.getMonitorId());
-        doc.put("monitor_name", finding.getMonitorName());
-        doc.put("execution_id", finding.getExecutionId());
+        doc.put("@timestamp", finding.getTimestamp());
+//        doc.put("monitor_id", finding.getMonitorId());
+//        doc.put("monitor_name", finding.getMonitorName());
+//        doc.put("execution_id", finding.getExecutionId());
 
         // event.* — merge existing event fields, then overlay doc_id and index
         Map<String, Object> eventObj = new HashMap<>();
@@ -154,16 +154,17 @@ public class WazuhEnrichedFindingService {
         if (existingEvent instanceof Map) {
             eventObj.putAll((Map<String, Object>) existingEvent);
         }
-        eventObj.put("doc_id", finding.getRelatedDocIds().get(0));
+        eventObj.put("doc_id", finding.getRelatedDocIds().getFirst());
         eventObj.put("index", finding.getIndex());
+        eventObj.put("ingested", finding.getTimestamp());
         doc.put("event", eventObj);
 
         // rule.*
         if (primaryQuery != null) {
-            doc.put("rule", buildRuleObject(primaryQuery, ruleMetadata));
+            doc.put("rule", this.buildRuleObject(primaryQuery, ruleMetadata));
         }
 
-        indexEnrichedFinding(logType, doc);
+        this.indexEnrichedFinding(logType, doc);
     }
 
     @SuppressWarnings("unchecked")
@@ -196,7 +197,12 @@ public class WazuhEnrichedFindingService {
             rule.put("compliance", compliance);
         }
 
-        rule.put("mitre", parseMitreFromTags(query.getTags()));
+        // TODO change once we have merged the "extended rule syntax"
+//        Object mitre = nested.get("mitre");
+//        if (mitre != null) {
+//            rule.put("mitre", compliance);
+//        }
+        rule.put("mitre", this.parseMitreFromTags(query.getTags()));
 
         return rule;
     }
@@ -245,9 +251,9 @@ public class WazuhEnrichedFindingService {
 
         IndexRequest request = new IndexRequest(alias)
                 .source(document, XContentType.JSON)
-                .timeout(indexTimeout);
+                .timeout(this.indexTimeout);
 
-        client.index(request, new ActionListener<IndexResponse>() {
+        this.client.index(request, new ActionListener<IndexResponse>() {
             @Override
             public void onResponse(IndexResponse response) {
                 log.debug("Indexed enriched finding to {}/{}", alias, response.getId());
