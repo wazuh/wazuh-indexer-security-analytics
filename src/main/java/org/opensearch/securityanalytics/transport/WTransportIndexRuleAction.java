@@ -223,6 +223,11 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
                     new ArrayList<>(queryFieldNames),
                     ruleStr
                 );
+                
+                // Set space from request if provided
+                if (this.request.getSpace() != null) {
+                    rule.setSpace(this.request.getSpace());
+                }
 
                 this.indexRule(rule, fieldMappings);
 
@@ -236,7 +241,7 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
          * After successful indexing, updates field mappings in the log type config index.
          */
         void indexRule(Rule rule, Map<String, String> ruleFieldMappings) throws IOException {
-            IndexRequest indexRequest = new IndexRequest(PRE_PACKAGED_RULES_INDEX).id(rule.getId())
+            IndexRequest indexRequest = new IndexRequest(PRE_PACKAGED_RULES_INDEX).id(rule.getCompositeId())
                 .source(rule.toXContent(XContentFactory.jsonBuilder(), new ToXContent.MapParams(Map.of("with_type", "true"))))
                 .setRefreshPolicy(WriteRequest.RefreshPolicy.IMMEDIATE)
                 .timeout(TimeValue.timeValueSeconds(10));

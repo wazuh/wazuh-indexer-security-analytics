@@ -64,6 +64,7 @@ public class Rule implements Writeable, ToXContentObject {
     public static final String PRE_PACKAGED_RULES_INDEX = ".opensearch-sap-pre-packaged-rules-config";
     public static final String CUSTOM_RULES_INDEX = ".opensearch-sap-custom-rules-config";
     public static final String AGGREGATION_QUERIES = "aggregationQueries";
+    public static final String SPACE = "space";
 
     public static final NamedXContentRegistry.Entry XCONTENT_REGISTRY = new NamedXContentRegistry.Entry(
             Rule.class,
@@ -105,10 +106,20 @@ public class Rule implements Writeable, ToXContentObject {
 
     private List<Value> aggregationQueries;
 
+    private String space;
+
     public Rule(String id, Long version, String title, String category, String logSource,
                 String description, List<Value> references, List<Value> tags, String level,
                 List<Value> falsePositives, String author, String status, Instant date,
                 List<Value> queries, List<Value> queryFieldNames, String rule, List<Value> aggregationQueries) {
+        this(id, version, title, category, logSource, description, references, tags, level,
+             falsePositives, author, status, date, queries, queryFieldNames, rule, aggregationQueries, null);
+    }
+
+    public Rule(String id, Long version, String title, String category, String logSource,
+                String description, List<Value> references, List<Value> tags, String level,
+                List<Value> falsePositives, String author, String status, Instant date,
+                List<Value> queries, List<Value> queryFieldNames, String rule, List<Value> aggregationQueries, String space) {
         this.id = id != null? id: NO_ID;
         this.version = version != null? version: NO_VERSION;
 
@@ -132,6 +143,7 @@ public class Rule implements Writeable, ToXContentObject {
         this.queryFieldNames = queryFieldNames;
         this.rule = rule;
         this.aggregationQueries = aggregationQueries;
+        this.space = space;
     }
 
     public Rule(String id, Long version, SigmaRule rule, String category,
@@ -177,7 +189,8 @@ public class Rule implements Writeable, ToXContentObject {
                 sin.readList(Value::readFrom),
                 sin.readList(Value::readFrom),
                 sin.readString(),
-                sin.readList(Value::readFrom)
+                sin.readList(Value::readFrom),
+                sin.readOptionalString()
         );
     }
 
@@ -206,6 +219,7 @@ public class Rule implements Writeable, ToXContentObject {
 
         out.writeString(rule);
         out.writeCollection(aggregationQueries);
+        out.writeOptionalString(space);
     }
 
     @Override
@@ -254,6 +268,9 @@ public class Rule implements Writeable, ToXContentObject {
         builder.field(AGGREGATION_QUERIES, aggregationsArray);
 
         builder.field(RULE, rule);
+        if (space != null) {
+            builder.field(SPACE, space);
+        }
         if (params.paramAsBoolean("with_type", false)) {
             builder.endObject();
         }
@@ -299,6 +316,7 @@ public class Rule implements Writeable, ToXContentObject {
         List<Value> queryFields = new ArrayList<>();
         String original = null;
         List<Value> aggregationQueries = new ArrayList<>();
+        String space = null;
 
         XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
         while (xcp.nextToken() != XContentParser.Token.END_OBJECT) {
@@ -368,6 +386,10 @@ public class Rule implements Writeable, ToXContentObject {
                     while (xcp.nextToken() != XContentParser.Token.END_ARRAY) {
                         aggregationQueries.add(Value.parse(xcp));
                     }
+                    break;
+                case SPACE:
+                    space = xcp.textOrNull();
+                    break;
                 default:
                     xcp.skipChildren();
             }
@@ -390,7 +412,8 @@ public class Rule implements Writeable, ToXContentObject {
                 queries,
                 queryFields,
                 Objects.requireNonNull(original, "Rule String is null"),
-                aggregationQueries
+                aggregationQueries,
+                space
         );
     }
 
@@ -487,5 +510,20 @@ public class Rule implements Writeable, ToXContentObject {
             aggregationItems.add(aggItem);
         }
         return aggregationItems;
+    }
+
+    public String getSpace() {
+        return space;
+    }
+
+    public void setSpace(String space) {
+        this.space = space;
+    }
+
+    public String getCompositeId() {
+        if (this.space != null) {
+            return this.id + "_" + this.space;
+        }
+        return this.id;
     }
 }

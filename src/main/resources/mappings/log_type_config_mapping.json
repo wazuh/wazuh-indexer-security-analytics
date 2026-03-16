@@ -68,6 +68,9 @@
         }
       }
     },
+    "space": {
+      "type": "keyword"
+    },
     "tags": {
       "dynamic": true,
       "properties": {

@@ -7,6 +7,8 @@ package com.wazuh.securityanalytics.action;
 import java.io.IOException;
 import java.util.Locale;
 
+import com.wazuh.securityanalytics.model.LifecycleSpace;
+
 import org.opensearch.action.ActionRequest;
 import org.opensearch.action.ActionRequestValidationException;
 import org.opensearch.action.support.WriteRequest;
@@ -24,6 +26,7 @@ public class WIndexCustomRuleRequest extends ActionRequest {
     private final RestRequest.Method method;
     private final String rule;
     private final Boolean forced;
+    private final String space;
 
     public WIndexCustomRuleRequest(
         String ruleId,
@@ -33,6 +36,18 @@ public class WIndexCustomRuleRequest extends ActionRequest {
         String rule,
         Boolean forced
     ) {
+        this(ruleId, refreshPolicy, logType, method, rule, forced, null);
+    }
+
+    public WIndexCustomRuleRequest(
+        String ruleId,
+        WriteRequest.RefreshPolicy refreshPolicy,
+        String logType,
+        RestRequest.Method method,
+        String rule,
+        Boolean forced,
+        String space
+    ) {
         super();
         this.ruleId = ruleId;
         this.refreshPolicy = refreshPolicy;
@@ -40,6 +55,7 @@ public class WIndexCustomRuleRequest extends ActionRequest {
         this.method = method;
         this.rule = rule;
         this.forced = forced;
+        this.space = space;
     }
 
     public WIndexCustomRuleRequest(StreamInput sin) throws IOException {
@@ -49,7 +65,8 @@ public class WIndexCustomRuleRequest extends ActionRequest {
             sin.readString(),
             sin.readEnum(RestRequest.Method.class),
             sin.readString(),
-            sin.readBoolean()
+            sin.readBoolean(),
+            sin.readOptionalString()
         );
     }
 
@@ -59,6 +76,15 @@ public class WIndexCustomRuleRequest extends ActionRequest {
         if (this.logType == null || this.logType.isEmpty()) {
             validationException = addValidationError("rule category is missing", validationException);
         }
+        
+        if (this.space != null) {
+            try {
+                LifecycleSpace.fromString(this.space);
+            } catch (IllegalArgumentException e) {
+                validationException = addValidationError("invalid lifecycle space: " + this.space, validationException);
+            }
+        }
+        
         return validationException;
     }
 
@@ -70,6 +96,7 @@ public class WIndexCustomRuleRequest extends ActionRequest {
         out.writeEnum(this.method);
         out.writeString(this.rule);
         out.writeBoolean(this.forced);
+        out.writeOptionalString(this.space);
     }
 
     public String getRuleId() {
@@ -94,5 +121,9 @@ public class WIndexCustomRuleRequest extends ActionRequest {
 
     public Boolean isForced() {
         return this.forced;
+    }
+
+    public String getSpace() {
+        return this.space;
     }
 }

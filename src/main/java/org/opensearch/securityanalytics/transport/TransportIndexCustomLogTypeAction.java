@@ -288,7 +288,23 @@ public class TransportIndexCustomLogTypeAction extends HandledTransportAction<In
                 logTypeService.ensureConfigIndexIsInitialized(new ActionListener<>() {
                     @Override
                     public void onResponse(Void unused) {
-                        MatchQueryBuilder queryBuilder = QueryBuilders.matchQuery("name", request.getCustomLogType().getName());
+                        // Build query for per-space name uniqueness
+                        QueryBuilder queryBuilder;
+                        String logTypeName = request.getCustomLogType().getName();
+                        String space = request.getCustomLogType().getSpace();
+                        
+                        if (space != null) {
+                            // Check for duplicate name in the same space
+                            queryBuilder = QueryBuilders.boolQuery()
+                                .must(QueryBuilders.matchQuery("name", logTypeName))
+                                .must(QueryBuilders.matchQuery("space", space));
+                        } else {
+                            // Check for duplicate name with no space (legacy behavior)
+                            queryBuilder = QueryBuilders.boolQuery()
+                                .must(QueryBuilders.matchQuery("name", logTypeName))
+                                .mustNot(QueryBuilders.existsQuery("space"));
+                        }
+                        
                         SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
                         searchSourceBuilder.query(queryBuilder);
                         SearchRequest searchRequest = new SearchRequest();

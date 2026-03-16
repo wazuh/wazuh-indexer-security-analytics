@@ -13,6 +13,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import com.wazuh.securityanalytics.model.Integration;
+import com.wazuh.securityanalytics.model.LifecycleSpace;
 
 import org.opensearch.action.ActionRequest;
 import org.opensearch.action.ActionRequestValidationException;
@@ -79,16 +80,17 @@ public class WIndexIntegrationRequest extends ActionRequest {
     }
 
     /**
-     * Validates the integration request by checking the integration name format and category.
+     * Validates the integration request by checking the integration name format, category, and lifecycle space.
      *
      * <p>The validation ensures:
      * <ul>
      *   <li>The integration name matches the pattern [a-z0-9_-]{2,50}</li>
      *   <li>The category is one of the valid Wazuh categories</li>
+     *   <li>The lifecycle space is a valid LifecycleSpace value (if provided)</li>
      * </ul>
      *
      * @return null if validation passes, otherwise throws an exception
-     * @throws ActionRequestValidationException if the name or category is invalid
+     * @throws ActionRequestValidationException if the name, category, or space is invalid
      */
     @Override
     public ActionRequestValidationException validate() {
@@ -101,6 +103,17 @@ public class WIndexIntegrationRequest extends ActionRequest {
         if (!Integration.LOG_CATEGORIES.contains(category)) {
             throw new ActionRequestValidationException();
         }
+        
+        // Validate lifecycle space if provided
+        String space = this.integration.getSpace();
+        if (space != null) {
+            try {
+                LifecycleSpace.fromString(space);
+            } catch (IllegalArgumentException e) {
+                throw new ActionRequestValidationException();
+            }
+        }
+        
         return null;
     }
 

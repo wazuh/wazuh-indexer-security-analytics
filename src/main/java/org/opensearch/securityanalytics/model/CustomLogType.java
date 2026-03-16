@@ -50,6 +50,8 @@ public class CustomLogType implements Writeable, ToXContentObject {
 
     private static final String TAGS_FIELD = "tags";
 
+    private static final String SPACE_FIELD = "space";
+
     private String id;
 
     private Long version;
@@ -64,6 +66,8 @@ public class CustomLogType implements Writeable, ToXContentObject {
 
     private Map<String, Object> tags;
 
+    private String space;
+
     public static final NamedXContentRegistry.Entry XCONTENT_REGISTRY = new NamedXContentRegistry.Entry(
             CustomLogType.class,
             new ParseField(CUSTOM_LOG_TYPES_FIELD),
@@ -77,6 +81,17 @@ public class CustomLogType implements Writeable, ToXContentObject {
                          String category,
                          String source,
                          Map<String, Object> tags) {
+        this(id, version, name, description, category, source, tags, null);
+    }
+
+    public CustomLogType(String id,
+                         Long version,
+                         String name,
+                         String description,
+                         String category,
+                         String source,
+                         Map<String, Object> tags,
+                         String space) {
         this.id = id != null ? id : NO_ID;
         this.version = version != null ? version : NO_VERSION;
         this.name = name;
@@ -84,6 +99,7 @@ public class CustomLogType implements Writeable, ToXContentObject {
         this.category = category != null? category: "Other";
         this.source = source;
         this.tags = tags;
+        this.space = space;
     }
 
     public CustomLogType(StreamInput sin) throws IOException {
@@ -94,7 +110,8 @@ public class CustomLogType implements Writeable, ToXContentObject {
                 sin.readString(),
                 sin.readString(),
                 sin.readString(),
-                sin.readMap()
+                sin.readMap(),
+                sin.readOptionalString()
         );
     }
 
@@ -107,7 +124,8 @@ public class CustomLogType implements Writeable, ToXContentObject {
                 input.get(DESCRIPTION_FIELD).toString(),
                 input.containsKey(CATEGORY_FIELD)? input.get(CATEGORY_FIELD).toString(): null,
                 input.get(SOURCE_FIELD).toString(),
-                (Map<String, Object>) input.get(TAGS_FIELD)
+                (Map<String, Object>) input.get(TAGS_FIELD),
+                input.containsKey(SPACE_FIELD) ? input.get(SPACE_FIELD).toString() : null
         );
     }
 
@@ -120,17 +138,21 @@ public class CustomLogType implements Writeable, ToXContentObject {
         out.writeString(category);
         out.writeString(source);
         out.writeMap(tags);
+        out.writeOptionalString(space);
     }
 
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
-        return builder.startObject()
+        builder.startObject()
                 .field(NAME_FIELD, name)
                 .field(DESCRIPTION_FIELD, description)
                 .field(CATEGORY_FIELD, category)
                 .field(SOURCE_FIELD, source)
-                .field(TAGS_FIELD, tags)
-                .endObject();
+                .field(TAGS_FIELD, tags);
+        if (space != null) {
+            builder.field(SPACE_FIELD, space);
+        }
+        return builder.endObject();
     }
 
     public static CustomLogType parse(XContentParser xcp, String id, Long version) throws IOException {
@@ -146,6 +168,7 @@ public class CustomLogType implements Writeable, ToXContentObject {
         String category = null;
         String source = null;
         Map<String, Object> tags = null;
+        String space = null;
 
         XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
         while (xcp.nextToken() != XContentParser.Token.END_OBJECT) {
@@ -168,11 +191,14 @@ public class CustomLogType implements Writeable, ToXContentObject {
                 case TAGS_FIELD:
                     tags = xcp.map();
                     break;
+                case SPACE_FIELD:
+                    space = xcp.textOrNull();
+                    break;
                 default:
                     xcp.skipChildren();
             }
         }
-        return new CustomLogType(id, version, name, description, category, source, tags);
+        return new CustomLogType(id, version, name, description, category, source, tags, space);
     }
 
     public static CustomLogType readFrom(StreamInput sin) throws IOException {
@@ -217,5 +243,20 @@ public class CustomLogType implements Writeable, ToXContentObject {
 
     public Map<String, Object> getTags() {
         return tags;
+    }
+
+    public String getSpace() {
+        return space;
+    }
+
+    public void setSpace(String space) {
+        this.space = space;
+    }
+
+    public String getCompositeId() {
+        if (this.space != null) {
+            return this.id + "_" + this.space;
+        }
+        return this.id;
     }
 }

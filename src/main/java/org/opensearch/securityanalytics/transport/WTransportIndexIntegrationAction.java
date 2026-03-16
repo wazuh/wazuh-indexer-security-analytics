@@ -15,6 +15,7 @@ import com.wazuh.securityanalytics.action.WIndexIntegrationAction;
 import com.wazuh.securityanalytics.action.WIndexIntegrationRequest;
 import com.wazuh.securityanalytics.action.WIndexIntegrationResponse;
 import com.wazuh.securityanalytics.model.Integration;
+import com.wazuh.securityanalytics.model.LifecycleSpace;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -89,12 +90,38 @@ public class WTransportIndexIntegrationAction extends HandledTransportAction<WIn
     @Override
     protected void doExecute(Task task, WIndexIntegrationRequest request, ActionListener<WIndexIntegrationResponse> listener) {
         Integration integration = request.getIntegration();
+        
+        // Determine and validate space
+        String space = integration.getSpace();
+        boolean isSigma = Objects.equals(integration.getSource(), "Sigma");
+        
+        if (space == null) {
+            // Default space based on source
+            space = isSigma ? LifecycleSpace.STANDARD.toString() : LifecycleSpace.DRAFT.toString();
+            integration.setSpace(space);
+        }
+        
+        LifecycleSpace lifecycleSpace;
+        try {
+            lifecycleSpace = LifecycleSpace.fromString(space);
+        } catch (IllegalArgumentException e) {
+            listener.onFailure(new IllegalArgumentException("Invalid lifecycle space: " + space));
+            return;
+        }
+        
+        // Check immutability for STANDARD space
+        if (lifecycleSpace == LifecycleSpace.STANDARD && 
+            request.getMethod() == RestRequest.Method.PUT && 
+            !isSigma) {
+            listener.onFailure(new IllegalArgumentException("Cannot modify integration in STANDARD space from non-Sigma source"));
+            return;
+        }
 
         // Custom integration / log type.
-        if (!Objects.equals(integration.getSource(), "Sigma")) {
+        if (!isSigma) {
             try {
                 IndexCustomLogTypeRequest internalRequest = new IndexCustomLogTypeRequest(
-                    integration.getId(),
+                    integration.getCompositeId(),
                     WriteRequest.RefreshPolicy.IMMEDIATE,
                     request.getMethod(),
                     new CustomLogType(
@@ -104,7 +131,8 @@ public class WTransportIndexIntegrationAction extends HandledTransportAction<WIn
                         integration.getDescription(),
                         integration.getCategory(),
                         integration.getSource(),
-                        integration.getTags()
+                        integration.getTags(),
+                        integration.getSpace()
                     )
                 );
                 this.client.execute(IndexCustomLogTypeAction.INSTANCE, internalRequest, new ActionListener<IndexCustomLogTypeResponse>() {
@@ -128,7 +156,7 @@ public class WTransportIndexIntegrationAction extends HandledTransportAction<WIn
         } else {
             // Standard integrations
             try {
-                IndexRequest indexRequest = new IndexRequest().index(LOG_TYPE_INDEX).id(request.getId()).source(integration.toXContent());
+                IndexRequest indexRequest = new IndexRequest().index(LOG_TYPE_INDEX).id(integration.getCompositeId()).source(integration.toXContent());
 
                 this.client.index(indexRequest, ActionListener.wrap(indexResponse -> {
                     WIndexIntegrationResponse response = new WIndexIntegrationResponse(

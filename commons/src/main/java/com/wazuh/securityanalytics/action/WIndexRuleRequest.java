@@ -7,6 +7,8 @@ package com.wazuh.securityanalytics.action;
 import java.io.IOException;
 import java.util.Locale;
 
+import com.wazuh.securityanalytics.model.LifecycleSpace;
+
 import org.opensearch.action.ActionRequest;
 import org.opensearch.action.ActionRequestValidationException;
 import org.opensearch.action.support.WriteRequest;
@@ -50,6 +52,9 @@ public class WIndexRuleRequest extends ActionRequest {
      */
     private final Boolean forced;
 
+    /** The lifecycle space for this rule. */
+    private final String space;
+
     /**
      * Constructs a new WIndexRuleRequest.
      *
@@ -68,6 +73,29 @@ public class WIndexRuleRequest extends ActionRequest {
         String rule,
         Boolean forced
     ) {
+        this(ruleId, refreshPolicy, logType, method, rule, forced, null);
+    }
+
+    /**
+     * Constructs a new WIndexRuleRequest with space.
+     *
+     * @param ruleId        the unique identifier for the rule
+     * @param refreshPolicy the refresh policy for the index operation
+     * @param logType       the log type category for this rule (will be lowercased)
+     * @param method        the HTTP method (PUT for update, POST for create)
+     * @param rule          the Sigma rule YAML content
+     * @param forced        if true, updates the rule even if used by active detectors
+     * @param space         the lifecycle space for this rule
+     */
+    public WIndexRuleRequest(
+        String ruleId,
+        WriteRequest.RefreshPolicy refreshPolicy,
+        String logType,
+        RestRequest.Method method,
+        String rule,
+        Boolean forced,
+        String space
+    ) {
         super();
         this.ruleId = ruleId;
         this.refreshPolicy = refreshPolicy;
@@ -75,6 +103,7 @@ public class WIndexRuleRequest extends ActionRequest {
         this.method = method;
         this.rule = rule;
         this.forced = forced;
+        this.space = space;
     }
 
     /**
@@ -90,7 +119,8 @@ public class WIndexRuleRequest extends ActionRequest {
             sin.readString(),
             sin.readEnum(RestRequest.Method.class),
             sin.readString(),
-            sin.readBoolean()
+            sin.readBoolean(),
+            sin.readOptionalString()
         );
     }
 
@@ -101,6 +131,15 @@ public class WIndexRuleRequest extends ActionRequest {
         if (this.logType == null || this.logType.isEmpty()) {
             validationException = addValidationError("rule category is missing", validationException);
         }
+        
+        if (this.space != null) {
+            try {
+                LifecycleSpace.fromString(this.space);
+            } catch (IllegalArgumentException e) {
+                validationException = addValidationError("invalid lifecycle space: " + this.space, validationException);
+            }
+        }
+        
         return validationException;
     }
 
@@ -112,6 +151,7 @@ public class WIndexRuleRequest extends ActionRequest {
         out.writeEnum(this.method);
         out.writeString(this.rule);
         out.writeBoolean(this.forced);
+        out.writeOptionalString(this.space);
     }
 
     /**
@@ -166,5 +206,14 @@ public class WIndexRuleRequest extends ActionRequest {
      */
     public Boolean isForced() {
         return this.forced;
+    }
+
+    /**
+     * Gets the lifecycle space for this rule.
+     *
+     * @return the lifecycle space
+     */
+    public String getSpace() {
+        return this.space;
     }
 }
