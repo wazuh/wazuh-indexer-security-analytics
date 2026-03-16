@@ -127,7 +127,7 @@ public class WCSFieldValidator {
     }
 
     public static boolean isWCSField(String field) {
-        if (field == null || field.isEmpty()){
+        if (field == null || field.isEmpty() || !isInitialized()){
             return true;
         }
 

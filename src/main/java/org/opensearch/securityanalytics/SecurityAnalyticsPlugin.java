@@ -23,6 +23,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import org.opensearch.action.ActionRequest;
+import org.opensearch.cluster.ClusterState;
 import org.opensearch.cluster.metadata.IndexMetadata;
 import org.opensearch.securityanalytics.rules.objects.WCSFieldValidator;
 import org.opensearch.cluster.metadata.IndexNameExpressionResolver;
@@ -310,28 +311,22 @@ public class SecurityAnalyticsPlugin extends Plugin
 
     /**
      * Initializes the WCS field validator by resolving fields from the first available
-     * {@code wazuh-events-*} index mapping. Registers a cluster state listener to retry
-     * if the index doesn't exist yet at startup.
+     * {@code wazuh-events-*} index mapping. Registers a cluster state listener
+     * to perform this once the cluster state becomes available.
      */
     private static void initWCSFieldValidator(ClusterService clusterService) {
         final String WCS_INDEX_PREFIX = ".ds-wazuh-events-";
 
-        // Try immediately from current state
-        if (tryInitWCSFromClusterState(clusterService, WCS_INDEX_PREFIX)) {
-            return;
-        }
-
-        // Not available yet, listen for cluster state changes
         clusterService.addListener(event -> {
             if (!WCSFieldValidator.isInitialized()) {
-                tryInitWCSFromClusterState(clusterService, WCS_INDEX_PREFIX);
+                tryInitWCSFromClusterState(event.state(), WCS_INDEX_PREFIX);
             }
         });
     }
 
-    private static boolean tryInitWCSFromClusterState(ClusterService clusterService, String indexPrefix) {
+    private static boolean tryInitWCSFromClusterState(ClusterState state, String indexPrefix) {
         try {
-            for (var cursor : clusterService.state().metadata().indices().entrySet()) {
+            for (var cursor : state.metadata().indices().entrySet()) {
                 if (cursor.getKey().startsWith(indexPrefix)) {
                     WCSFieldValidator.initFromIndexMetadata(cursor.getValue());
                     return true;
