@@ -103,7 +103,7 @@ public class WIndexIntegrationRequest extends ActionRequest {
         if (!Integration.LOG_CATEGORIES.contains(category)) {
             throw new ActionRequestValidationException();
         }
-        
+
         // Validate lifecycle space if provided
         String space = this.integration.getSpace();
         if (space != null) {
@@ -113,7 +113,7 @@ public class WIndexIntegrationRequest extends ActionRequest {
                 throw new ActionRequestValidationException();
             }
         }
-        
+
         return null;
     }
 

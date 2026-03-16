@@ -76,7 +76,7 @@ public class WIndexCustomRuleRequest extends ActionRequest {
         if (this.logType == null || this.logType.isEmpty()) {
             validationException = addValidationError("rule category is missing", validationException);
         }
-        
+
         if (this.space != null) {
             try {
                 LifecycleSpace.fromString(this.space);
@@ -84,7 +84,7 @@ public class WIndexCustomRuleRequest extends ActionRequest {
                 validationException = addValidationError("invalid lifecycle space: " + this.space, validationException);
             }
         }
-        
+
         return validationException;
     }
 
