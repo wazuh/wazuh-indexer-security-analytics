@@ -52,7 +52,7 @@ public class WazuhExtensionsTests extends OpenSearchTestCase {
                     "    service: system\n" +
                     "detection:\n" +
                     "    selection:\n" +
-                    "        EventID: 16\n" +
+                    "        event.id: 16\n" +
                     "    condition: selection\n" +
                     "falsepositives:\n" +
                     "    - Unknown\n" +
@@ -154,7 +154,7 @@ public class WazuhExtensionsTests extends OpenSearchTestCase {
                         "    product: windows\n" +
                         "detection:\n" +
                         "    selection:\n" +
-                        "        EventID: 16\n" +
+                        "        event.id: 16\n" +
                         "    condition: selection\n" +
                         "falsepositives:\n" +
                         "    - Unknown\n";
@@ -176,7 +176,7 @@ public class WazuhExtensionsTests extends OpenSearchTestCase {
                         "    product: windows\n" +
                         "detection:\n" +
                         "    selection:\n" +
-                        "        EventID: 1\n" +
+                        "        event.id: 1\n" +
                         "    condition: selection\n" +
                         "metadata:\n" +
                         "    author: Only Author\n" +
@@ -204,7 +204,7 @@ public class WazuhExtensionsTests extends OpenSearchTestCase {
                         "    product: windows\n" +
                         "detection:\n" +
                         "    selection:\n" +
-                        "        EventID: 16\n" +
+                        "        event.id: 16\n" +
                         "    condition: selection\n" +
                         "compliance:\n" +
                         "    UNKNOWN_FRAMEWORK:\n" +
@@ -281,7 +281,7 @@ public class WazuhExtensionsTests extends OpenSearchTestCase {
     }
 
     public void testWCSValidatorKnownField() {
-        Assert.assertTrue(WCSFieldValidator.isWCSField("EventID"));
+        Assert.assertTrue(WCSFieldValidator.isWCSField("event.id"));
         Assert.assertTrue(WCSFieldValidator.isWCSField("source.ip"));
         Assert.assertTrue(WCSFieldValidator.isWCSField("process.name"));
         Assert.assertTrue(WCSFieldValidator.isWCSField("data.win.eventdata.image"));
@@ -292,8 +292,8 @@ public class WazuhExtensionsTests extends OpenSearchTestCase {
     }
 
     public void testWCSValidatorPrefixBasedField() {
-        Assert.assertTrue(WCSFieldValidator.isWCSField("event.custom_field"));
-        Assert.assertTrue(WCSFieldValidator.isWCSField("data.custom.nested"));
+        Assert.assertFalse(WCSFieldValidator.isWCSField("event.custom_field"));
+        Assert.assertFalse(WCSFieldValidator.isWCSField("data.custom.nested"));
     }
 
     public void testWCSValidatorUninitializedAcceptsAll() {
@@ -319,7 +319,7 @@ public class WazuhExtensionsTests extends OpenSearchTestCase {
                         "    product: windows\n" +
                         "detection:\n" +
                         "    selection:\n" +
-                        "        EventID: 16\n" +
+                        "        event.id: 16\n" +
                         "    condition: selection\n" +
                         "mitre:\n" +
                         "    tactic:\n" +
