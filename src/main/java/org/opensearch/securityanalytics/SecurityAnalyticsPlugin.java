@@ -87,6 +87,7 @@ import org.opensearch.securityanalytics.action.ValidateRulesAction;
 import org.opensearch.securityanalytics.correlation.alert.CorrelationAlertService;
 import org.opensearch.securityanalytics.correlation.alert.notifications.NotificationService;
 import org.opensearch.securityanalytics.correlation.index.codec.CorrelationCodecService;
+import org.opensearch.securityanalytics.enrichment.WazuhEnrichedFindingService;
 import org.opensearch.securityanalytics.correlation.index.mapper.CorrelationVectorFieldMapper;
 import org.opensearch.securityanalytics.correlation.index.query.CorrelationQueryBuilder;
 import org.opensearch.securityanalytics.indexmanagment.DetectorIndexManagementService;
@@ -288,6 +289,11 @@ public class SecurityAnalyticsPlugin extends Plugin
         this.correlationRuleIndices = new CorrelationRuleIndices(client, clusterService);
         CorrelationAlertService correlationAlertService = new CorrelationAlertService(client, xContentRegistry);
         NotificationService notificationService = new NotificationService((NodeClient) client, scriptService);
+        WazuhEnrichedFindingService enrichedFindingService = new WazuhEnrichedFindingService(
+                client,
+                SecurityAnalyticsSettings.ENRICHED_FINDINGS_ENABLED.get(settings),
+                SecurityAnalyticsSettings.INDEX_TIMEOUT.get(settings)
+        );
         return List.of(
             this.detectorIndices,
             this.correlationIndices,
@@ -299,7 +305,8 @@ public class SecurityAnalyticsPlugin extends Plugin
             this.indexTemplateManager,
             this.builtinLogTypeLoader,
             correlationAlertService,
-            notificationService
+            notificationService,
+            enrichedFindingService
         );
     }
 
@@ -421,7 +428,8 @@ public class SecurityAnalyticsPlugin extends Plugin
             SecurityAnalyticsSettings.IOC_INDEX_RETENTION_PERIOD,
             SecurityAnalyticsSettings.IOC_MAX_INDICES_PER_INDEX_PATTERN,
             SecurityAnalyticsSettings.IOC_SCAN_MAX_TERMS_COUNT,
-            SecurityAnalyticsSettings.ENABLE_DETECTORS_WITH_DEDICATED_QUERY_INDICES
+            SecurityAnalyticsSettings.ENABLE_DETECTORS_WITH_DEDICATED_QUERY_INDICES,
+            SecurityAnalyticsSettings.ENRICHED_FINDINGS_ENABLED
         );
     }
 

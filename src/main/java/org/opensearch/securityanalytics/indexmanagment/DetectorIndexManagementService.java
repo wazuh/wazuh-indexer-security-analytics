@@ -89,6 +89,7 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
 
     private Scheduler.Cancellable scheduledAlertsRollover = null;
     private Scheduler.Cancellable scheduledFindingsRollover = null;
+    private Scheduler.Cancellable scheduledWazuhFindingsRollover = null;
 
     private Scheduler.Cancellable scheduledCorrelationHistoryRollover = null;
 
@@ -96,6 +97,7 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
 
     List<HistoryIndexInfo> alertHistoryIndices = new ArrayList<>();
     List<HistoryIndexInfo> findingHistoryIndices = new ArrayList<>();
+    List<HistoryIndexInfo> wazuhFindingHistoryIndices = new ArrayList<>();
 
     HistoryIndexInfo correlationHistoryIndex = null;
 
@@ -204,6 +206,7 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
 
         alertHistoryIndices.clear();
         findingHistoryIndices.clear();
+        wazuhFindingHistoryIndices.clear();
 
         logTypes.forEach(
                 logType -> {
@@ -230,6 +233,18 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
                             findingHistoryMaxDocs,
                             findingHistoryMaxAge,
                             clusterService.state().metadata().hasAlias(findingsIndex)
+                    ));
+
+                    String wazuhFindingsIndex = DetectorMonitorConfig.getWazuhFindingsIndex(logType);
+                    String wazuhFindingsIndexPattern = DetectorMonitorConfig.getWazuhFindingsIndexPattern(logType);
+
+                    wazuhFindingHistoryIndices.add(new HistoryIndexInfo(
+                            wazuhFindingsIndex,
+                            wazuhFindingsIndexPattern,
+                            wazuhFindingEnrichmentMapping(),
+                            findingHistoryMaxDocs,
+                            findingHistoryMaxAge,
+                            clusterService.state().metadata().hasAlias(wazuhFindingsIndex)
                     ));
                 });
     }
@@ -274,6 +289,9 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
         for (HistoryIndexInfo h : findingHistoryIndices) {
             h.isInitialized = event.state().metadata().hasAlias(h.indexAlias);
         }
+        for (HistoryIndexInfo h : wazuhFindingHistoryIndices) {
+            h.isInitialized = event.state().metadata().hasAlias(h.indexAlias);
+        }
 
         if (correlationHistoryIndex != null && correlationHistoryIndex.indexAlias != null) {
             correlationHistoryIndex.isInitialized = event.state().metadata().hasAlias(correlationHistoryIndex.indexAlias);
@@ -289,6 +307,7 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
             threadPool.schedule(() -> {
                 rolloverAndDeleteAlertHistoryIndices();
                 rolloverAndDeleteFindingHistoryIndices();
+                rolloverAndDeleteWazuhFindingHistoryIndices();
                 rolloverAndDeleteCorrelationHistoryIndices();
                 rolloverAndDeleteIocFindingHistoryIndices();
             }, TimeValue.timeValueSeconds(1), executorName());
@@ -297,6 +316,8 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
                     .scheduleWithFixedDelay(() -> rolloverAndDeleteAlertHistoryIndices(), alertHistoryRolloverPeriod, executorName());
             scheduledFindingsRollover = threadPool
                     .scheduleWithFixedDelay(() -> rolloverAndDeleteFindingHistoryIndices(), findingHistoryRolloverPeriod, executorName());
+            scheduledWazuhFindingsRollover = threadPool
+                    .scheduleWithFixedDelay(() -> rolloverAndDeleteWazuhFindingHistoryIndices(), findingHistoryRolloverPeriod, executorName());
             scheduledCorrelationHistoryRollover = threadPool
                     .scheduleWithFixedDelay(() -> rolloverAndDeleteCorrelationHistoryIndices(), correlationHistoryRolloverPeriod, executorName());
             scheduledIocFindingHistoryRollover = threadPool
@@ -317,6 +338,9 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
         }
         if (scheduledFindingsRollover != null) {
             scheduledFindingsRollover.cancel();
+        }
+        if (scheduledWazuhFindingsRollover != null) {
+            scheduledWazuhFindingsRollover.cancel();
         }
         if (scheduledCorrelationHistoryRollover != null) {
             scheduledCorrelationHistoryRollover.cancel();
@@ -491,6 +515,18 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
         }, e -> {}));
     }
 
+    private void rolloverAndDeleteWazuhFindingHistoryIndices() {
+        logTypeService.getAllLogTypes(ActionListener.wrap(logTypes -> {
+            if (logTypes == null || logTypes.isEmpty()) {
+                return;
+            }
+            populateAllIndexLists(logTypes);
+
+            if (findingHistoryEnabled) rolloverWazuhFindingHistoryIndices();
+            deleteOldIndices("WazuhFinding", getAllWazuhFindingsIndicesPatternForAllTypes(logTypes).toArray(new String[0]));
+        }, e -> {}));
+    }
+
     private void rolloverAndDeleteCorrelationHistoryIndices() {
         try {
             correlationHistoryIndex = new HistoryIndexInfo(
@@ -536,6 +572,13 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
         return logTypes
                 .stream()
                 .map(logType -> DetectorMonitorConfig.getAllFindingsIndicesPattern(logType))
+                .collect(Collectors.toList());
+    }
+
+    private List<String> getAllWazuhFindingsIndicesPatternForAllTypes(List<String> logTypes) {
+        return logTypes
+                .stream()
+                .map(logType -> DetectorMonitorConfig.getAllWazuhFindingsIndicesPattern(logType))
                 .collect(Collectors.toList());
     }
 
@@ -609,6 +652,16 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
         }
     }
 
+    private void rolloverWazuhFindingHistoryIndices() {
+        for (HistoryIndexInfo h : wazuhFindingHistoryIndices) {
+            rolloverIndex(
+                h.isInitialized, h.indexAlias,
+                h.indexPattern, h.indexMappings,
+                h.maxDocs, h.maxAge, false
+            );
+        }
+    }
+
     private void rolloverCorrelationHistoryIndices() {
         if (correlationHistoryIndex != null) {
             rolloverIndex(
@@ -654,6 +707,11 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
             }
             scheduledFindingsRollover = threadPool
                     .scheduleWithFixedDelay(() -> rolloverAndDeleteFindingHistoryIndices(), findingHistoryRolloverPeriod, executorName());
+            if (scheduledWazuhFindingsRollover != null) {
+                scheduledWazuhFindingsRollover.cancel();
+            }
+            scheduledWazuhFindingsRollover = threadPool
+                    .scheduleWithFixedDelay(() -> rolloverAndDeleteWazuhFindingHistoryIndices(), findingHistoryRolloverPeriod, executorName());
         }
     }
 
@@ -699,6 +757,18 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
             logger.error(e.getMessage());
         }
         return findingMapping;
+    }
+
+    private String wazuhFindingEnrichmentMapping() {
+        String mapping = null;
+        try (
+                InputStream is = DetectorIndexManagementService.class.getClassLoader().getResourceAsStream("mappings/wazuh-finding-enrichment-mapping.json")
+        ) {
+            mapping = new String(Objects.requireNonNull(is).readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            logger.error(e.getMessage());
+        }
+        return mapping;
     }
 
     // Setters
@@ -788,6 +858,9 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
         if (scheduledFindingsRollover != null) {
             scheduledFindingsRollover.cancel();
         }
+        if (scheduledWazuhFindingsRollover != null) {
+            scheduledWazuhFindingsRollover.cancel();
+        }
         if (scheduledCorrelationHistoryRollover != null) {
             scheduledCorrelationHistoryRollover.cancel();
         }
@@ -803,6 +876,9 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
         }
         if (scheduledFindingsRollover != null) {
             scheduledFindingsRollover.cancel();
+        }
+        if (scheduledWazuhFindingsRollover != null) {
+            scheduledWazuhFindingsRollover.cancel();
         }
         if (scheduledCorrelationHistoryRollover != null) {
             scheduledCorrelationHistoryRollover.cancel();
