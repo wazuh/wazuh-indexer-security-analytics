@@ -156,7 +156,7 @@ public class WazuhEnrichedFindingService {
         }
         eventObj.put("doc_id", finding.getRelatedDocIds().getFirst());
         eventObj.put("index", finding.getIndex());
-        eventObj.put("ingested", finding.getTimestamp());
+        eventObj.put("ingested", eventSource.get("@timestamp"));
         doc.put("event", eventObj);
 
         // rule.*
