@@ -404,6 +404,10 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
             if (indexToDelete != null) {
                 indicesToDelete.add(indexToDelete);
             }
+            indexToDelete = getHistoryIndexToDelete(indexMetaData, findingHistoryRetentionPeriod.millis(), wazuhFindingHistoryIndices, findingHistoryEnabled);
+            if (indexToDelete != null) {
+                indicesToDelete.add(indexToDelete);
+            }
         }
         return indicesToDelete;
     }
