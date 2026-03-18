@@ -45,7 +45,7 @@ jobs:
     env:
       plugin_name: wazuh-indexer-security-analytics
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
