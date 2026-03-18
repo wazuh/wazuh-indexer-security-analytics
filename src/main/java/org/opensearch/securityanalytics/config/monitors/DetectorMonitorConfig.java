@@ -59,6 +59,18 @@ public class DetectorMonitorConfig {
         return String.format(Locale.getDefault(), ".opensearch-sap-%s-findings*", logType);
     }
 
+    public static String getWazuhFindingsIndex(String logType) {
+        return String.format(Locale.getDefault(), "wazuh-findings-v5-%s", logType);
+    }
+
+    public static String getWazuhFindingsIndexPattern(String logType) {
+        return String.format(Locale.getDefault(), "<wazuh-findings-v5-%s-{now/d}-1>", logType);
+    }
+
+    public static String getAllWazuhFindingsIndicesPattern(String logType) {
+        return String.format(Locale.getDefault(), "wazuh-findings-v5-%s-*", logType);
+    }
+
     public static Map<String, Map<String, String>> getRuleIndexMappingsByType() {
         HashMap<String, String> properties = new HashMap<>();
         properties.put("analyzer", "rule_analyzer");
