@@ -20,10 +20,8 @@ import org.opensearch.securityanalytics.config.monitors.DetectorMonitorConfig;
 import org.opensearch.securityanalytics.model.Rule;
 import org.opensearch.transport.client.Client;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -144,9 +142,6 @@ public class WazuhEnrichedFindingService {
 
         // Top-level finding metadata
         doc.put("@timestamp", finding.getTimestamp());
-//        doc.put("monitor_id", finding.getMonitorId());
-//        doc.put("monitor_name", finding.getMonitorName());
-//        doc.put("execution_id", finding.getExecutionId());
 
         // event.* — merge existing event fields, then overlay doc_id and index
         Map<String, Object> eventObj = new HashMap<>();
@@ -197,51 +192,12 @@ public class WazuhEnrichedFindingService {
             rule.put("compliance", compliance);
         }
 
-        // TODO change once we have merged the "extended rule syntax"
-//        Object mitre = nested.get("mitre");
-//        if (mitre != null) {
-//            rule.put("mitre", compliance);
-//        }
-        rule.put("mitre", this.parseMitreFromTags(query.getTags()));
-
-        return rule;
-    }
-
-    /**
-     * Parses MITRE ATT&CK identifiers from Sigma-style tags.
-     * <ul>
-     *   <li>{@code attack.taXXXX} → tactic</li>
-     *   <li>{@code attack.tXXXX.XXX} → sub-technique</li>
-     *   <li>{@code attack.tXXXX} → technique</li>
-     * </ul>
-     */
-    private Map<String, Object> parseMitreFromTags(List<String> tags) {
-        List<String> tactics = new ArrayList<>();
-        List<String> techniques = new ArrayList<>();
-        List<String> subtechniques = new ArrayList<>();
-
-        for (String tag : tags) {
-            String lower = tag.toLowerCase(Locale.ROOT);
-            if (!lower.startsWith("attack.")) {
-                continue;
-            }
-            String id = tag.substring("attack.".length());
-            String idLower = lower.substring("attack.".length());
-
-            if (idLower.startsWith("ta")) {
-                tactics.add(id.toUpperCase(Locale.ROOT));
-            } else if (idLower.startsWith("t") && idLower.contains(".")) {
-                subtechniques.add(id.toUpperCase(Locale.ROOT));
-            } else if (idLower.startsWith("t")) {
-                techniques.add(id.toUpperCase(Locale.ROOT));
-            }
+        Object mitre = nested.get("mitre");
+        if (mitre != null) {
+            rule.put("mitre", compliance);
         }
 
-        Map<String, Object> mitre = new HashMap<>();
-        mitre.put("tactic", tactics);
-        mitre.put("technique", techniques);
-        mitre.put("subtechnique", subtechniques);
-        return mitre;
+        return rule;
     }
 
     // ── Step 4: index to wazuh-findings-v5-{logtype}-* ───────────────────────
@@ -253,7 +209,7 @@ public class WazuhEnrichedFindingService {
                 .source(document, XContentType.JSON)
                 .timeout(this.indexTimeout);
 
-        this.client.index(request, new ActionListener<IndexResponse>() {
+        this.client.index(request, new ActionListener<>() {
             @Override
             public void onResponse(IndexResponse response) {
                 log.debug("Indexed enriched finding to {}/{}", alias, response.getId());
