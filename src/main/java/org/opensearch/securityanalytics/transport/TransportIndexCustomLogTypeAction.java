@@ -288,7 +288,10 @@ public class TransportIndexCustomLogTypeAction extends HandledTransportAction<In
                 logTypeService.ensureConfigIndexIsInitialized(new ActionListener<>() {
                     @Override
                     public void onResponse(Void unused) {
-                        MatchQueryBuilder queryBuilder = QueryBuilders.matchQuery("name", request.getCustomLogType().getName());
+                        QueryBuilder queryBuilder = QueryBuilders.boolQuery()
+                                .must(QueryBuilders.matchQuery("name", request.getCustomLogType().getName()))
+                                .must(QueryBuilders.matchQuery("source", request.getCustomLogType().getSource()));
+
                         SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
                         searchSourceBuilder.query(queryBuilder);
                         SearchRequest searchRequest = new SearchRequest();

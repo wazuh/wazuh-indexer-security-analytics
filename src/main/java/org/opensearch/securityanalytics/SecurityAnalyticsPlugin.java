@@ -292,7 +292,7 @@ public class SecurityAnalyticsPlugin extends Plugin
         NotificationService notificationService = new NotificationService((NodeClient) client, scriptService);
 
         // Initialize WCS field validator from cluster index mappings
-        initWCSFieldValidator(clusterService);
+        SecurityAnalyticsPlugin.initWCSFieldValidator(clusterService);
 
         return List.of(
             this.detectorIndices,
@@ -324,18 +324,17 @@ public class SecurityAnalyticsPlugin extends Plugin
         });
     }
 
-    private static boolean tryInitWCSFromClusterState(ClusterState state, String indexPrefix) {
+    private static void tryInitWCSFromClusterState(ClusterState state, String indexPrefix) {
         try {
             for (var cursor : state.metadata().indices().entrySet()) {
                 if (cursor.getKey().startsWith(indexPrefix)) {
                     WCSFieldValidator.initFromIndexMetadata(cursor.getValue());
-                    return true;
+                    return;
                 }
             }
         } catch (Exception e) {
             log.warn("Failed to initialize WCS field validator from cluster state", e);
         }
-        return false;
     }
 
     @Override

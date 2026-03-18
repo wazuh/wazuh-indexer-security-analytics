@@ -92,6 +92,8 @@ public class WCSFieldValidator {
 
     /**
      * Initialize from a raw set of field names (for testing or manual override).
+     *
+     * @param fields the set of field names to use as the valid WCS fields
      */
     public static void initFromFieldSet(Set<String> fields) {
         wcsFields.set(Collections.unmodifiableSet(new HashSet<>(fields)));
@@ -105,6 +107,8 @@ public class WCSFieldValidator {
     }
 
     /**
+     * Checks whether the validator has been initialized with WCS fields.
+     *
      * @return true if the validator has been initialized with WCS fields.
      */
     public static boolean isInitialized() {
@@ -113,6 +117,7 @@ public class WCSFieldValidator {
 
     /**
      * Validate that all fields in the detection stanza are WCS fields.
+     *
      * @param detectionMap the raw detection map from the YAML
      * @return list of unknown field names (empty if all valid)
      */
@@ -126,6 +131,13 @@ public class WCSFieldValidator {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Checks if a specific field name is recognized as a valid WCS field.
+     * If the validator is not initialized, all fields are considered valid.
+     *
+     * @param field the field name to check
+     * @return true if the field is in the WCS set, or if the validator is uninitialized
+     */
     public static boolean isWCSField(String field) {
         if (field == null || field.isEmpty() || !isInitialized()){
             return true;
@@ -134,6 +146,13 @@ public class WCSFieldValidator {
         return wcsFields.get().contains(field);
     }
 
+    /**
+     * Recursively extracts field names from a nested detection map.
+     * Ignores specific keys like "condition" and "timeframe".
+     *
+     * @param map the map to extract fields from
+     * @param fields the set to add found fields to
+     */
     @SuppressWarnings("unchecked")
     private static void extractFields(Map<String, Object> map, Set<String> fields) {
         if (map == null) {
@@ -167,6 +186,13 @@ public class WCSFieldValidator {
         }
     }
 
+    /**
+     * Recursively extracts property field paths from an index mapping property definition.
+     *
+     * @param properties the properties map from the mapping
+     * @param prefix the current field path prefix
+     * @param fields the set to add the full field paths to
+     */
     @SuppressWarnings("unchecked")
     private static void extractProperties(Map<?, ?> properties, String prefix, Set<String> fields) {
         for (Map.Entry<?, ?> entry : properties.entrySet()) {
@@ -189,6 +215,9 @@ public class WCSFieldValidator {
 
     /**
      * Validate detection fields and throw if unknown fields found.
+     *
+     * @param detectionMap the raw detection map from the YAML
+     * @throws SigmaError if unknown WCS fields are found in the detection map
      */
     public static void validateDetectionFields(Map<String, Object> detectionMap) throws SigmaError {
         if (detectionMap == null){
@@ -201,30 +230,7 @@ public class WCSFieldValidator {
     }
 
     /**
-     * Load a set of strings from a classpath resource (one entry per line).
-     * Blank lines and lines starting with {@code #} are ignored.
+     * Private constructor to prevent instantiation of this utility class.
      */
-    private static Set<String> loadLineSet(String resource) {
-        Set<String> result = new HashSet<>();
-        try (InputStream is = WCSFieldValidator.class.getClassLoader().getResourceAsStream(resource)) {
-            if (is == null) {
-                log.warning("Resource not found: " + resource);
-                return result;
-            }
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    line = line.trim();
-                    if (!line.isEmpty() && !line.startsWith("#")) {
-                        result.add(line);
-                    }
-                }
-            }
-        } catch (IOException e) {
-            log.log(Level.WARNING, "Failed to load " + resource, e);
-        }
-        return result;
-    }
-
     private WCSFieldValidator() {}
 }

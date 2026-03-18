@@ -79,41 +79,41 @@ public class Rule implements Writeable, ToXContentObject {
 
     private Long version;
 
-    private String title;
+    private final String title;
 
-    private String category;
+    private final String category;
 
-    private String logSource;
+    private final String logSource;
 
-    private String description;
+    private final String description;
 
-    private List<Value> references;
+    private final List<Value> references;
 
-    private List<Value> tags;
+    private final List<Value> tags;
 
-    private String level;
+    private final String level;
 
-    private List<Value> falsePositives;
+    private final List<Value> falsePositives;
 
-    private String author;
+    private final String author;
 
-    private String status;
+    private final String status;
 
-    private Instant date;
+    private final Instant date;
 
-    private List<Value> queries;
+    private final List<Value> queries;
 
-    private List<Value> queryFieldNames;
+    private final List<Value> queryFieldNames;
 
-    private String rule;
+    private final String rule;
 
-    private List<Value> aggregationQueries;
+    private final List<Value> aggregationQueries;
 
-    private Map<String, Object> mitre;
+    private final Map<String, Object> mitre;
 
-    private Map<String, Object> complianceMap;
+    private final Map<String, Object> complianceMap;
 
-    private Map<String, Object> metadata;
+    private final Map<String, Object> metadata;
 
     public Rule(String id, Long version, String title, String category, String logSource,
                 String description, List<Value> references, List<Value> tags, String level,
@@ -214,37 +214,37 @@ public class Rule implements Writeable, ToXContentObject {
 
     @Override
     public void writeTo(StreamOutput out) throws IOException {
-        out.writeString(id);
-        out.writeLong(version);
+        out.writeString(this.id);
+        out.writeLong(this.version);
 
-        out.writeString(title);
-        out.writeString(category);
-        out.writeString(logSource);
-        out.writeString(description);
+        out.writeString(this.title);
+        out.writeString(this.category);
+        out.writeString(this.logSource);
+        out.writeString(this.description);
 
-        out.writeCollection(references);
-        out.writeCollection(tags);
+        out.writeCollection(this.references);
+        out.writeCollection(this.tags);
 
-        out.writeString(level);
-        out.writeCollection(falsePositives);
+        out.writeString(this.level);
+        out.writeCollection(this.falsePositives);
 
-        out.writeString(author);
-        out.writeString(status);
-        out.writeInstant(date);
+        out.writeString(this.author);
+        out.writeString(this.status);
+        out.writeInstant(this.date);
 
-        out.writeCollection(queries);
-        out.writeCollection(queryFieldNames);
+        out.writeCollection(this.queries);
+        out.writeCollection(this.queryFieldNames);
 
-        out.writeString(rule);
-        out.writeCollection(aggregationQueries);
-        out.writeGenericValue(mitre);
-        out.writeGenericValue(complianceMap);
-        out.writeGenericValue(metadata);
+        out.writeString(this.rule);
+        out.writeCollection(this.aggregationQueries);
+        out.writeGenericValue(this.mitre);
+        out.writeGenericValue(this.complianceMap);
+        out.writeGenericValue(this.metadata);
     }
 
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
-        return createXContentBuilder(builder, params);
+        return this.createXContentBuilder(builder, params);
     }
 
     private XContentBuilder createXContentBuilder(XContentBuilder builder, ToXContent.Params params) throws IOException {
@@ -253,50 +253,50 @@ public class Rule implements Writeable, ToXContentObject {
             builder.startObject("rule");
         }
 
-        builder.field(CATEGORY, category)
-                .field(TITLE, title)
-                .field(LOG_SOURCE, logSource)
-                .field(DESCRIPTION, description);
+        builder.field(CATEGORY, this.category)
+                .field(TITLE, this.title)
+                .field(LOG_SOURCE, this.logSource)
+                .field(DESCRIPTION, this.description);
 
         Value[] refArray = new Value[]{};
-        refArray = references.toArray(refArray);
+        refArray = this.references.toArray(refArray);
         builder.field(REFERENCES, refArray);
 
         Value[] tagArray = new Value[]{};
-        tagArray = tags.toArray(tagArray);
+        tagArray = this.tags.toArray(tagArray);
         builder.field(TAGS, tagArray);
 
-        builder.field(LEVEL, level);
+        builder.field(LEVEL, this.level);
 
         Value[] falsePosArray = new Value[]{};
-        falsePosArray = falsePositives.toArray(falsePosArray);
+        falsePosArray = this.falsePositives.toArray(falsePosArray);
         builder.field(FALSE_POSITIVES, falsePosArray);
 
-        builder.field(AUTHOR, author);
-        builder.field(STATUS, status);
-        builder.timeField(LAST_UPDATE_TIME_FIELD, date);
+        builder.field(AUTHOR, this.author);
+        builder.field(STATUS, this.status);
+        builder.timeField(LAST_UPDATE_TIME_FIELD, this.date);
 
         Value[] queryArray = new Value[]{};
-        queryArray = queries.toArray(queryArray);
+        queryArray = this.queries.toArray(queryArray);
         builder.field(QUERIES, queryArray);
         Value[] queryFieldNamesArray = new Value[]{};
-        queryFieldNamesArray = queryFieldNames.toArray(queryFieldNamesArray);
+        queryFieldNamesArray = this.queryFieldNames.toArray(queryFieldNamesArray);
         builder.field(QUERY_FIELD_NAMES, queryFieldNamesArray);
 
         Value[] aggregationsArray = new Value[]{};
-        aggregationsArray = aggregationQueries.toArray(aggregationsArray);
+        aggregationsArray = this.aggregationQueries.toArray(aggregationsArray);
         builder.field(AGGREGATION_QUERIES, aggregationsArray);
 
-        builder.field(RULE, rule);
+        builder.field(RULE, this.rule);
 
-        if (mitre != null && !mitre.isEmpty()) {
-            builder.field(MITRE, mitre);
+        if (this.mitre != null && !this.mitre.isEmpty()) {
+            builder.field(MITRE, this.mitre);
         }
-        if (complianceMap != null && !complianceMap.isEmpty()) {
-            builder.field(COMPLIANCE, complianceMap);
+        if (this.complianceMap != null && !this.complianceMap.isEmpty()) {
+            builder.field(COMPLIANCE, this.complianceMap);
         }
-        if (metadata != null && !metadata.isEmpty()) {
-            builder.field(METADATA, metadata);
+        if (this.metadata != null && !this.metadata.isEmpty()) {
+            builder.field(METADATA, this.metadata);
         }
 
         if (params.paramAsBoolean("with_type", false)) {
@@ -468,89 +468,89 @@ public class Rule implements Writeable, ToXContentObject {
     }
 
     public String getId() {
-        return id;
+        return this.id;
     }
 
     public Long getVersion() {
-        return version;
+        return this.version;
     }
 
     public String getCategory() {
-        return category;
+        return this.category;
     }
 
     public String getTitle() {
-        return title;
+        return this.title;
     }
 
     public String getLogSource() {
-        return logSource;
+        return this.logSource;
     }
 
     public String getDescription() {
-        return description;
+        return this.description;
     }
 
     public List<Value> getTags() {
-        return tags;
+        return this.tags;
     }
 
     public List<Value> getReferences() {
-        return references;
+        return this.references;
     }
 
     public String getLevel() {
-        return level;
+        return this.level;
     }
 
     public List<Value> getFalsePositives() {
-        return falsePositives;
+        return this.falsePositives;
     }
 
     public String getAuthor() {
-        return author;
+        return this.author;
     }
 
     public String getStatus() {
-        return status;
+        return this.status;
     }
 
     public Instant getDate() {
-        return date;
+        return this.date;
     }
 
     public String getRule() {
-        return rule;
+        return this.rule;
     }
 
     public List<Value> getQueries() {
-        return queries;
+        return this.queries;
     }
 
     public List<Value> getQueryFieldNames() {
-        return queryFieldNames;
+        return this.queryFieldNames;
     }
 
-    public List<Value> getAggregationQueries() { return aggregationQueries; }
+    public List<Value> getAggregationQueries() { return this.aggregationQueries; }
 
     public boolean isAggregationRule() {
-        return aggregationQueries != null && !aggregationQueries.isEmpty();
+        return this.aggregationQueries != null && !this.aggregationQueries.isEmpty();
     }
 
     public Map<String, Object> getMitre() {
-        return mitre;
+        return this.mitre;
     }
 
     public Map<String, Object> getComplianceMap() {
-        return complianceMap;
+        return this.complianceMap;
     }
 
     public Map<String, Object> getMetadata() {
-        return metadata;
+        return this.metadata;
     }
 
     public List<AggregationItem> getAggregationItemsFromRule () throws SigmaConditionError {
-        SigmaRule sigmaRule = SigmaRule.fromYaml(rule, true);
+        SigmaRule sigmaRule = SigmaRule.fromYaml(this.rule, true);
         // TODO: Check if there are cx errors from the rule created and throw errors
         List<AggregationItem> aggregationItems = new ArrayList<>();
         for (SigmaCondition condition: sigmaRule.getDetection().getParsedCondition()) {

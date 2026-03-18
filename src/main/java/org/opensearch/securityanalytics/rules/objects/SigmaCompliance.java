@@ -28,10 +28,24 @@ public class SigmaCompliance {
 
     private final List<ComplianceEntry> entries;
 
+    /**
+     * Constructs a SigmaCompliance instance with the provided list of compliance entries.
+     *
+     * @param entries a list of {@link ComplianceEntry} objects representing different compliance frameworks.
+     * If null, an empty list is assigned.
+     */
     public SigmaCompliance(List<ComplianceEntry> entries) {
         this.entries = entries != null ? entries : Collections.emptyList();
     }
 
+    /**
+     * Creates a {@link SigmaCompliance} instance from a map representation of compliance frameworks.
+     * Validates that each key in the map matches a known compliance framework defined in {@code KNOWN_FRAMEWORKS}.
+     *
+     * @param map a map where keys are compliance framework names and values are their corresponding requirements.
+     * @return a new {@link SigmaCompliance} instance, or null if the provided map is null.
+     * @throws SigmaError if an unknown compliance framework is encountered in the map.
+     */
     @SuppressWarnings("unchecked")
     public static SigmaCompliance fromMap(Map<String, Object> map) throws SigmaError {
         if (map == null){
@@ -67,10 +81,12 @@ public class SigmaCompliance {
      * Flatten to WCS compliance format for indexing.
      * Keys are normalized framework names, values are the requirement {@code id} arrays.
      * <pre>{ "pci_dss": ["11.5", ...], "gdpr": ["Article 32"] }</pre>
+     *
+     * @return a map representing the compliance frameworks and their requirement IDs in WCS format.
      */
     public Map<String, Object> toComplianceMap() {
         Map<String, Object> result = new HashMap<>();
-        for (ComplianceEntry entry : entries) {
+        for (ComplianceEntry entry : this.entries) {
             if (entry.getName() != null && !entry.getRequirementIds().isEmpty()) {
                 String key = normalizeFrameworkKey(entry.getName());
                 result.put(key, new ArrayList<>(entry.getRequirementIds()));
@@ -79,12 +95,26 @@ public class SigmaCompliance {
         return result;
     }
 
+    /**
+     * Normalizes a compliance framework name to be used as a standardized key.
+     * Converts the string to lowercase, replaces any non-alphanumeric characters with underscores,
+     * and strips leading or trailing underscores.
+     *
+     * @param name the original framework name.
+     * @return the normalized framework key string.
+     */
     static String normalizeFrameworkKey(String name) {
         return name.toLowerCase(Locale.ROOT)
                 .replaceAll("[^a-z0-9]+", "_")
                 .replaceAll("^_|_$", "");
     }
 
+    /**
+     * Safely converts a generic object or a list of objects into a list of strings.
+     *
+     * @param obj the object to convert, which can be a single object or a {@code List}.
+     * @return a list of strings representing the object(s), or an empty list if the input is null.
+     */
     @SuppressWarnings("unchecked")
     private static List<String> toStringList(Object obj) {
         if (obj == null) {
@@ -98,22 +128,47 @@ public class SigmaCompliance {
         return Collections.singletonList(obj.toString());
     }
 
-    public List<ComplianceEntry> getEntries() { return entries; }
+    /**
+     * Retrieves the list of compliance entries contained in this block.
+     *
+     * @return the list of {@link ComplianceEntry} objects.
+     */
+    public List<ComplianceEntry> getEntries() { return this.entries; }
 
+    /**
+     * Represents a single compliance framework entry along with its associated requirement IDs.
+     */
     public static class ComplianceEntry {
         private final String name;
         private final List<String> requirementIds;
 
+        /**
+         * Constructs a new ComplianceEntry.
+         *
+         * @param name the recognized name of the compliance framework (e.g., "PCI DSS").
+         * @param ids a list of requirement IDs associated with the framework. If null, an empty list is assigned.
+         */
         public ComplianceEntry(String name, List<String> ids) {
             this.name = name;
             this.requirementIds = ids != null ? ids : Collections.emptyList();
         }
 
+        /**
+         * Retrieves the original recognized name of the compliance framework.
+         *
+         * @return the compliance framework name.
+         */
         public String getName() {
-            return name;
+            return this.name;
         }
+
+        /**
+         * Retrieves the list of requirement IDs associated with this framework.
+         *
+         * @return the list of requirement IDs.
+         */
         public List<String> getRequirementIds() {
-            return requirementIds;
+            return this.requirementIds;
         }
     }
 }

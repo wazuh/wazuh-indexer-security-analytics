@@ -27,6 +27,21 @@ public class SigmaMetadata {
     private final List<String> compatibility;
     private final List<String> supports;
 
+    /**
+     * Constructs a new SigmaMetadata instance.
+     *
+     * @param title the title of the rule
+     * @param author the author of the rule
+     * @param date the creation date of the rule
+     * @param modified the last modification date of the rule
+     * @param description a description of the rule
+     * @param references a list of references or URLs related to the rule
+     * @param documentation link to additional documentation
+     * @param module the module associated with the rule
+     * @param versions supported versions of the rule format or software
+     * @param compatibility software or system compatibility information
+     * @param supports list of supported features or platforms
+     */
     public SigmaMetadata(String title, String author, String date, String modified, String description,
                          List<String> references, String documentation, String module,
                          List<String> versions, List<String> compatibility, List<String> supports) {
@@ -43,6 +58,13 @@ public class SigmaMetadata {
         this.supports = supports != null ? supports : Collections.emptyList();
     }
 
+    /**
+     * Creates a {@link SigmaMetadata} instance from a Map representation.
+     * This is typically used when parsing the metadata block from a YAML or JSON source.
+     *
+     * @param map a map containing metadata keys and values
+     * @return a new {@link SigmaMetadata} instance, or null if the input map is null
+     */
     @SuppressWarnings("unchecked")
     public static SigmaMetadata fromDict(Map<String, Object> map) {
         if (map == null) {
@@ -64,87 +86,123 @@ public class SigmaMetadata {
     }
 
     /**
-     * Converts metadata to a Map for indexing.
+     * Converts the metadata object into a Map for indexing or serialization purposes.
+     * Only non-null and non-empty fields are included in the resulting map.
+     *
+     * @return a map containing the metadata fields
      */
     public Map<String, Object> toMap() {
         Map<String, Object> map = new HashMap<>();
-        if (title != null){
-            map.put("title", title);
+        if (this.title != null){
+            map.put("title", this.title);
         }
-        if (author != null){
-            map.put("author", author);
+        if (this.author != null){
+            map.put("author", this.author);
         }
-        if (date != null){
-            map.put("date", date);
+        if (this.date != null){
+            map.put("date", this.date);
         }
-        if (modified != null){
-            map.put("modified", modified);
+        if (this.modified != null){
+            map.put("modified", this.modified);
         }
-        if (description != null){
-            map.put("description", description);
+        if (this.description != null){
+            map.put("description", this.description);
         }
-        if (references != null && !references.isEmpty()){
-            map.put("references", references);
+        if (this.references != null && !this.references.isEmpty()){
+            map.put("references", this.references);
         }
-        if (documentation != null){
-            map.put("documentation", documentation);
+        if (this.documentation != null){
+            map.put("documentation", this.documentation);
         }
-        if (module != null){
-            map.put("module", module);
+        if (this.module != null){
+            map.put("module", this.module);
         }
-        if (versions != null && !versions.isEmpty()){
-            map.put("versions", versions);
+        if (this.versions != null && !this.versions.isEmpty()){
+            map.put("versions", this.versions);
         }
-        if (compatibility != null && !compatibility.isEmpty()){
-            map.put("compatibility", compatibility);
+        if (this.compatibility != null && !this.compatibility.isEmpty()){
+            map.put("compatibility", this.compatibility);
         }
-        if (supports != null && !supports.isEmpty()){
-            map.put("supports", supports);
+        if (this.supports != null && !this.supports.isEmpty()){
+            map.put("supports", this.supports);
         }
         return map;
     }
 
+    /**
+     * @return the title of the rule
+     */
     public String getTitle() {
-        return title;
+        return this.title;
     }
 
+    /**
+     * @return the author of the rule
+     */
     public String getAuthor() {
-        return author;
+        return this.author;
     }
 
+    /**
+     * @return the creation date of the rule
+     */
     public String getDate() {
-        return date;
+        return this.date;
     }
 
+    /**
+     * @return the last modification date of the rule
+     */
     public String getModified() {
-        return modified;
+        return this.modified;
     }
 
+    /**
+     * @return the description of the rule
+     */
     public String getDescription() {
-        return description;
+        return this.description;
     }
 
+    /**
+     * @return the list of references for the rule
+     */
     public List<String> getReferences() {
-        return references;
+        return this.references;
     }
 
+    /**
+     * @return the documentation link
+     */
     public String getDocumentation() {
-        return documentation;
+        return this.documentation;
     }
 
+    /**
+     * @return the module name
+     */
     public String getModule() {
-        return module;
+        return this.module;
     }
 
+    /**
+     * @return the list of supported versions
+     */
     public List<String> getVersions() {
-        return versions;
+        return this.versions;
     }
 
+    /**
+     * @return the list of compatibility targets
+     */
     public List<String> getCompatibility() {
-        return compatibility;
+        return this.compatibility;
     }
 
+    /**
+     * @return the list of supported features or platforms
+     */
     public List<String> getSupports() {
-        return supports;
+        return this.supports;
     }
 }
