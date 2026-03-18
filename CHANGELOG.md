@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Add new action to create custom rules [(#31)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/31)
 - Add Unclassified log category for integrations and custom log types [(#42)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/42)
 - Implement finding enrichment [(#58)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/58)
+- Implement extended sigma rules sintax [(#55)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/55)
 
 ### Dependencies
 - Update to JDK 25 [(#49)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/49)
