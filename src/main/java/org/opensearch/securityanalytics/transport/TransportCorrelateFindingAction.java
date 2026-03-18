@@ -46,6 +46,7 @@ import org.opensearch.securityanalytics.correlation.JoinEngine;
 import org.opensearch.securityanalytics.correlation.VectorEmbeddingsEngine;
 import org.opensearch.securityanalytics.correlation.alert.CorrelationAlertService;
 import org.opensearch.securityanalytics.correlation.alert.notifications.NotificationService;
+import org.opensearch.securityanalytics.enrichment.WazuhEnrichedFindingService;
 import org.opensearch.securityanalytics.logtype.LogTypeService;
 import org.opensearch.securityanalytics.model.CustomLogType;
 import org.opensearch.securityanalytics.model.Detector;
@@ -101,6 +102,8 @@ public class TransportCorrelateFindingAction extends HandledTransportAction<Acti
 
     private final NotificationService notificationService;
 
+    private final WazuhEnrichedFindingService enrichedFindingService;
+
     @Inject
     public TransportCorrelateFindingAction(TransportService transportService,
                                            Client client,
@@ -110,7 +113,10 @@ public class TransportCorrelateFindingAction extends HandledTransportAction<Acti
                                            LogTypeService logTypeService,
                                            ClusterService clusterService,
                                            Settings settings,
-                                           ActionFilters actionFilters, CorrelationAlertService correlationAlertService, NotificationService notificationService) {
+                                           ActionFilters actionFilters,
+                                           CorrelationAlertService correlationAlertService,
+                                           NotificationService notificationService,
+                                           WazuhEnrichedFindingService enrichedFindingService) {
         super(AlertingActions.SUBSCRIBE_FINDINGS_ACTION_NAME, transportService, actionFilters, PublishFindingsRequest::new);
         this.client = client;
         this.xContentRegistry = xContentRegistry;
@@ -121,6 +127,7 @@ public class TransportCorrelateFindingAction extends HandledTransportAction<Acti
         this.settings = settings;
         this.correlationAlertService = correlationAlertService;
         this.notificationService = notificationService;
+        this.enrichedFindingService = enrichedFindingService;
         this.threadPool = this.detectorIndices.getThreadPool();
 
         this.indexTimeout = SecurityAnalyticsSettings.INDEX_TIMEOUT.get(this.settings);
@@ -129,6 +136,7 @@ public class TransportCorrelateFindingAction extends HandledTransportAction<Acti
         this.clusterService.getClusterSettings().addSettingsUpdateConsumer(SecurityAnalyticsSettings.INDEX_TIMEOUT, it -> indexTimeout = it);
         this.clusterService.getClusterSettings().addSettingsUpdateConsumer(SecurityAnalyticsSettings.CORRELATION_TIME_WINDOW, it -> corrTimeWindow = it.getMillis());
         this.clusterService.getClusterSettings().addSettingsUpdateConsumer(SecurityAnalyticsSettings.ENABLE_AUTO_CORRELATIONS, it -> enableAutoCorrelation = it);
+        this.clusterService.getClusterSettings().addSettingsUpdateConsumer(SecurityAnalyticsSettings.ENRICHED_FINDINGS_ENABLED, enrichedFindingService::setEnabled);
         this.setupTimestamp = System.currentTimeMillis();
     }
 
@@ -259,6 +267,8 @@ public class TransportCorrelateFindingAction extends HandledTransportAction<Acti
                                     LoggingDeprecationHandler.INSTANCE, hit.getSourceAsString()
                             );
                             Detector detector = Detector.docParse(xcp, hit.getId(), hit.getVersion());
+                            // Fire-and-forget enrichment — must not block the correlation path
+                            enrichedFindingService.enrich(finding, detector.getDetectorType());
                             joinEngine.onSearchDetectorResponse(detector, finding);
                         } catch (Exception e) {
                             log.error("Exception for request {}", searchRequest.toString(), e.getMessage());

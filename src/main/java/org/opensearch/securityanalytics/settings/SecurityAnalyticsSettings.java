@@ -255,4 +255,10 @@ public class SecurityAnalyticsSettings {
             Setting.Property.NodeScope, Setting.Property.Dynamic
     );
 
+    public static final Setting<Boolean> ENRICHED_FINDINGS_ENABLED = Setting.boolSetting(
+            "plugins.security_analytics.enriched_findings_index_enabled",
+            true,
+            Setting.Property.NodeScope, Setting.Property.Dynamic
+    );
+
 }
