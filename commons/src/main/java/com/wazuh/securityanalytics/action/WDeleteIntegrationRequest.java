@@ -21,12 +21,7 @@ public class WDeleteIntegrationRequest extends ActionRequest {
         this(logTypeId, refreshPolicy, null, null);
     }
 
-    public WDeleteIntegrationRequest(
-        String logTypeId,
-        WriteRequest.RefreshPolicy refreshPolicy,
-        String documentId,
-        String source
-    ) {
+    public WDeleteIntegrationRequest(String logTypeId, WriteRequest.RefreshPolicy refreshPolicy, String documentId, String source) {
         this.logTypeId = logTypeId;
         this.refreshPolicy = refreshPolicy;
         this.documentId = documentId;
@@ -34,12 +29,7 @@ public class WDeleteIntegrationRequest extends ActionRequest {
     }
 
     public WDeleteIntegrationRequest(StreamInput sin) throws IOException {
-        this(
-            sin.readString(),
-            WriteRequest.RefreshPolicy.readFrom(sin),
-            sin.readOptionalString(),
-            sin.readOptionalString()
-        );
+        this(sin.readString(), WriteRequest.RefreshPolicy.readFrom(sin), sin.readOptionalString(), sin.readOptionalString());
     }
 
     @Override

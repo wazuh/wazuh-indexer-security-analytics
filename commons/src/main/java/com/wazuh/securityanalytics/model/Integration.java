@@ -101,7 +101,16 @@ public class Integration implements Writeable, ToXContentObject {
      * @param tags               additional metadata tags for this integration
      * @param documentId the UUID of the original document in the Content Manager plugin
      */
-    public Integration(String id, Long version, String name, String description, String category, String source, Map<String, Object> tags, String documentId) {
+    public Integration(
+        String id,
+        Long version,
+        String name,
+        String description,
+        String category,
+        String source,
+        Map<String, Object> tags,
+        String documentId
+    ) {
         this.id = id != null ? id : "";
         this.version = version != null ? version : 1L;
         this.name = name;
@@ -119,7 +128,16 @@ public class Integration implements Writeable, ToXContentObject {
      * @throws IOException if an I/O error occurs during deserialization
      */
     public Integration(StreamInput sin) throws IOException {
-        this(sin.readString(), sin.readLong(), sin.readString(), sin.readString(), sin.readString(), sin.readString(), sin.readMap(), sin.readOptionalString());
+        this(
+            sin.readString(),
+            sin.readLong(),
+            sin.readString(),
+            sin.readString(),
+            sin.readString(),
+            sin.readString(),
+            sin.readMap(),
+            sin.readOptionalString()
+        );
     }
 
     /**

@@ -22,13 +22,7 @@ public class WDeleteRuleRequest extends ActionRequest {
         this(ruleId, refreshPolicy, forced, null, null);
     }
 
-    public WDeleteRuleRequest(
-        String ruleId,
-        WriteRequest.RefreshPolicy refreshPolicy,
-        Boolean forced,
-        String documentId,
-        String source
-    ) {
+    public WDeleteRuleRequest(String ruleId, WriteRequest.RefreshPolicy refreshPolicy, Boolean forced, String documentId, String source) {
         this.ruleId = ruleId;
         this.refreshPolicy = refreshPolicy;
         this.forced = forced;
