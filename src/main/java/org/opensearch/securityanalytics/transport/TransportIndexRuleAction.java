@@ -66,6 +66,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -93,7 +94,7 @@ public class TransportIndexRuleAction extends HandledTransportAction<IndexRuleRe
 
     private final Settings settings;
 
-    private volatile TimeValue indexTimeout;
+    private final TimeValue indexTimeout;
 
     @Inject
     public TransportIndexRuleAction(TransportService transportService, Client client, ActionFilters actionFilters,
@@ -138,64 +139,64 @@ public class TransportIndexRuleAction extends HandledTransportAction<IndexRuleRe
 
         void start() {
             TransportIndexRuleAction.this.threadPool.getThreadContext().stashContext();
-            logTypeService.doesLogTypeExist(request.getLogType().toLowerCase(Locale.ROOT), new ActionListener<>() {
+            TransportIndexRuleAction.this.logTypeService.doesLogTypeExist(this.request.getLogType().toLowerCase(Locale.ROOT), new ActionListener<>() {
                 @Override
                 public void onResponse(Boolean exist) {
                     if (exist) {
                         try {
-                            if (!ruleIndices.ruleIndexExists(false)) {
-                                ruleIndices.initRuleIndex(new ActionListener<>() {
+                            if (!TransportIndexRuleAction.this.ruleIndices.ruleIndexExists(false)) {
+                                TransportIndexRuleAction.this.ruleIndices.initRuleIndex(new ActionListener<>() {
                                     @Override
                                     public void onResponse(CreateIndexResponse response) {
-                                        ruleIndices.onCreateMappingsResponse(response, false);
-                                        prepareRuleIndexing();
+                                        TransportIndexRuleAction.this.ruleIndices.onCreateMappingsResponse(response, false);
+                                        AsyncIndexRulesAction.this.prepareRuleIndexing();
                                     }
 
                                     @Override
                                     public void onFailure(Exception e) {
-                                        onFailures(e);
+                                        AsyncIndexRulesAction.this.onFailures(e);
                                     }
                                 }, false);
                             } else if (!IndexUtils.customRuleIndexUpdated) {
                                 IndexUtils.updateIndexMapping(
                                         Rule.CUSTOM_RULES_INDEX,
-                                        RuleIndices.ruleMappings(), clusterService.state(), client.admin().indices(),
+                                        RuleIndices.ruleMappings(), TransportIndexRuleAction.this.clusterService.state(), TransportIndexRuleAction.this.client.admin().indices(),
                                         new ActionListener<>() {
                                             @Override
                                             public void onResponse(AcknowledgedResponse response) {
-                                                ruleIndices.onUpdateMappingsResponse(response, false);
-                                                prepareRuleIndexing();
+                                                TransportIndexRuleAction.this.ruleIndices.onUpdateMappingsResponse(response, false);
+                                                AsyncIndexRulesAction.this.prepareRuleIndexing();
                                             }
 
                                             @Override
                                             public void onFailure(Exception e) {
-                                                onFailures(e);
+                                                AsyncIndexRulesAction.this.onFailures(e);
                                             }
                                         },
                                         false
                                 );
                             } else {
-                                prepareRuleIndexing();
+                                AsyncIndexRulesAction.this.prepareRuleIndexing();
                             }
                         } catch (IOException ex) {
-                            onFailures(ex);
+                            AsyncIndexRulesAction.this.onFailures(ex);
                         }
                     } else {
-                        onFailures(new OpenSearchStatusException(String.format("Invalid rule category %s", request.getLogType().toLowerCase(Locale.ROOT)), RestStatus.BAD_REQUEST));
+                        AsyncIndexRulesAction.this.onFailures(new OpenSearchStatusException(String.format("Invalid rule category %s", AsyncIndexRulesAction.this.request.getLogType().toLowerCase(Locale.ROOT)), RestStatus.BAD_REQUEST));
                     }
                 }
 
                 @Override
                 public void onFailure(Exception e) {
-                    onFailures(e);
+                    AsyncIndexRulesAction.this.onFailures(e);
                 }
             });
         }
 
         void prepareRuleIndexing() {
-            String rule = request.getRule();
-            String category = request.getLogType().toLowerCase(Locale.ROOT);
-            logTypeService.getRuleFieldMappings(
+            String rule = this.request.getRule();
+            String category = this.request.getLogType().toLowerCase(Locale.ROOT);
+            TransportIndexRuleAction.this.logTypeService.getRuleFieldMappings(
                 category,
                 new ActionListener<>() {
                     @Override
@@ -204,12 +205,14 @@ public class TransportIndexRuleAction extends HandledTransportAction<IndexRuleRe
                             String ruleId = NO_ID;
                             SigmaRule parsedRule = SigmaRule.fromYaml(rule, true);
                             if (parsedRule.getErrors() != null && parsedRule.getErrors().getErrors().size() > 0) {
-                                onFailures(parsedRule.getErrors());
+                                AsyncIndexRulesAction.this.onFailures(parsedRule.getErrors());
                                 return;
                             }
                             QueryBackend backend = new OSQueryBackend(fieldMappings, true, true);
-                            if (request.getRuleId() != null) {
-                                ruleId = request.getRuleId();
+                            if (AsyncIndexRulesAction.this.request.getDocumentId() != null) {
+                                ruleId = UUID.randomUUID().toString();
+                            } else if (AsyncIndexRulesAction.this.request.getRuleId() != null) {
+                                ruleId = AsyncIndexRulesAction.this.request.getRuleId();
                             }
                             List<Object> queries = backend.convertRule(parsedRule);
                             Set<String> queryFieldNames = backend.getQueryFields().keySet();
@@ -219,34 +222,36 @@ public class TransportIndexRuleAction extends HandledTransportAction<IndexRuleRe
                                     new ArrayList<>(queryFieldNames),
                                     rule
                             );
-                            indexRule(ruleDoc, fieldMappings);
+                            ruleDoc.setDocumentId(AsyncIndexRulesAction.this.request.getDocumentId());
+                            ruleDoc.setSource(AsyncIndexRulesAction.this.request.getSource());
+                            AsyncIndexRulesAction.this.indexRule(ruleDoc, fieldMappings);
                         } catch (IOException | SigmaError | CompositeSigmaErrors e) {
-                            onFailures(e);
+                            AsyncIndexRulesAction.this.onFailures(e);
                         }
                     }
 
                     @Override
                     public void onFailure(Exception e) {
-                        onFailures(e);
+                        AsyncIndexRulesAction.this.onFailures(e);
                     }
                 }
             );
         }
 
         void indexRule(Rule rule, Map<String, String> ruleFieldMappings) throws IOException {
-            if (request.getMethod() == RestRequest.Method.PUT) {
-                if (detectorIndices.detectorIndexExists()) {
-                    searchDetectors(request.getRuleId(), new ActionListener<>() {
+            if (this.request.getMethod() == RestRequest.Method.PUT) {
+                if (TransportIndexRuleAction.this.detectorIndices.detectorIndexExists()) {
+                    this.searchDetectors(this.request.getRuleId(), new ActionListener<>() {
                         @Override
                         public void onResponse(SearchResponse response) {
                             if (response.isTimedOut()) {
-                                onFailures(new OpenSearchStatusException(String.format(Locale.getDefault(), "Search request timed out. Rule with id %s cannot be updated", rule.getId()), RestStatus.REQUEST_TIMEOUT));
+                                AsyncIndexRulesAction.this.onFailures(new OpenSearchStatusException(String.format(Locale.getDefault(), "Search request timed out. Rule with id %s cannot be updated", rule.getId()), RestStatus.REQUEST_TIMEOUT));
                                 return;
                             }
 
                             if (response.getHits().getTotalHits().value() > 0) {
-                                if (!request.isForced()) {
-                                    onFailures(new OpenSearchStatusException(String.format(Locale.getDefault(), "Rule with id %s is actively used by detectors. Update can be forced by setting forced flag to true", request.getRuleId()), RestStatus.BAD_REQUEST));
+                                if (!AsyncIndexRulesAction.this.request.isForced()) {
+                                    AsyncIndexRulesAction.this.onFailures(new OpenSearchStatusException(String.format(Locale.getDefault(), "Rule with id %s is actively used by detectors. Update can be forced by setting forced flag to true", AsyncIndexRulesAction.this.request.getRuleId()), RestStatus.BAD_REQUEST));
                                     return;
                                 }
 
@@ -254,7 +259,7 @@ public class TransportIndexRuleAction extends HandledTransportAction<IndexRuleRe
                                 try {
                                     for (SearchHit hit : response.getHits()) {
                                         XContentParser xcp = XContentType.JSON.xContent().createParser(
-                                                xContentRegistry,
+                                                TransportIndexRuleAction.this.xContentRegistry,
                                                 LoggingDeprecationHandler.INSTANCE, hit.getSourceAsString()
                                         );
 
@@ -262,49 +267,49 @@ public class TransportIndexRuleAction extends HandledTransportAction<IndexRuleRe
                                         detectors.add(detector);
                                     }
 
-                                    updateRule(rule, ruleFieldMappings, detectors);
+                                    AsyncIndexRulesAction.this.updateRule(rule, ruleFieldMappings, detectors);
                                 } catch (IOException ex) {
-                                    onFailures(ex);
+                                    AsyncIndexRulesAction.this.onFailures(ex);
                                 }
                             } else {
                                 try {
-                                    updateRule(rule, ruleFieldMappings, List.of());
+                                    AsyncIndexRulesAction.this.updateRule(rule, ruleFieldMappings, List.of());
                                 } catch (IOException ex) {
-                                    onFailures(ex);
+                                    AsyncIndexRulesAction.this.onFailures(ex);
                                 }
                             }
                         }
 
                         @Override
                         public void onFailure(Exception e) {
-                            onFailures(e);
+                            AsyncIndexRulesAction.this.onFailures(e);
                         }
                     });
                 } else {
-                    updateRule(rule, ruleFieldMappings, List.of());
+                    this.updateRule(rule, ruleFieldMappings, List.of());
                 }
             } else {
                 IndexRequest indexRequest = new IndexRequest(Rule.CUSTOM_RULES_INDEX)
-                        .setRefreshPolicy(request.getRefreshPolicy())
+                        .setRefreshPolicy(this.request.getRefreshPolicy())
                         .source(rule.toXContent(XContentFactory.jsonBuilder(), new ToXContent.MapParams(Map.of("with_type", "true"))))
-                        .timeout(indexTimeout);
+                        .timeout(TransportIndexRuleAction.this.indexTimeout);
                 if (rule.getId() != NO_ID) {
                     indexRequest.id(rule.getId());
                 }
-                client.index(indexRequest, new ActionListener<>() {
+                TransportIndexRuleAction.this.client.index(indexRequest, new ActionListener<>() {
                     @Override
                     public void onResponse(IndexResponse response) {
                         rule.setId(response.getId());
-                        updateFieldMappings(
+                        AsyncIndexRulesAction.this.updateFieldMappings(
                                 rule,
                                 ruleFieldMappings,
-                                ActionListener.wrap(() -> onOperation(response, rule) )
+                                ActionListener.wrap(() -> AsyncIndexRulesAction.this.onOperation(response, rule) )
                         );
                     }
 
                     @Override
                     public void onFailure(Exception e) {
-                        onFailures(e);
+                        AsyncIndexRulesAction.this.onFailures(e);
                     }
                 });
             }
@@ -325,54 +330,55 @@ public class TransportIndexRuleAction extends HandledTransportAction<IndexRuleRe
                             .size(10000))
                     .preference(Preference.PRIMARY_FIRST.type());
 
-            client.search(searchRequest, listener);
+            TransportIndexRuleAction.this.client.search(searchRequest, listener);
         }
 
         private void updateDetectors(IndexResponse indexResponse, Rule rule, List<Detector> detectors) {
             for (Detector detector: detectors) {
-                IndexDetectorRequest indexRequest = new IndexDetectorRequest(detector.getId(), request.getRefreshPolicy(), RestRequest.Method.PUT, detector);
-                client.execute(IndexDetectorAction.INSTANCE, indexRequest,
+                IndexDetectorRequest indexRequest = new IndexDetectorRequest(detector.getId(), this.request.getRefreshPolicy(), RestRequest.Method.PUT, detector);
+                TransportIndexRuleAction.this.client.execute(IndexDetectorAction.INSTANCE, indexRequest,
                         new ActionListener<>() {
                             @Override
                             public void onResponse(IndexDetectorResponse response) {
                                 if (response.getStatus() != RestStatus.OK) {
-                                    onFailures(new OpenSearchStatusException(String.format(Locale.getDefault(), "Rule with id %s cannot be updated", request.getRuleId()), RestStatus.INTERNAL_SERVER_ERROR));
+                                    AsyncIndexRulesAction.this.onFailures(new OpenSearchStatusException(String.format(Locale.getDefault(), "Rule with id %s cannot be updated", AsyncIndexRulesAction.this.request.getRuleId()), RestStatus.INTERNAL_SERVER_ERROR));
                                 }
-                                onComplete(indexResponse, rule, detectors.size());
+                                AsyncIndexRulesAction.this.onComplete(indexResponse, rule, detectors.size());
                             }
 
                             @Override
                             public void onFailure(Exception e) {
-                                onFailures(e);
+                                AsyncIndexRulesAction.this.onFailures(e);
                             }
                         });
             }
         }
 
         private void updateRule(Rule rule, Map<String, String> ruleFieldMappings, List<Detector> detectors) throws IOException {
+            String docId = rule.getId() != null && !rule.getId().equals(NO_ID) ? rule.getId() : this.request.getRuleId();
             IndexRequest indexRequest = new IndexRequest(Rule.CUSTOM_RULES_INDEX)
-                    .setRefreshPolicy(request.getRefreshPolicy())
+                    .setRefreshPolicy(this.request.getRefreshPolicy())
                     .source(rule.toXContent(XContentFactory.jsonBuilder(), new ToXContent.MapParams(Map.of("with_type", "true"))))
-                    .id(request.getRuleId())
-                    .timeout(indexTimeout);
+                    .id(docId)
+                    .timeout(TransportIndexRuleAction.this.indexTimeout);
 
-            client.index(indexRequest, new ActionListener<>() {
+            TransportIndexRuleAction.this.client.index(indexRequest, new ActionListener<>() {
                 @Override
                 public void onResponse(IndexResponse response) {
                     rule.setId(response.getId());
 
-                    updateFieldMappings(rule, ruleFieldMappings, ActionListener.wrap(() -> {
+                    AsyncIndexRulesAction.this.updateFieldMappings(rule, ruleFieldMappings, ActionListener.wrap(() -> {
                         if (detectors.size() > 0) {
-                            updateDetectors(response, rule, detectors);
+                            AsyncIndexRulesAction.this.updateDetectors(response, rule, detectors);
                         } else {
-                            onOperation(response, rule);
+                            AsyncIndexRulesAction.this.onOperation(response, rule);
                         }
                     }));
                 }
 
                 @Override
                 public void onFailure(Exception e) {
-                    onFailures(e);
+                    AsyncIndexRulesAction.this.onFailures(e);
                 }
             });
         }
@@ -382,37 +388,37 @@ public class TransportIndexRuleAction extends HandledTransportAction<IndexRuleRe
             rule.getQueryFieldNames().forEach(field -> {
                 FieldMappingDoc mappingDoc = new FieldMappingDoc(field.getValue(), Set.of(rule.getCategory()));
                 if (ruleFieldMappings.containsKey(field.getValue())) {
-                    mappingDoc.getSchemaFields().put(logTypeService.getDefaultSchemaField(), ruleFieldMappings.get(field.getValue()));
+                    mappingDoc.getSchemaFields().put(TransportIndexRuleAction.this.logTypeService.getDefaultSchemaField(), ruleFieldMappings.get(field.getValue()));
                 }
                 fieldMappingDocs.add(mappingDoc);
             });
-            logTypeService.indexFieldMappings(
+            TransportIndexRuleAction.this.logTypeService.indexFieldMappings(
                     fieldMappingDocs,
                     ActionListener.wrap(listener::onResponse, this::onFailures)
             );
         }
 
         private void onComplete(IndexResponse response, Rule rule, int target) {
-            if (checker.incrementAndGet() == target) {
-                onOperation(response, rule);
+            if (this.checker.incrementAndGet() == target) {
+                this.onOperation(response, rule);
             }
         }
 
         private void onOperation(IndexResponse response, Rule rule) {
             this.response.set(response);
-            if (counter.compareAndSet(false, true)) {
-                finishHim(rule, null);
+            if (this.counter.compareAndSet(false, true)) {
+                this.finishHim(rule, null);
             }
         }
 
         private void onFailures(Exception t) {
-            if (counter.compareAndSet(false, true)) {
-                finishHim(null, t);
+            if (this.counter.compareAndSet(false, true)) {
+                this.finishHim(null, t);
             }
         }
 
         private void finishHim(Rule rule, Exception t) {
-            threadPool.executor(ThreadPool.Names.GENERIC).execute(ActionRunnable.supply(listener, () -> {
+            TransportIndexRuleAction.this.threadPool.executor(ThreadPool.Names.GENERIC).execute(ActionRunnable.supply(this.listener, () -> {
                 if (t != null) {
                     throw SecurityAnalyticsException.wrap(t);
                 } else {

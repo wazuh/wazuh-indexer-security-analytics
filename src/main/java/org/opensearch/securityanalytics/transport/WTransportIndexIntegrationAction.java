@@ -10,6 +10,7 @@ package org.opensearch.securityanalytics.transport;
 
 import java.io.IOException;
 import java.util.Objects;
+import java.util.UUID;
 
 import com.wazuh.securityanalytics.action.WIndexIntegrationAction;
 import com.wazuh.securityanalytics.action.WIndexIntegrationRequest;
@@ -24,7 +25,6 @@ import org.opensearch.action.support.HandledTransportAction;
 import org.opensearch.action.support.WriteRequest;
 import org.opensearch.common.inject.Inject;
 import org.opensearch.core.action.ActionListener;
-import org.opensearch.rest.RestRequest;
 import org.opensearch.securityanalytics.action.IndexCustomLogTypeAction;
 import org.opensearch.securityanalytics.action.IndexCustomLogTypeRequest;
 import org.opensearch.securityanalytics.action.IndexCustomLogTypeResponse;
@@ -93,18 +93,20 @@ public class WTransportIndexIntegrationAction extends HandledTransportAction<WIn
         // Custom integration / log type.
         if (!Objects.equals(integration.getSource(), "Sigma")) {
             try {
+                String sapId = UUID.randomUUID().toString();
                 IndexCustomLogTypeRequest internalRequest = new IndexCustomLogTypeRequest(
-                    integration.getId(),
+                    sapId,
                     WriteRequest.RefreshPolicy.IMMEDIATE,
                     request.getMethod(),
                     new CustomLogType(
-                        integration.getId(),
+                        sapId,
                         integration.getVersion(),
                         integration.getName(),
                         integration.getDescription(),
                         integration.getCategory(),
                         integration.getSource(),
-                        integration.getTags()
+                        integration.getTags(),
+                        integration.getDocumentId()
                     )
                 );
                 this.client.execute(IndexCustomLogTypeAction.INSTANCE, internalRequest, new ActionListener<IndexCustomLogTypeResponse>() {
@@ -127,8 +129,9 @@ public class WTransportIndexIntegrationAction extends HandledTransportAction<WIn
             }
         } else {
             // Standard integrations
+            String sapId = UUID.randomUUID().toString();
             try {
-                IndexRequest indexRequest = new IndexRequest().index(LOG_TYPE_INDEX).id(request.getId()).source(integration.toXContent());
+                IndexRequest indexRequest = new IndexRequest().index(LOG_TYPE_INDEX).id(sapId).source(integration.toXContent());
 
                 this.client.index(indexRequest, ActionListener.wrap(indexResponse -> {
                     WIndexIntegrationResponse response = new WIndexIntegrationResponse(

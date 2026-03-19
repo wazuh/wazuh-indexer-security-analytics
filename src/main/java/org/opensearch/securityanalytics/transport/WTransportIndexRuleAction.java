@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -214,8 +215,9 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
                     );
                 }
 
+                String sapId = UUID.randomUUID().toString();
                 Rule rule = new Rule(
-                    parsedRule.getId().toString(),
+                    sapId,
                     NO_VERSION,
                     parsedRule,
                     category,
@@ -223,6 +225,8 @@ public class WTransportIndexRuleAction extends HandledTransportAction<WIndexRule
                     new ArrayList<>(queryFieldNames),
                     ruleStr
                 );
+                rule.setDocumentId(this.request.getDocumentId());
+                rule.setSource(this.request.getSource());
 
                 this.indexRule(rule, fieldMappings);
 

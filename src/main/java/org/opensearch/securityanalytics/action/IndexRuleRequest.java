@@ -4,9 +4,7 @@
  */
 package org.opensearch.securityanalytics.action;
 
-import java.util.Arrays;
 import java.util.Locale;
-import java.util.Optional;
 import org.opensearch.action.ActionRequest;
 import org.opensearch.action.ActionRequestValidationException;
 import org.opensearch.action.support.WriteRequest;
@@ -15,7 +13,6 @@ import org.opensearch.core.common.io.stream.StreamOutput;
 import org.opensearch.rest.RestRequest;
 
 import java.io.IOException;
-import org.opensearch.securityanalytics.model.Detector;
 
 
 import static org.opensearch.action.ValidateActions.addValidationError;
@@ -25,33 +22,37 @@ public class IndexRuleRequest extends ActionRequest {
     /**
      * the ruleId to update
      */
-    private String ruleId;
+    private final String ruleId;
 
     /**
      * refreshPolicy for create/update
      */
-    private WriteRequest.RefreshPolicy refreshPolicy;
+    private final WriteRequest.RefreshPolicy refreshPolicy;
 
     /**
      * the log type of the rule which has 1-1 mapping to log type. We have 8 pre-defined log types today.
      */
-    private String logType;
+    private final String logType;
 
     /**
      * REST method for the request PUT/POST
      */
-    private RestRequest.Method method;
+    private final RestRequest.Method method;
 
     /**
      * the actual Sigma Rule yaml
      */
-    private String rule;
+    private final String rule;
 
     /**
      * this boolean field forces updating of rule from any running detectors & updates detector metadata.
      * setting this to false, will result in throwing an error if rule is actively used by other detectors.
      */
-    private Boolean forced;
+    private final Boolean forced;
+
+    private final String documentId;
+
+    private final String source;
 
     public IndexRuleRequest(
             String ruleId,
@@ -61,6 +62,19 @@ public class IndexRuleRequest extends ActionRequest {
             String rule,
             Boolean forced
     ) {
+        this(ruleId, refreshPolicy, logType, method, rule, forced, null, null);
+    }
+
+    public IndexRuleRequest(
+            String ruleId,
+            WriteRequest.RefreshPolicy refreshPolicy,
+            String logType,
+            RestRequest.Method method,
+            String rule,
+            Boolean forced,
+            String documentId,
+            String source
+    ) {
         super();
         this.ruleId = ruleId;
         this.refreshPolicy = refreshPolicy;
@@ -68,6 +82,8 @@ public class IndexRuleRequest extends ActionRequest {
         this.method = method;
         this.rule = rule;
         this.forced = forced;
+        this.documentId = documentId;
+        this.source = source;
     }
 
     public IndexRuleRequest(StreamInput sin) throws IOException {
@@ -76,14 +92,16 @@ public class IndexRuleRequest extends ActionRequest {
              sin.readString(),
              sin.readEnum(RestRequest.Method.class),
              sin.readString(),
-             sin.readBoolean());
+             sin.readBoolean(),
+             sin.readOptionalString(),
+             sin.readOptionalString());
     }
 
     @Override
     public ActionRequestValidationException validate() {
         ActionRequestValidationException validationException = null;
 
-        if (logType == null || logType.length() == 0) {
+        if (this.logType == null || this.logType.isEmpty()) {
             validationException = addValidationError("rule categoty is missing", validationException);
         }
         return validationException;
@@ -91,35 +109,45 @@ public class IndexRuleRequest extends ActionRequest {
 
     @Override
     public void writeTo(StreamOutput out) throws IOException {
-        out.writeString(ruleId);
-        refreshPolicy.writeTo(out);
-        out.writeString(logType);
-        out.writeEnum(method);
-        out.writeString(rule);
-        out.writeBoolean(forced);
+        out.writeString(this.ruleId);
+        this.refreshPolicy.writeTo(out);
+        out.writeString(this.logType);
+        out.writeEnum(this.method);
+        out.writeString(this.rule);
+        out.writeBoolean(this.forced);
+        out.writeOptionalString(this.documentId);
+        out.writeOptionalString(this.source);
     }
 
     public String getRuleId() {
-        return ruleId;
+        return this.ruleId;
     }
 
     public WriteRequest.RefreshPolicy getRefreshPolicy() {
-        return refreshPolicy;
+        return this.refreshPolicy;
     }
 
     public String getLogType() {
-        return logType;
+        return this.logType;
     }
 
     public RestRequest.Method getMethod() {
-        return method;
+        return this.method;
     }
 
     public String getRule() {
-        return rule;
+        return this.rule;
     }
 
     public Boolean isForced() {
-        return forced;
+        return this.forced;
+    }
+
+    public String getDocumentId() {
+        return this.documentId;
+    }
+
+    public String getSource() {
+        return this.source;
     }
 }

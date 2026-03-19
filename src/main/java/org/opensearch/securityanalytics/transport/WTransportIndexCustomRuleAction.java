@@ -39,7 +39,9 @@ public class WTransportIndexCustomRuleAction extends HandledTransportAction<WInd
             request.getLogType(),
             request.getMethod(),
             request.getRule(),
-            request.isForced()
+            request.isForced(),
+            request.getDocumentId(),
+            request.getSource()
         );
         this.client.execute(IndexRuleAction.INSTANCE, internalRequest, new ActionListener<IndexRuleResponse>() {
             @Override

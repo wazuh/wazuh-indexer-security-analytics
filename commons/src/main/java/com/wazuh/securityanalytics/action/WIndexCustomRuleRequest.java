@@ -24,6 +24,8 @@ public class WIndexCustomRuleRequest extends ActionRequest {
     private final RestRequest.Method method;
     private final String rule;
     private final Boolean forced;
+    private final String documentId;
+    private final String source;
 
     public WIndexCustomRuleRequest(
         String ruleId,
@@ -33,6 +35,19 @@ public class WIndexCustomRuleRequest extends ActionRequest {
         String rule,
         Boolean forced
     ) {
+        this(ruleId, refreshPolicy, logType, method, rule, forced, null, null);
+    }
+
+    public WIndexCustomRuleRequest(
+        String ruleId,
+        WriteRequest.RefreshPolicy refreshPolicy,
+        String logType,
+        RestRequest.Method method,
+        String rule,
+        Boolean forced,
+        String documentId,
+        String source
+    ) {
         super();
         this.ruleId = ruleId;
         this.refreshPolicy = refreshPolicy;
@@ -40,6 +55,8 @@ public class WIndexCustomRuleRequest extends ActionRequest {
         this.method = method;
         this.rule = rule;
         this.forced = forced;
+        this.documentId = documentId;
+        this.source = source;
     }
 
     public WIndexCustomRuleRequest(StreamInput sin) throws IOException {
@@ -49,7 +66,9 @@ public class WIndexCustomRuleRequest extends ActionRequest {
             sin.readString(),
             sin.readEnum(RestRequest.Method.class),
             sin.readString(),
-            sin.readBoolean()
+            sin.readBoolean(),
+            sin.readOptionalString(),
+            sin.readOptionalString()
         );
     }
 
@@ -70,6 +89,8 @@ public class WIndexCustomRuleRequest extends ActionRequest {
         out.writeEnum(this.method);
         out.writeString(this.rule);
         out.writeBoolean(this.forced);
+        out.writeOptionalString(this.documentId);
+        out.writeOptionalString(this.source);
     }
 
     public String getRuleId() {
@@ -94,5 +115,13 @@ public class WIndexCustomRuleRequest extends ActionRequest {
 
     public Boolean isForced() {
         return this.forced;
+    }
+
+    public String getDocumentId() {
+        return this.documentId;
+    }
+
+    public String getSource() {
+        return this.source;
     }
 }
