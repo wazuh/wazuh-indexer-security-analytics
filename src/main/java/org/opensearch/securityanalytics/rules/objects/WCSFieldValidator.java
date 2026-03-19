@@ -20,42 +20,37 @@ import org.opensearch.cluster.metadata.IndexMetadata;
 import org.opensearch.cluster.metadata.MappingMetadata;
 import org.opensearch.securityanalytics.rules.exceptions.SigmaError;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 /**
  * Validates that detection fields belong to the Wazuh Common Schema (WCS).
- * <p>
- * WCS fields are resolved dynamically from the OpenSearch index mapping at plugin
- * startup (or on cluster state changes) via {@link #initFromIndexMetadata(IndexMetadata)}.
- * A supplementary set of Sigma-native field names (e.g. Windows Sysmon conventions) is
- * loaded from a bundled resource file.
- * <p>
- * If the validator has not been initialized (no index mapping available yet), all fields
- * are accepted to avoid blocking rule ingestion during cluster bootstrap.
+ *
+ * <p>WCS fields are resolved dynamically from the OpenSearch index mapping at plugin startup (or on
+ * cluster state changes) via {@link #initFromIndexMetadata(IndexMetadata)}. A supplementary set of
+ * Sigma-native field names (e.g. Windows Sysmon conventions) is loaded from a bundled resource
+ * file.
+ *
+ * <p>If the validator has not been initialized (no index mapping available yet), all fields are
+ * accepted to avoid blocking rule ingestion during cluster bootstrap.
  */
 public class WCSFieldValidator {
 
     private static final Logger log = Logger.getLogger(WCSFieldValidator.class.getName());
 
     /** WCS fields resolved from the index mapping. */
-    private static final AtomicReference<Set<String>> wcsFields = new AtomicReference<>(Collections.emptySet());
+    private static final AtomicReference<Set<String>> wcsFields =
+            new AtomicReference<>(Collections.emptySet());
 
     /**
-     * Initialize (or refresh) the WCS field set from an OpenSearch index metadata mapping.
-     * Typically called once at plugin startup and optionally on cluster state changes.
+     * Initialize (or refresh) the WCS field set from an OpenSearch index metadata mapping. Typically
+     * called once at plugin startup and optionally on cluster state changes.
      *
      * @param indexMetadata metadata for any {@code wazuh-events-*} index (all share the same mapping)
      */
@@ -111,9 +106,7 @@ public class WCSFieldValidator {
         wcsFields.set(Collections.unmodifiableSet(new HashSet<>(fields)));
     }
 
-    /**
-     * Reset the validator to uninitialized state (for testing).
-     */
+    /** Reset the validator to uninitialized state (for testing). */
     public static void reset() {
         wcsFields.set(Collections.emptySet());
     }
@@ -144,14 +137,14 @@ public class WCSFieldValidator {
     }
 
     /**
-     * Checks if a specific field name is recognized as a valid WCS field.
-     * If the validator is not initialized, all fields are considered valid.
+     * Checks if a specific field name is recognized as a valid WCS field. If the validator is not
+     * initialized, all fields are considered valid.
      *
      * @param field the field name to check
      * @return true if the field is in the WCS set, or if the validator is uninitialized
      */
     public static boolean isWCSField(String field) {
-        if (field == null || field.isEmpty() || !isInitialized()){
+        if (field == null || field.isEmpty() || !isInitialized()) {
             return true;
         }
 
@@ -159,8 +152,8 @@ public class WCSFieldValidator {
     }
 
     /**
-     * Recursively extracts field names from a nested detection map.
-     * Ignores specific keys like "condition" and "timeframe".
+     * Recursively extracts field names from a nested detection map. Ignores specific keys like
+     * "condition" and "timeframe".
      *
      * @param map the map to extract fields from
      * @param fields the set to add found fields to
@@ -172,7 +165,7 @@ public class WCSFieldValidator {
         }
         for (Map.Entry<String, Object> entry : map.entrySet()) {
             String key = entry.getKey();
-            if ("condition".equals(key) || "timeframe".equals(key)){
+            if ("condition".equals(key) || "timeframe".equals(key)) {
                 continue;
             }
 
@@ -180,10 +173,11 @@ public class WCSFieldValidator {
             if (val instanceof Map) {
                 Map<String, Object> inner = (Map<String, Object>) val;
                 for (String innerKey : inner.keySet()) {
-                    if ("condition".equals(innerKey) || "timeframe".equals(innerKey)){
+                    if ("condition".equals(innerKey) || "timeframe".equals(innerKey)) {
                         continue;
                     }
-                    String fieldName = innerKey.contains("|") ? innerKey.substring(0, innerKey.indexOf('|')) : innerKey;
+                    String fieldName =
+                            innerKey.contains("|") ? innerKey.substring(0, innerKey.indexOf('|')) : innerKey;
                     if (!fieldName.isEmpty()) {
                         fields.add(fieldName);
                     }
@@ -232,7 +226,7 @@ public class WCSFieldValidator {
      * @throws SigmaError if unknown WCS fields are found in the detection map
      */
     public static void validateDetectionFields(Map<String, Object> detectionMap) throws SigmaError {
-        if (detectionMap == null){
+        if (detectionMap == null) {
             return;
         }
         List<String> unknownFields = findUnknownFields(detectionMap);
@@ -241,8 +235,6 @@ public class WCSFieldValidator {
         }
     }
 
-    /**
-     * Private constructor to prevent instantiation of this utility class.
-     */
+    /** Private constructor to prevent instantiation of this utility class. */
     private WCSFieldValidator() {}
 }

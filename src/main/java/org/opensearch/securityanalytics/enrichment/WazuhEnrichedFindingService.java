@@ -1,6 +1,18 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.enrichment;
 
@@ -13,9 +25,9 @@ import org.opensearch.action.index.IndexRequest;
 import org.opensearch.action.index.IndexResponse;
 import org.opensearch.common.unit.TimeValue;
 import org.opensearch.common.xcontent.XContentType;
-import org.opensearch.core.action.ActionListener;
 import org.opensearch.commons.alerting.model.DocLevelQuery;
 import org.opensearch.commons.alerting.model.Finding;
+import org.opensearch.core.action.ActionListener;
 import org.opensearch.securityanalytics.config.monitors.DetectorMonitorConfig;
 import org.opensearch.securityanalytics.model.Rule;
 import org.opensearch.transport.client.Client;
@@ -25,11 +37,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Enriches Alerting findings with the full triggering event source and Sigma rule metadata,
- * then indexes the result into {@code wazuh-findings-v5-{logtype}-*}.
+ * Enriches Alerting findings with the full triggering event source and Sigma rule metadata, then
+ * indexes the result into {@code wazuh-findings-v5-{logtype}-*}.
  *
- * <p>Enrichment is fire-and-forget: failures are logged at WARN level and never propagate to
- * the caller. The existing {@code .opensearch-sap-{logtype}-findings-*} write path is unaffected.
+ * <p>Enrichment is fire-and-forget: failures are logged at WARN level and never propagate to the
+ * caller. The existing {@code .opensearch-sap-{logtype}-findings-*} write path is unaffected.
  */
 public class WazuhEnrichedFindingService {
 
@@ -67,38 +79,48 @@ public class WazuhEnrichedFindingService {
         String sourceIndex = finding.getIndex();
         String docId = relatedDocIds.getFirst();
 
-        this.fetchTriggeringEvent(sourceIndex, docId, ActionListener.wrap(
-            eventSource -> this.fetchRuleMetadataAndIndex(finding, logType, eventSource),
-            e -> {
-                log.warn("Failed to fetch triggering event {}/{} for finding {}, indexing without event source",
-                        sourceIndex, docId, finding.getId(), e);
-                this.fetchRuleMetadataAndIndex(finding, logType, Map.of());
-            }
-        ));
+        this.fetchTriggeringEvent(
+                sourceIndex,
+                docId,
+                ActionListener.wrap(
+                        eventSource -> this.fetchRuleMetadataAndIndex(finding, logType, eventSource),
+                        e -> {
+                            log.warn(
+                                    "Failed to fetch triggering event {}/{} for finding {}, indexing without event source",
+                                    sourceIndex,
+                                    docId,
+                                    finding.getId(),
+                                    e);
+                            this.fetchRuleMetadataAndIndex(finding, logType, Map.of());
+                        }));
     }
 
     // ── Step 1: fetch triggering event ───────────────────────────────────────
 
-    private void fetchTriggeringEvent(String index, String docId,
-                                      ActionListener<Map<String, Object>> listener) {
+    private void fetchTriggeringEvent(
+            String index, String docId, ActionListener<Map<String, Object>> listener) {
         MultiGetRequest mget = new MultiGetRequest();
         mget.add(new MultiGetRequest.Item(index, docId));
 
-        this.client.multiGet(mget, ActionListener.wrap(response -> {
-            MultiGetItemResponse[] items = response.getResponses();
-            if (items.length > 0 && !items[0].isFailed() && items[0].getResponse().isExists()) {
-                listener.onResponse(items[0].getResponse().getSourceAsMap());
-            } else {
-                log.warn("Triggering event {}/{} not found or mget failed", index, docId);
-                listener.onResponse(Map.of());
-            }
-        }, listener::onFailure));
+        this.client.multiGet(
+                mget,
+                ActionListener.wrap(
+                        response -> {
+                            MultiGetItemResponse[] items = response.getResponses();
+                            if (items.length > 0 && !items[0].isFailed() && items[0].getResponse().isExists()) {
+                                listener.onResponse(items[0].getResponse().getSourceAsMap());
+                            } else {
+                                log.warn("Triggering event {}/{} not found or mget failed", index, docId);
+                                listener.onResponse(Map.of());
+                            }
+                        },
+                        listener::onFailure));
     }
 
     // ── Step 2: fetch rule metadata, then build and index ────────────────────
 
-    private void fetchRuleMetadataAndIndex(Finding finding, String logType,
-                                            Map<String, Object> eventSource) {
+    private void fetchRuleMetadataAndIndex(
+            Finding finding, String logType, Map<String, Object> eventSource) {
         List<DocLevelQuery> queries = finding.getDocLevelQueries();
         if (queries.isEmpty()) {
             this.buildAndIndex(finding, logType, eventSource, null, Map.of());
@@ -112,13 +134,20 @@ public class WazuhEnrichedFindingService {
         mget.add(new MultiGetRequest.Item(Rule.PRE_PACKAGED_RULES_INDEX, ruleId));
         mget.add(new MultiGetRequest.Item(Rule.CUSTOM_RULES_INDEX, ruleId));
 
-        this.client.multiGet(mget, ActionListener.wrap(response -> {
-            Map<String, Object> ruleMetadata = this.extractFirstHit(response);
-            this.buildAndIndex(finding, logType, eventSource, primaryQuery, ruleMetadata);
-        }, e -> {
-            log.warn("Failed to fetch rule metadata for rule {}, indexing without rule fields", ruleId, e);
-            this.buildAndIndex(finding, logType, eventSource, primaryQuery, Map.of());
-        }));
+        this.client.multiGet(
+                mget,
+                ActionListener.wrap(
+                        response -> {
+                            Map<String, Object> ruleMetadata = this.extractFirstHit(response);
+                            this.buildAndIndex(finding, logType, eventSource, primaryQuery, ruleMetadata);
+                        },
+                        e -> {
+                            log.warn(
+                                    "Failed to fetch rule metadata for rule {}, indexing without rule fields",
+                                    ruleId,
+                                    e);
+                            this.buildAndIndex(finding, logType, eventSource, primaryQuery, Map.of());
+                        }));
     }
 
     private Map<String, Object> extractFirstHit(MultiGetResponse response) {
@@ -133,10 +162,12 @@ public class WazuhEnrichedFindingService {
     // ── Step 3: assemble the enriched document ───────────────────────────────
 
     @SuppressWarnings("unchecked")
-    private void buildAndIndex(Finding finding, String logType,
-                                Map<String, Object> eventSource,
-                                DocLevelQuery primaryQuery,
-                                Map<String, Object> ruleMetadata) {
+    private void buildAndIndex(
+            Finding finding,
+            String logType,
+            Map<String, Object> eventSource,
+            DocLevelQuery primaryQuery,
+            Map<String, Object> ruleMetadata) {
 
         Map<String, Object> doc = new HashMap<>(eventSource);
 
@@ -163,8 +194,8 @@ public class WazuhEnrichedFindingService {
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> buildRuleObject(DocLevelQuery query,
-                                                  Map<String, Object> ruleMetadata) {
+    private Map<String, Object> buildRuleObject(
+            DocLevelQuery query, Map<String, Object> ruleMetadata) {
         Map<String, Object> rule = new HashMap<>();
         rule.put("id", query.getId());
         rule.put("title", query.getName());
@@ -205,20 +236,21 @@ public class WazuhEnrichedFindingService {
     private void indexEnrichedFinding(String logType, Map<String, Object> document) {
         String alias = DetectorMonitorConfig.getWazuhFindingsIndex(logType);
 
-        IndexRequest request = new IndexRequest(alias)
-                .source(document, XContentType.JSON)
-                .timeout(this.indexTimeout);
+        IndexRequest request =
+                new IndexRequest(alias).source(document, XContentType.JSON).timeout(this.indexTimeout);
 
-        this.client.index(request, new ActionListener<>() {
-            @Override
-            public void onResponse(IndexResponse response) {
-                log.debug("Indexed enriched finding to {}/{}", alias, response.getId());
-            }
+        this.client.index(
+                request,
+                new ActionListener<>() {
+                    @Override
+                    public void onResponse(IndexResponse response) {
+                        log.debug("Indexed enriched finding to {}/{}", alias, response.getId());
+                    }
 
-            @Override
-            public void onFailure(Exception e) {
-                log.warn("Failed to index enriched finding to {}", alias, e);
-            }
-        });
+                    @Override
+                    public void onFailure(Exception e) {
+                        log.warn("Failed to index enriched finding to {}", alias, e);
+                    }
+                });
     }
 }
