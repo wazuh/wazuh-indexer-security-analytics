@@ -69,6 +69,14 @@ plugins {
     id "org.gradle.test-retry" version "1.6.2"
 }
 
+task installLocalGitHook(type: Copy){
+    from new File(rootProject.rootDir, 'tools/pre-commit')
+    into { new File(rootProject.rootDir, '.git/hooks')}
+}
+
+// Install git pre-commit hook on the project.
+build.dependsOn installLocalGitHook
+
 apply plugin: 'opensearch.opensearchplugin'
 apply plugin: 'opensearch.testclusters'
 apply plugin: 'opensearch.java-rest-test'
