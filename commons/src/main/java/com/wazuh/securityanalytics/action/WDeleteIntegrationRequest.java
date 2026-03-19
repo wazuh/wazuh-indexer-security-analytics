@@ -14,36 +14,64 @@ public class WDeleteIntegrationRequest extends ActionRequest {
 
     private final String logTypeId;
     private final WriteRequest.RefreshPolicy refreshPolicy;
+    private final String documentId;
+    private final String source;
 
     public WDeleteIntegrationRequest(String logTypeId, WriteRequest.RefreshPolicy refreshPolicy) {
+        this(logTypeId, refreshPolicy, null, null);
+    }
+
+    public WDeleteIntegrationRequest(
+        String logTypeId,
+        WriteRequest.RefreshPolicy refreshPolicy,
+        String documentId,
+        String source
+    ) {
         this.logTypeId = logTypeId;
         this.refreshPolicy = refreshPolicy;
+        this.documentId = documentId;
+        this.source = source;
     }
 
     public WDeleteIntegrationRequest(StreamInput sin) throws IOException {
-        this(sin.readString(), WriteRequest.RefreshPolicy.readFrom(sin));
+        this(
+            sin.readString(),
+            WriteRequest.RefreshPolicy.readFrom(sin),
+            sin.readOptionalString(),
+            sin.readOptionalString()
+        );
     }
 
     @Override
     public ActionRequestValidationException validate() {
         ActionRequestValidationException validationException = null;
-        if (logTypeId == null || logTypeId.isEmpty()) {
-            validationException = addValidationError("logTypeId is missing", validationException);
+        if ((this.logTypeId == null || this.logTypeId.isEmpty()) && (this.documentId == null || this.documentId.isEmpty())) {
+            validationException = addValidationError("logTypeId or documentId is required", validationException);
         }
         return validationException;
     }
 
     @Override
     public void writeTo(StreamOutput out) throws IOException {
-        out.writeString(logTypeId);
-        refreshPolicy.writeTo(out);
+        out.writeString(this.logTypeId);
+        this.refreshPolicy.writeTo(out);
+        out.writeOptionalString(this.documentId);
+        out.writeOptionalString(this.source);
     }
 
     public String getLogTypeId() {
-        return logTypeId;
+        return this.logTypeId;
     }
 
     public WriteRequest.RefreshPolicy getRefreshPolicy() {
-        return refreshPolicy;
+        return this.refreshPolicy;
+    }
+
+    public String getDocumentId() {
+        return this.documentId;
+    }
+
+    public String getSource() {
+        return this.source;
     }
 }
