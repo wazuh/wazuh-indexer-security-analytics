@@ -1,16 +1,20 @@
 /*
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
  *
- * The OpenSearch Contributors require contributions made to
- * this file be licensed under the Apache-2.0 license or a
- * compatible open source license.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-
 package com.wazuh.securityanalytics.action;
-
-import java.io.IOException;
-
-import com.wazuh.securityanalytics.model.Integration;
 
 import org.opensearch.core.action.ActionResponse;
 import org.opensearch.core.common.io.stream.StreamInput;
@@ -19,13 +23,17 @@ import org.opensearch.core.rest.RestStatus;
 import org.opensearch.core.xcontent.ToXContentObject;
 import org.opensearch.core.xcontent.XContentBuilder;
 
+import java.io.IOException;
+
+import com.wazuh.securityanalytics.model.Integration;
+
 /**
  * Response for a Wazuh integration indexing operation.
- * <p>
- * Contains the result of an integration create/update operation, including the
- * integration's ID, version number, REST status, and the complete integration data.
- * <p>
- * This class implements {@link ToXContentObject} to support REST API serialization.
+ *
+ * <p>Contains the result of an integration create/update operation, including the integration's ID,
+ * version number, REST status, and the complete integration data.
+ *
+ * <p>This class implements {@link ToXContentObject} to support REST API serialization.
  *
  * @see WIndexIntegrationAction
  * @see WIndexIntegrationRequest
@@ -47,12 +55,13 @@ public class WIndexIntegrationResponse extends ActionResponse implements ToXCont
     /**
      * Constructs a new WIndexIntegrationResponse.
      *
-     * @param id            the ID of the indexed integration
-     * @param version       the version number of the indexed integration
-     * @param status        the REST status of the operation
+     * @param id the ID of the indexed integration
+     * @param version the version number of the indexed integration
+     * @param status the REST status of the operation
      * @param integration the complete integration data
      */
-    public WIndexIntegrationResponse(String id, Long version, RestStatus status, Integration integration) {
+    public WIndexIntegrationResponse(
+            String id, Long version, RestStatus status, Integration integration) {
         super();
         this.id = id;
         this.version = version;
@@ -67,7 +76,11 @@ public class WIndexIntegrationResponse extends ActionResponse implements ToXCont
      * @throws IOException if an I/O error occurs during deserialization
      */
     public WIndexIntegrationResponse(StreamInput sin) throws IOException {
-        this(sin.readString(), sin.readLong(), sin.readEnum(RestStatus.class), Integration.readFrom(sin));
+        this(
+                sin.readString(),
+                sin.readLong(),
+                sin.readEnum(RestStatus.class),
+                Integration.readFrom(sin));
     }
 
     @Override
@@ -80,11 +93,12 @@ public class WIndexIntegrationResponse extends ActionResponse implements ToXCont
 
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
-        return builder.startObject()
-            .field("_id", this.id)
-            .field("_version", this.version)
-            .field(CUSTOM_LOG_TYPES_FIELD, this.integration)
-            .endObject();
+        return builder
+                .startObject()
+                .field("_id", this.id)
+                .field("_version", this.version)
+                .field(CUSTOM_LOG_TYPES_FIELD, this.integration)
+                .endObject();
     }
 
     /**
