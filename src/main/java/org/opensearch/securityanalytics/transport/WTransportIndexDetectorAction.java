@@ -1,11 +1,23 @@
+/*
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.opensearch.securityanalytics.transport;
 
-import com.wazuh.securityanalytics.action.WIndexDetectorAction;
-import com.wazuh.securityanalytics.action.WIndexDetectorRequest;
-import com.wazuh.securityanalytics.action.WIndexDetectorResponse;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
 import org.opensearch.action.support.ActionFilters;
 import org.opensearch.action.support.HandledTransportAction;
 import org.opensearch.common.inject.Inject;
@@ -20,24 +32,28 @@ import org.opensearch.tasks.Task;
 import org.opensearch.transport.TransportService;
 import org.opensearch.transport.client.Client;
 
+import com.wazuh.securityanalytics.action.WIndexDetectorAction;
+import com.wazuh.securityanalytics.action.WIndexDetectorRequest;
+import com.wazuh.securityanalytics.action.WIndexDetectorResponse;
+
 /**
  * Transport action handler for indexing Wazuh detectors.
  *
- * This class handles the transport-level execution of detector indexing requests,
- * converting external {@link WIndexDetectorRequest} objects into internal
- * {@link IndexDetectorRequest} objects and delegating to the standard detector indexing action.
+ * <p>This class handles the transport-level execution of detector indexing requests, converting
+ * external {@link WIndexDetectorRequest} objects into internal {@link IndexDetectorRequest} objects
+ * and delegating to the standard detector indexing action.
  *
- * The action uses {@link DetectorFactory} to create detector instances from the provided
- * log type name, category, and rules before persisting them.
+ * <p>The action uses {@link DetectorFactory} to create detector instances from the provided log
+ * type name, category, and rules before persisting them.
  *
  * @see WIndexDetectorAction
  * @see WIndexDetectorRequest
  * @see WIndexDetectorResponse
  * @see DetectorFactory
  */
-public class WTransportIndexDetectorAction extends HandledTransportAction<WIndexDetectorRequest, WIndexDetectorResponse>
-    implements
-        SecureTransportAction {
+public class WTransportIndexDetectorAction
+        extends HandledTransportAction<WIndexDetectorRequest, WIndexDetectorResponse>
+        implements SecureTransportAction {
     private final Client client;
     private static final Logger log = LogManager.getLogger(WTransportIndexDetectorAction.class);
 
@@ -45,11 +61,12 @@ public class WTransportIndexDetectorAction extends HandledTransportAction<WIndex
      * Constructs a new WTransportIndexDetectorAction.
      *
      * @param transportService the transport service for inter-node communication
-     * @param client           the OpenSearch client for executing internal actions
-     * @param actionFilters    filters to apply to the action execution
+     * @param client the OpenSearch client for executing internal actions
+     * @param actionFilters filters to apply to the action execution
      */
     @Inject
-    public WTransportIndexDetectorAction(TransportService transportService, Client client, ActionFilters actionFilters) {
+    public WTransportIndexDetectorAction(
+            TransportService transportService, Client client, ActionFilters actionFilters) {
         super(WIndexDetectorAction.NAME, transportService, actionFilters, WIndexDetectorRequest::new);
         this.client = client;
     }
@@ -57,39 +74,41 @@ public class WTransportIndexDetectorAction extends HandledTransportAction<WIndex
     /**
      * Executes the detector indexing action.
      *
-     * This method performs the following steps:
-     * 1. Creates a new {@link Detector} using {@link DetectorFactory} with the log type, category, and rules
-     * 2. Sets the detector ID from the request
-     * 3. Wraps it in an {@link IndexDetectorRequest} with PUT method
-     * 4. Executes the indexing action through the client
-     * 5. Returns the result via the provided listener
+     * <p>This method performs the following steps: 1. Creates a new {@link Detector} using {@link
+     * DetectorFactory} with the log type, category, and rules 2. Sets the detector ID from the
+     * request 3. Wraps it in an {@link IndexDetectorRequest} with PUT method 4. Executes the indexing
+     * action through the client 5. Returns the result via the provided listener
      *
-     * @param task     the task associated with this action execution
-     * @param request  the detector indexing request containing log type, category, and rules
+     * @param task the task associated with this action execution
+     * @param request the detector indexing request containing log type, category, and rules
      * @param listener the listener to notify upon completion or failure
      */
     @Override
-    protected void doExecute(Task task, WIndexDetectorRequest request, ActionListener<WIndexDetectorResponse> listener) {
+    protected void doExecute(
+            Task task, WIndexDetectorRequest request, ActionListener<WIndexDetectorResponse> listener) {
         // Create detector for this Integration
-        Detector detector = DetectorFactory.createDetector(request.getLogTypeName(), request.getCategory(), request.getRules());
+        Detector detector =
+                DetectorFactory.createDetector(
+                        request.getLogTypeName(), request.getCategory(), request.getRules());
         detector.setId(request.getDetectorId());
-        IndexDetectorRequest indexDetectorRequest = new IndexDetectorRequest(
-            detector.getId(),
-            request.getRefreshPolicy(),
-            RestRequest.Method.PUT,
-            detector
-        );
-        this.client.execute(IndexDetectorAction.INSTANCE, indexDetectorRequest, new ActionListener<>() {
-            @Override
-            public void onResponse(IndexDetectorResponse response) {
-                log.info("Successfully indexed detector with id: {}", response.getId());
-                listener.onResponse(new WIndexDetectorResponse(response.getId(), response.getVersion()));
-            }
+        IndexDetectorRequest indexDetectorRequest =
+                new IndexDetectorRequest(
+                        detector.getId(), request.getRefreshPolicy(), RestRequest.Method.PUT, detector);
+        this.client.execute(
+                IndexDetectorAction.INSTANCE,
+                indexDetectorRequest,
+                new ActionListener<>() {
+                    @Override
+                    public void onResponse(IndexDetectorResponse response) {
+                        log.info("Successfully indexed detector with id: {}", response.getId());
+                        listener.onResponse(
+                                new WIndexDetectorResponse(response.getId(), response.getVersion()));
+                    }
 
-            @Override
-            public void onFailure(Exception e) {
-                listener.onFailure(e);
-            }
-        });
+                    @Override
+                    public void onFailure(Exception e) {
+                        listener.onFailure(e);
+                    }
+                });
     }
 }

@@ -1,11 +1,20 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package com.wazuh.securityanalytics.action;
-
-import java.io.IOException;
-import java.util.Locale;
 
 import org.opensearch.action.ActionRequest;
 import org.opensearch.action.ActionRequestValidationException;
@@ -14,15 +23,18 @@ import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
 import org.opensearch.rest.RestRequest;
 
+import java.io.IOException;
+import java.util.Locale;
+
 import static org.opensearch.action.ValidateActions.addValidationError;
 
 /**
  * Request for indexing a Wazuh rule.
  *
- * This request contains all the information needed to create or update a Sigma rule,
- * including the rule ID, log type, HTTP method, rule YAML content, and force flag.
+ * <p>This request contains all the information needed to create or update a Sigma rule, including
+ * the rule ID, log type, HTTP method, rule YAML content, and force flag.
  *
- * The log type is automatically converted to lowercase during construction.
+ * <p>The log type is automatically converted to lowercase during construction.
  *
  * @see WIndexRuleAction
  * @see WIndexRuleResponse
@@ -45,29 +57,28 @@ public class WIndexRuleRequest extends ActionRequest {
     private final String rule;
 
     /**
-     * Forces updating the rule even if it is used by running detectors.
-     * If false, an error is thrown when the rule is actively used by detectors.
+     * Forces updating the rule even if it is used by running detectors. If false, an error is thrown
+     * when the rule is actively used by detectors.
      */
     private final Boolean forced;
 
     /**
      * Constructs a new WIndexRuleRequest.
      *
-     * @param ruleId        the unique identifier for the rule
+     * @param ruleId the unique identifier for the rule
      * @param refreshPolicy the refresh policy for the index operation
-     * @param logType       the log type category for this rule (will be lowercased)
-     * @param method        the HTTP method (PUT for update, POST for create)
-     * @param rule          the Sigma rule YAML content
-     * @param forced        if true, updates the rule even if used by active detectors
+     * @param logType the log type category for this rule (will be lowercased)
+     * @param method the HTTP method (PUT for update, POST for create)
+     * @param rule the Sigma rule YAML content
+     * @param forced if true, updates the rule even if used by active detectors
      */
     public WIndexRuleRequest(
-        String ruleId,
-        WriteRequest.RefreshPolicy refreshPolicy,
-        String logType,
-        RestRequest.Method method,
-        String rule,
-        Boolean forced
-    ) {
+            String ruleId,
+            WriteRequest.RefreshPolicy refreshPolicy,
+            String logType,
+            RestRequest.Method method,
+            String rule,
+            Boolean forced) {
         super();
         this.ruleId = ruleId;
         this.refreshPolicy = refreshPolicy;
@@ -85,13 +96,12 @@ public class WIndexRuleRequest extends ActionRequest {
      */
     public WIndexRuleRequest(StreamInput sin) throws IOException {
         this(
-            sin.readString(),
-            WriteRequest.RefreshPolicy.readFrom(sin),
-            sin.readString(),
-            sin.readEnum(RestRequest.Method.class),
-            sin.readString(),
-            sin.readBoolean()
-        );
+                sin.readString(),
+                WriteRequest.RefreshPolicy.readFrom(sin),
+                sin.readString(),
+                sin.readEnum(RestRequest.Method.class),
+                sin.readString(),
+                sin.readBoolean());
     }
 
     @Override
@@ -115,10 +125,10 @@ public class WIndexRuleRequest extends ActionRequest {
     }
 
     /**
-    * Gets the rule ID to update.
-    *
-    * @return the rule ID
-    */
+     * Gets the rule ID to update.
+     *
+     * @return the rule ID
+     */
     public String getRuleId() {
         return this.ruleId;
     }
