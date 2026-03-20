@@ -1,10 +1,20 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package com.wazuh.securityanalytics.action;
-
-import java.io.IOException;
 
 import org.opensearch.core.action.ActionResponse;
 import org.opensearch.core.common.io.stream.StreamInput;
@@ -13,13 +23,15 @@ import org.opensearch.core.rest.RestStatus;
 import org.opensearch.core.xcontent.ToXContentObject;
 import org.opensearch.core.xcontent.XContentBuilder;
 
+import java.io.IOException;
+
 /**
  * Response for a Wazuh rule indexing operation.
- * <p>
- * Contains the result of a rule create/update operation, including the
- * rule's ID, version number, and REST status.
- * <p>
- * This class implements {@link ToXContentObject} to support REST API serialization.
+ *
+ * <p>Contains the result of a rule create/update operation, including the rule's ID, version
+ * number, and REST status.
+ *
+ * <p>This class implements {@link ToXContentObject} to support REST API serialization.
  *
  * @see WIndexRuleAction
  * @see WIndexRuleRequest
@@ -38,9 +50,9 @@ public class WIndexRuleResponse extends ActionResponse implements ToXContentObje
     /**
      * Constructs a new WIndexRuleResponse.
      *
-     * @param id      the ID of the indexed rule
+     * @param id the ID of the indexed rule
      * @param version the version number of the indexed rule
-     * @param status  the REST status of the operation
+     * @param status the REST status of the operation
      */
     public WIndexRuleResponse(String id, Long version, RestStatus status) {
         super();

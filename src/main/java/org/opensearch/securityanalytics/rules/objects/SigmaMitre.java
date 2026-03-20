@@ -26,9 +26,9 @@ import java.util.Map;
 
 /**
  * MITRE ATT&amp;CK block for Wazuh Sigma rules.
- * <p>
- * Parses a top-level {@code mitre} structure containing flat arrays
- * for {@code tactic}, {@code technique}, and {@code subtechnique}.
+ *
+ * <p>Parses a top-level {@code mitre} structure containing flat arrays for {@code tactic}, {@code
+ * technique}, and {@code subtechnique}.
  */
 public class SigmaMitre {
 
@@ -70,8 +70,8 @@ public class SigmaMitre {
     }
 
     /**
-     * Flattens the MITRE data into a format suitable for WCS indexing.
-     * Per the WCS spec, sub-technique IDs are merged into the technique array.
+     * Flattens the MITRE data into a format suitable for WCS indexing. Per the WCS spec,
+     * sub-technique IDs are merged into the technique array.
      *
      * @return a map representing the flattened MITRE ATT&amp;CK data
      */
@@ -94,14 +94,15 @@ public class SigmaMitre {
     }
 
     /**
-     * Utility method to convert an object (which could be a single String or a List) into a List of Strings.
+     * Utility method to convert an object (which could be a single String or a List) into a List of
+     * Strings.
      *
      * @param obj the object to convert
      * @return a list of strings representation of the input object
      */
     @SuppressWarnings("unchecked")
     private static List<String> toStringList(Object obj) {
-        if (obj == null){
+        if (obj == null) {
             return Collections.emptyList();
         }
         if (obj instanceof List) {

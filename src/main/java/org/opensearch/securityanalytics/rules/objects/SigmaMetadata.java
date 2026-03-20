@@ -22,8 +22,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Wazuh-specific metadata block for Sigma rules.
- * Fields here take precedence over top-level equivalents for title and description.
+ * Wazuh-specific metadata block for Sigma rules. Fields here take precedence over top-level
+ * equivalents for title and description.
  */
 public class SigmaMetadata {
 
@@ -54,9 +54,18 @@ public class SigmaMetadata {
      * @param compatibility software or system compatibility information
      * @param supports list of supported features or platforms
      */
-    public SigmaMetadata(String title, String author, String date, String modified, String description,
-                         List<String> references, String documentation, String module,
-                         List<String> versions, List<String> compatibility, List<String> supports) {
+    public SigmaMetadata(
+            String title,
+            String author,
+            String date,
+            String modified,
+            String description,
+            List<String> references,
+            String documentation,
+            String module,
+            List<String> versions,
+            List<String> compatibility,
+            List<String> supports) {
         this.title = title;
         this.author = author;
         this.date = date;
@@ -71,8 +80,8 @@ public class SigmaMetadata {
     }
 
     /**
-     * Creates a {@link SigmaMetadata} instance from a Map representation.
-     * This is typically used when parsing the metadata block from a YAML or JSON source.
+     * Creates a {@link SigmaMetadata} instance from a Map representation. This is typically used when
+     * parsing the metadata block from a YAML or JSON source.
      *
      * @param map a map containing metadata keys and values
      * @return a new {@link SigmaMetadata} instance, or null if the input map is null
@@ -93,49 +102,48 @@ public class SigmaMetadata {
                 map.get("module") != null ? map.get("module").toString() : null,
                 map.get("versions") instanceof List ? (List<String>) map.get("versions") : null,
                 map.get("compatibility") instanceof List ? (List<String>) map.get("compatibility") : null,
-                map.get("supports") instanceof List ? (List<String>) map.get("supports") : null
-        );
+                map.get("supports") instanceof List ? (List<String>) map.get("supports") : null);
     }
 
     /**
-     * Converts the metadata object into a Map for indexing or serialization purposes.
-     * Only non-null and non-empty fields are included in the resulting map.
+     * Converts the metadata object into a Map for indexing or serialization purposes. Only non-null
+     * and non-empty fields are included in the resulting map.
      *
      * @return a map containing the metadata fields
      */
     public Map<String, Object> toMap() {
         Map<String, Object> map = new HashMap<>();
-        if (this.title != null){
+        if (this.title != null) {
             map.put("title", this.title);
         }
-        if (this.author != null){
+        if (this.author != null) {
             map.put("author", this.author);
         }
-        if (this.date != null){
+        if (this.date != null) {
             map.put("date", this.date);
         }
-        if (this.modified != null){
+        if (this.modified != null) {
             map.put("modified", this.modified);
         }
-        if (this.description != null){
+        if (this.description != null) {
             map.put("description", this.description);
         }
-        if (this.references != null && !this.references.isEmpty()){
+        if (this.references != null && !this.references.isEmpty()) {
             map.put("references", this.references);
         }
-        if (this.documentation != null){
+        if (this.documentation != null) {
             map.put("documentation", this.documentation);
         }
-        if (this.module != null){
+        if (this.module != null) {
             map.put("module", this.module);
         }
-        if (this.versions != null && !this.versions.isEmpty()){
+        if (this.versions != null && !this.versions.isEmpty()) {
             map.put("versions", this.versions);
         }
-        if (this.compatibility != null && !this.compatibility.isEmpty()){
+        if (this.compatibility != null && !this.compatibility.isEmpty()) {
             map.put("compatibility", this.compatibility);
         }
-        if (this.supports != null && !this.supports.isEmpty()){
+        if (this.supports != null && !this.supports.isEmpty()) {
             map.put("supports", this.supports);
         }
         return map;

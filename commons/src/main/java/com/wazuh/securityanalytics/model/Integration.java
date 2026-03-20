@@ -1,13 +1,20 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package com.wazuh.securityanalytics.model;
-
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
 
 import org.opensearch.common.xcontent.XContentFactory;
 import org.opensearch.core.common.io.stream.StreamInput;
@@ -18,14 +25,19 @@ import org.opensearch.core.xcontent.XContentBuilder;
 import org.opensearch.core.xcontent.XContentParser;
 import org.opensearch.core.xcontent.XContentParserUtils;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
 /**
  * Represents a Wazuh integration configuration.
  *
- * An integration defines a log type with associated metadata including name, description,
- * category, source, tags, and associated rule IDs. Integrations are used to configure
- * how different log sources are processed and analyzed within Security Analytics.
+ * <p>An integration defines a log type with associated metadata including name, description,
+ * category, source, tags, and associated rule IDs. Integrations are used to configure how different
+ * log sources are processed and analyzed within Security Analytics.
  *
- * This class implements {@link Writeable} for cluster serialization and {@link ToXContentObject}
+ * <p>This class implements {@link Writeable} for cluster serialization and {@link ToXContentObject}
  * for REST API responses.
  *
  * @see #LOG_CATEGORIES for the list of valid categories
@@ -33,19 +45,19 @@ import org.opensearch.core.xcontent.XContentParserUtils;
 public class Integration implements Writeable, ToXContentObject {
 
     /**
-     * List of valid Wazuh integration categories.
-     * Categories are used to classify integrations by their log type domain.
+     * List of valid Wazuh integration categories. Categories are used to classify integrations by
+     * their log type domain.
      */
-    public static final List<String> LOG_CATEGORIES = List.of(
-        "Access Management",
-        "Applications",
-        "Cloud Services",
-        "Network Activity",
-        "Security",
-        "System Activity",
-        "Other",
-        "Unclassified"
-    );
+    public static final List<String> LOG_CATEGORIES =
+            List.of(
+                    "Access Management",
+                    "Applications",
+                    "Cloud Services",
+                    "Network Activity",
+                    "Security",
+                    "System Activity",
+                    "Other",
+                    "Unclassified");
 
     private static final String NAME_FIELD = "name";
 
@@ -77,40 +89,46 @@ public class Integration implements Writeable, ToXContentObject {
     /**
      * Constructs a new Integration with all fields.
      *
-     * @param id          the unique identifier for this integration
-     * @param version     the version number of this integration
-     * @param name        the display name of the integration
+     * @param id the unique identifier for this integration
+     * @param version the version number of this integration
+     * @param name the display name of the integration
      * @param description a description of what this integration does
-     * @param category    the category this integration belongs to (must be in WAZUH_CATEGORIES)
-     * @param source      the source identifier for this integration
-     * @param tags        additional metadata tags for this integration
+     * @param category the category this integration belongs to (must be in WAZUH_CATEGORIES)
+     * @param source the source identifier for this integration
+     * @param tags additional metadata tags for this integration
      */
-    public Integration(String id, Long version, String name, String description, String category, String source, Map<String, Object> tags) {
+    public Integration(
+            String id,
+            Long version,
+            String name,
+            String description,
+            String category,
+            String source,
+            Map<String, Object> tags) {
         this(id, version, name, description, category, source, tags, null);
     }
 
     /**
      * Constructs a new Integration with all fields including the original document ID.
      *
-     * @param id                 the unique identifier for this integration
-     * @param version            the version number of this integration
-     * @param name               the display name of the integration
-     * @param description        a description of what this integration does
-     * @param category           the category this integration belongs to (must be in WAZUH_CATEGORIES)
-     * @param source             the source identifier for this integration
-     * @param tags               additional metadata tags for this integration
+     * @param id the unique identifier for this integration
+     * @param version the version number of this integration
+     * @param name the display name of the integration
+     * @param description a description of what this integration does
+     * @param category the category this integration belongs to (must be in WAZUH_CATEGORIES)
+     * @param source the source identifier for this integration
+     * @param tags additional metadata tags for this integration
      * @param documentId the UUID of the original document in the Content Manager plugin
      */
     public Integration(
-        String id,
-        Long version,
-        String name,
-        String description,
-        String category,
-        String source,
-        Map<String, Object> tags,
-        String documentId
-    ) {
+            String id,
+            Long version,
+            String name,
+            String description,
+            String category,
+            String source,
+            Map<String, Object> tags,
+            String documentId) {
         this.id = id != null ? id : "";
         this.version = version != null ? version : 1L;
         this.name = name;
@@ -129,15 +147,14 @@ public class Integration implements Writeable, ToXContentObject {
      */
     public Integration(StreamInput sin) throws IOException {
         this(
-            sin.readString(),
-            sin.readLong(),
-            sin.readString(),
-            sin.readString(),
-            sin.readString(),
-            sin.readString(),
-            sin.readMap(),
-            sin.readOptionalString()
-        );
+                sin.readString(),
+                sin.readLong(),
+                sin.readString(),
+                sin.readString(),
+                sin.readString(),
+                sin.readString(),
+                sin.readMap(),
+                sin.readOptionalString());
     }
 
     /**
@@ -148,15 +165,14 @@ public class Integration implements Writeable, ToXContentObject {
     @SuppressWarnings("unchecked")
     public Integration(Map<String, Object> input) {
         this(
-            null,
-            null,
-            input.get(NAME_FIELD).toString(),
-            input.get(DESCRIPTION_FIELD).toString(),
-            input.containsKey(CATEGORY_FIELD) ? input.get(CATEGORY_FIELD).toString() : null,
-            input.get(SOURCE_FIELD).toString(),
-            (Map<String, Object>) input.get(TAGS_FIELD),
-            input.containsKey(DOCUMENT_ID_FIELD) ? input.get(DOCUMENT_ID_FIELD).toString() : null
-        );
+                null,
+                null,
+                input.get(NAME_FIELD).toString(),
+                input.get(DESCRIPTION_FIELD).toString(),
+                input.containsKey(CATEGORY_FIELD) ? input.get(CATEGORY_FIELD).toString() : null,
+                input.get(SOURCE_FIELD).toString(),
+                (Map<String, Object>) input.get(TAGS_FIELD),
+                input.containsKey(DOCUMENT_ID_FIELD) ? input.get(DOCUMENT_ID_FIELD).toString() : null);
     }
 
     @Override
@@ -174,11 +190,11 @@ public class Integration implements Writeable, ToXContentObject {
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
         builder.startObject()
-            .field(NAME_FIELD, this.name)
-            .field(DESCRIPTION_FIELD, this.description)
-            .field(CATEGORY_FIELD, this.category)
-            .field(SOURCE_FIELD, this.source)
-            .field(TAGS_FIELD, this.tags);
+                .field(NAME_FIELD, this.name)
+                .field(DESCRIPTION_FIELD, this.description)
+                .field(CATEGORY_FIELD, this.category)
+                .field(SOURCE_FIELD, this.source)
+                .field(TAGS_FIELD, this.tags);
         if (this.documentId != null) {
             builder.field(DOCUMENT_ID_FIELD, this.documentId);
         }
@@ -186,9 +202,9 @@ public class Integration implements Writeable, ToXContentObject {
     }
 
     /**
-     * Convenience method to convert this Integration to XContent using a default JSON builder.
-     * This method creates a new JSON builder internally and delegates to the main
-     * {@link #toXContent(XContentBuilder, Params)} method.
+     * Convenience method to convert this Integration to XContent using a default JSON builder. This
+     * method creates a new JSON builder internally and delegates to the main {@link
+     * #toXContent(XContentBuilder, Params)} method.
      *
      * @return An XContentBuilder containing the JSON representation of this integration.
      * @throws IOException If an error occurs during serialization.
@@ -200,8 +216,8 @@ public class Integration implements Writeable, ToXContentObject {
     /**
      * Parses an Integration from XContent.
      *
-     * @param xcp     the XContent parser to read from
-     * @param id      the integration ID (defaults to empty string if null)
+     * @param xcp the XContent parser to read from
+     * @param id the integration ID (defaults to empty string if null)
      * @param version the version number (defaults to 1L if null)
      * @return the parsed Integration instance
      * @throws IOException if an I/O error occurs during parsing
@@ -222,7 +238,8 @@ public class Integration implements Writeable, ToXContentObject {
         String documentId = null;
         List<String> rules = new ArrayList<>();
 
-        XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
+        XContentParserUtils.ensureExpectedToken(
+                XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
         while (xcp.nextToken() != XContentParser.Token.END_OBJECT) {
             String fieldName = xcp.currentName();
             xcp.nextToken();
@@ -362,5 +379,4 @@ public class Integration implements Writeable, ToXContentObject {
     public String getDocumentId() {
         return this.documentId;
     }
-
 }

@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Implement finding enrichment [(#58)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/58)
 - Implement extended sigma rules sintax [(#55)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/55)
 - Modify rule and log type creation logic to enable them to have a lifecycle support [(#69)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/69)
+- Implement spotless configuration from Wazuh Indexer Plugins repository [(#70)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/70)
 
 ### Dependencies
 - Update to JDK 25 [(#49)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/49)
@@ -43,6 +44,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Fixed
 - Fix typo in revision variable [(#4)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/4)
 - Fix link-checker workflow [(#50)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/50)
+- Fix CodeQL autobuild failure using manual compilation [(#71)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/71)
 
 ### Security
 -
