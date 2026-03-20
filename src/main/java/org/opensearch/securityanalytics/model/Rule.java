@@ -69,10 +69,13 @@ public class Rule implements Writeable, ToXContentObject {
     public static final String CUSTOM_RULES_INDEX = ".opensearch-sap-custom-rules-config";
     public static final String AGGREGATION_QUERIES = "aggregationQueries";
 
+    public static final String DOCUMENT_ID_FIELD = "document.id";
+    public static final String SOURCE_FIELD = "source";
+
     public static final NamedXContentRegistry.Entry XCONTENT_REGISTRY = new NamedXContentRegistry.Entry(
             Rule.class,
             new ParseField(CATEGORY),
-            xcp -> parse(xcp, null, null)
+            xcp -> Rule.parse(xcp, null, null)
     );
 
     private String id;
@@ -114,6 +117,10 @@ public class Rule implements Writeable, ToXContentObject {
     private final Map<String, Object> complianceMap;
 
     private final Map<String, Object> metadata;
+
+    private String documentId;
+
+    private String source;
 
     public Rule(String id, Long version, String title, String category, String logSource,
                 String description, List<Value> references, List<Value> tags, String level,
@@ -210,6 +217,8 @@ public class Rule implements Writeable, ToXContentObject {
                 (Map<String, Object>) sin.readGenericValue(), // compliance
                 (Map<String, Object>) sin.readGenericValue()  // metadata
         );
+        this.documentId = sin.readOptionalString();
+        this.source = sin.readOptionalString();
     }
 
     @Override
@@ -240,6 +249,8 @@ public class Rule implements Writeable, ToXContentObject {
         out.writeGenericValue(this.mitre);
         out.writeGenericValue(this.complianceMap);
         out.writeGenericValue(this.metadata);
+        out.writeOptionalString(this.documentId);
+        out.writeOptionalString(this.source);
     }
 
     @Override
@@ -299,6 +310,13 @@ public class Rule implements Writeable, ToXContentObject {
             builder.field(METADATA, this.metadata);
         }
 
+        if (this.documentId != null) {
+            builder.field(DOCUMENT_ID_FIELD, this.documentId);
+        }
+        if (this.source != null) {
+            builder.field(SOURCE_FIELD, this.source);
+        }
+
         if (params.paramAsBoolean("with_type", false)) {
             builder.endObject();
         }
@@ -309,7 +327,7 @@ public class Rule implements Writeable, ToXContentObject {
         XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.nextToken(), xcp);
         XContentParserUtils.ensureExpectedToken(XContentParser.Token.FIELD_NAME, xcp.nextToken(), xcp);
         XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.nextToken(), xcp);
-        Rule rule = parse(xcp, id, version);
+        Rule rule = Rule.parse(xcp, id, version);
         XContentParserUtils.ensureExpectedToken(XContentParser.Token.END_OBJECT, xcp.nextToken(), xcp);
 
         rule.setId(id);
@@ -347,6 +365,8 @@ public class Rule implements Writeable, ToXContentObject {
         Map<String, Object> mitre = Collections.emptyMap();
         Map<String, Object> compliance = Collections.emptyMap();
         Map<String, Object> metadata = Collections.emptyMap();
+        String documentId = null;
+        String source = null;
 
         XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
         while (xcp.nextToken() != XContentParser.Token.END_OBJECT) {
@@ -426,12 +446,18 @@ public class Rule implements Writeable, ToXContentObject {
                 case METADATA:
                     metadata = xcp.map();
                     break;
+                case DOCUMENT_ID_FIELD:
+                    documentId = xcp.textOrNull();
+                    break;
+                case SOURCE_FIELD:
+                    source = xcp.textOrNull();
+                    break;
                 default:
                     xcp.skipChildren();
             }
         }
 
-        return new Rule(
+        Rule rule = new Rule(
                 id,
                 version,
                 Objects.requireNonNull(title, "Rule Title is null"),
@@ -453,6 +479,9 @@ public class Rule implements Writeable, ToXContentObject {
                 compliance,
                 metadata
         );
+        rule.setDocumentId(documentId);
+        rule.setSource(source);
+        return rule;
     }
 
     public static Rule readFrom(StreamInput sin) throws IOException {
@@ -547,6 +576,42 @@ public class Rule implements Writeable, ToXContentObject {
 
     public Map<String, Object> getMetadata() {
         return this.metadata;
+    }
+
+    /**
+     * Gets the original document ID from the Content Manager plugin.
+     *
+     * @return the original document UUID, or null if not set
+     */
+    public String getDocumentId() {
+        return this.documentId;
+    }
+
+    /**
+     * Sets the original document ID from the Content Manager plugin.
+     *
+     * @param documentId the UUID of the original document in the Content Manager
+     */
+    public void setDocumentId(String documentId) {
+        this.documentId = documentId;
+    }
+
+    /**
+     * Gets the space this rule belongs to.
+     *
+     * @return the space name (e.g., "draft", "test", "custom"), or null if not set
+     */
+    public String getSource() {
+        return this.source;
+    }
+
+    /**
+     * Sets the space this rule belongs to.
+     *
+     * @param source the space name
+     */
+    public void setSource(String source) {
+        this.source = source;
     }
 
     public List<AggregationItem> getAggregationItemsFromRule () throws SigmaConditionError {

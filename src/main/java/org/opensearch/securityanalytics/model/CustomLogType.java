@@ -50,24 +50,28 @@ public class CustomLogType implements Writeable, ToXContentObject {
 
     private static final String TAGS_FIELD = "tags";
 
+    private static final String DOCUMENT_ID_FIELD = "document.id";
+
     private String id;
 
     private Long version;
 
-    private String name;
+    private final String name;
 
-    private String description;
+    private final String description;
 
-    private String category;
+    private final String category;
 
-    private String source;
+    private final String source;
 
     private Map<String, Object> tags;
+
+    private String documentId;
 
     public static final NamedXContentRegistry.Entry XCONTENT_REGISTRY = new NamedXContentRegistry.Entry(
             CustomLogType.class,
             new ParseField(CUSTOM_LOG_TYPES_FIELD),
-            xcp -> parse(xcp, null, null)
+            xcp -> CustomLogType.parse(xcp, null, null)
     );
 
     public CustomLogType(String id,
@@ -77,6 +81,17 @@ public class CustomLogType implements Writeable, ToXContentObject {
                          String category,
                          String source,
                          Map<String, Object> tags) {
+        this(id, version, name, description, category, source, tags, null);
+    }
+
+    public CustomLogType(String id,
+                         Long version,
+                         String name,
+                         String description,
+                         String category,
+                         String source,
+                         Map<String, Object> tags,
+                         String documentId) {
         this.id = id != null ? id : NO_ID;
         this.version = version != null ? version : NO_VERSION;
         this.name = name;
@@ -84,6 +99,7 @@ public class CustomLogType implements Writeable, ToXContentObject {
         this.category = category != null? category: "Other";
         this.source = source;
         this.tags = tags;
+        this.documentId = documentId;
     }
 
     public CustomLogType(StreamInput sin) throws IOException {
@@ -94,7 +110,8 @@ public class CustomLogType implements Writeable, ToXContentObject {
                 sin.readString(),
                 sin.readString(),
                 sin.readString(),
-                sin.readMap()
+                sin.readMap(),
+                sin.readOptionalString()
         );
     }
 
@@ -107,30 +124,35 @@ public class CustomLogType implements Writeable, ToXContentObject {
                 input.get(DESCRIPTION_FIELD).toString(),
                 input.containsKey(CATEGORY_FIELD)? input.get(CATEGORY_FIELD).toString(): null,
                 input.get(SOURCE_FIELD).toString(),
-                (Map<String, Object>) input.get(TAGS_FIELD)
+                (Map<String, Object>) input.get(TAGS_FIELD),
+                input.containsKey(DOCUMENT_ID_FIELD) ? input.get(DOCUMENT_ID_FIELD).toString() : null
         );
     }
 
     @Override
     public void writeTo(StreamOutput out) throws IOException {
-        out.writeString(id);
-        out.writeLong(version);
-        out.writeString(name);
-        out.writeString(description);
-        out.writeString(category);
-        out.writeString(source);
-        out.writeMap(tags);
+        out.writeString(this.id);
+        out.writeLong(this.version);
+        out.writeString(this.name);
+        out.writeString(this.description);
+        out.writeString(this.category);
+        out.writeString(this.source);
+        out.writeMap(this.tags);
+        out.writeOptionalString(this.documentId);
     }
 
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
-        return builder.startObject()
-                .field(NAME_FIELD, name)
-                .field(DESCRIPTION_FIELD, description)
-                .field(CATEGORY_FIELD, category)
-                .field(SOURCE_FIELD, source)
-                .field(TAGS_FIELD, tags)
-                .endObject();
+        builder.startObject()
+                .field(NAME_FIELD, this.name)
+                .field(DESCRIPTION_FIELD, this.description)
+                .field(CATEGORY_FIELD, this.category)
+                .field(SOURCE_FIELD, this.source)
+                .field(TAGS_FIELD, this.tags);
+        if (this.documentId != null) {
+            builder.field(DOCUMENT_ID_FIELD, this.documentId);
+        }
+        return builder.endObject();
     }
 
     public static CustomLogType parse(XContentParser xcp, String id, Long version) throws IOException {
@@ -146,6 +168,7 @@ public class CustomLogType implements Writeable, ToXContentObject {
         String category = null;
         String source = null;
         Map<String, Object> tags = null;
+        String documentId = null;
 
         XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
         while (xcp.nextToken() != XContentParser.Token.END_OBJECT) {
@@ -168,11 +191,14 @@ public class CustomLogType implements Writeable, ToXContentObject {
                 case TAGS_FIELD:
                     tags = xcp.map();
                     break;
+                case DOCUMENT_ID_FIELD:
+                    documentId = xcp.textOrNull();
+                    break;
                 default:
                     xcp.skipChildren();
             }
         }
-        return new CustomLogType(id, version, name, description, category, source, tags);
+        return new CustomLogType(id, version, name, description, category, source, tags, documentId);
     }
 
     public static CustomLogType readFrom(StreamInput sin) throws IOException {
@@ -184,7 +210,7 @@ public class CustomLogType implements Writeable, ToXContentObject {
     }
 
     public String getId() {
-        return id;
+        return this.id;
     }
 
     public void setVersion(Long version) {
@@ -192,23 +218,23 @@ public class CustomLogType implements Writeable, ToXContentObject {
     }
 
     public Long getVersion() {
-        return version;
+        return this.version;
     }
 
     public String getName() {
-        return name;
+        return this.name;
     }
 
     public String getDescription() {
-        return description;
+        return this.description;
     }
 
     public String getCategory() {
-        return category;
+        return this.category;
     }
 
     public String getSource() {
-        return source;
+        return this.source;
     }
 
     public void setTags(Map<String, Object> tags) {
@@ -216,6 +242,14 @@ public class CustomLogType implements Writeable, ToXContentObject {
     }
 
     public Map<String, Object> getTags() {
-        return tags;
+        return this.tags;
+    }
+
+    public String getDocumentId() {
+        return this.documentId;
+    }
+
+    public void setDocumentId(String documentId) {
+        this.documentId = documentId;
     }
 }

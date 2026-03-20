@@ -117,6 +117,12 @@
               "ignore_above": 256
             }
           }
+        },
+        "document.id": {
+          "type": "keyword"
+        },
+        "source": {
+          "type": "keyword"
         }
       }
     }

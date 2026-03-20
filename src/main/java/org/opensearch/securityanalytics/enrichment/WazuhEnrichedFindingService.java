@@ -225,7 +225,7 @@ public class WazuhEnrichedFindingService {
 
         Object mitre = nested.get("mitre");
         if (mitre != null) {
-            rule.put("mitre", compliance);
+            rule.put("mitre", mitre);
         }
 
         return rule;

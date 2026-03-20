@@ -50,7 +50,9 @@ public class WTransportIndexCustomRuleAction
 
     @Override
     protected void doExecute(
-            Task task, WIndexCustomRuleRequest request, ActionListener<WIndexRuleResponse> listener) {
+            Task task,
+            WIndexCustomRuleRequest request,
+            ActionListener<WIndexRuleResponse> listener) {
         IndexRuleRequest internalRequest =
                 new IndexRuleRequest(
                         request.getRuleId(),
@@ -58,17 +60,22 @@ public class WTransportIndexCustomRuleAction
                         request.getLogType(),
                         request.getMethod(),
                         request.getRule(),
-                        request.isForced());
+                        request.isForced(),
+                        request.getDocumentId(),
+                        request.getSource());
         this.client.execute(
                 IndexRuleAction.INSTANCE,
                 internalRequest,
                 new ActionListener<IndexRuleResponse>() {
                     @Override
                     public void onResponse(IndexRuleResponse response) {
-                        log.info("Successfully indexed custom rule with id: " + response.getId());
+                        log.info(
+                                "Successfully indexed custom rule with id: " + response.getId());
                         listener.onResponse(
                                 new WIndexRuleResponse(
-                                        response.getId(), response.getVersion(), response.getStatus()));
+                                        response.getId(),
+                                        response.getVersion(),
+                                        response.getStatus()));
                     }
 
                     @Override

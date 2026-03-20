@@ -34,6 +34,7 @@ import org.opensearch.transport.client.Client;
 
 import java.io.IOException;
 import java.util.Objects;
+import java.util.UUID;
 
 import com.wazuh.securityanalytics.action.WIndexIntegrationAction;
 import com.wazuh.securityanalytics.action.WIndexIntegrationRequest;
@@ -104,26 +105,30 @@ public class WTransportIndexIntegrationAction
         // Custom integration / log type.
         if (!Objects.equals(integration.getSource(), "Sigma")) {
             try {
+                String sapId = UUID.randomUUID().toString();
                 IndexCustomLogTypeRequest internalRequest =
                         new IndexCustomLogTypeRequest(
-                                integration.getId(),
+                                sapId,
                                 WriteRequest.RefreshPolicy.IMMEDIATE,
                                 request.getMethod(),
                                 new CustomLogType(
-                                        integration.getId(),
+                                        sapId,
                                         integration.getVersion(),
                                         integration.getName(),
                                         integration.getDescription(),
                                         integration.getCategory(),
                                         integration.getSource(),
-                                        integration.getTags()));
+                                        integration.getTags(),
+                                        integration.getDocumentId()));
                 this.client.execute(
                         IndexCustomLogTypeAction.INSTANCE,
                         internalRequest,
                         new ActionListener<IndexCustomLogTypeResponse>() {
                             @Override
                             public void onResponse(IndexCustomLogTypeResponse response) {
-                                log.info("Successfully indexed custom integration with id: {}", response.getId());
+                                log.info(
+                                        "Successfully indexed custom integration with id: {}",
+                                        response.getId());
                                 listener.onResponse(
                                         new WIndexIntegrationResponse(
                                                 response.getId(),
@@ -144,11 +149,12 @@ public class WTransportIndexIntegrationAction
             }
         } else {
             // Standard integrations
+            String sapId = UUID.randomUUID().toString();
             try {
                 IndexRequest indexRequest =
                         new IndexRequest()
                                 .index(LOG_TYPE_INDEX)
-                                .id(request.getId())
+                                .id(sapId)
                                 .source(integration.toXContent());
 
                 this.client.index(

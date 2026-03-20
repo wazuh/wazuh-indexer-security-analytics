@@ -68,6 +68,8 @@ public class Integration implements Writeable, ToXContentObject {
 
     private static final String TAGS_FIELD = "tags";
 
+    private static final String DOCUMENT_ID_FIELD = "document.id";
+
     private String id;
 
     private Long version;
@@ -81,6 +83,8 @@ public class Integration implements Writeable, ToXContentObject {
     private final String source;
 
     private Map<String, Object> tags;
+
+    private final String documentId;
 
     /**
      * Constructs a new Integration with all fields.
@@ -101,6 +105,30 @@ public class Integration implements Writeable, ToXContentObject {
             String category,
             String source,
             Map<String, Object> tags) {
+        this(id, version, name, description, category, source, tags, null);
+    }
+
+    /**
+     * Constructs a new Integration with all fields including the original document ID.
+     *
+     * @param id the unique identifier for this integration
+     * @param version the version number of this integration
+     * @param name the display name of the integration
+     * @param description a description of what this integration does
+     * @param category the category this integration belongs to (must be in WAZUH_CATEGORIES)
+     * @param source the source identifier for this integration
+     * @param tags additional metadata tags for this integration
+     * @param documentId the UUID of the original document in the Content Manager plugin
+     */
+    public Integration(
+            String id,
+            Long version,
+            String name,
+            String description,
+            String category,
+            String source,
+            Map<String, Object> tags,
+            String documentId) {
         this.id = id != null ? id : "";
         this.version = version != null ? version : 1L;
         this.name = name;
@@ -108,6 +136,7 @@ public class Integration implements Writeable, ToXContentObject {
         this.category = category;
         this.source = source;
         this.tags = tags;
+        this.documentId = documentId;
     }
 
     /**
@@ -124,7 +153,8 @@ public class Integration implements Writeable, ToXContentObject {
                 sin.readString(),
                 sin.readString(),
                 sin.readString(),
-                sin.readMap());
+                sin.readMap(),
+                sin.readOptionalString());
     }
 
     /**
@@ -141,7 +171,8 @@ public class Integration implements Writeable, ToXContentObject {
                 input.get(DESCRIPTION_FIELD).toString(),
                 input.containsKey(CATEGORY_FIELD) ? input.get(CATEGORY_FIELD).toString() : null,
                 input.get(SOURCE_FIELD).toString(),
-                (Map<String, Object>) input.get(TAGS_FIELD));
+                (Map<String, Object>) input.get(TAGS_FIELD),
+                input.containsKey(DOCUMENT_ID_FIELD) ? input.get(DOCUMENT_ID_FIELD).toString() : null);
     }
 
     @Override
@@ -153,18 +184,21 @@ public class Integration implements Writeable, ToXContentObject {
         out.writeString(this.category);
         out.writeString(this.source);
         out.writeMap(this.tags);
+        out.writeOptionalString(this.documentId);
     }
 
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
-        return builder
-                .startObject()
+        builder.startObject()
                 .field(NAME_FIELD, this.name)
                 .field(DESCRIPTION_FIELD, this.description)
                 .field(CATEGORY_FIELD, this.category)
                 .field(SOURCE_FIELD, this.source)
-                .field(TAGS_FIELD, this.tags)
-                .endObject();
+                .field(TAGS_FIELD, this.tags);
+        if (this.documentId != null) {
+            builder.field(DOCUMENT_ID_FIELD, this.documentId);
+        }
+        return builder.endObject();
     }
 
     /**
@@ -201,6 +235,7 @@ public class Integration implements Writeable, ToXContentObject {
         String category = null;
         String source = null;
         Map<String, Object> tags = null;
+        String documentId = null;
         List<String> rules = new ArrayList<>();
 
         XContentParserUtils.ensureExpectedToken(
@@ -225,11 +260,14 @@ public class Integration implements Writeable, ToXContentObject {
                 case TAGS_FIELD:
                     tags = xcp.map();
                     break;
+                case DOCUMENT_ID_FIELD:
+                    documentId = xcp.textOrNull();
+                    break;
                 default:
                     xcp.skipChildren();
             }
         }
-        return new Integration(id, version, name, description, category, source, tags);
+        return new Integration(id, version, name, description, category, source, tags, documentId);
     }
 
     /**
@@ -331,5 +369,14 @@ public class Integration implements Writeable, ToXContentObject {
      */
     public Map<String, Object> getTags() {
         return this.tags;
+    }
+
+    /**
+     * Gets the original document ID from the Content Manager plugin.
+     *
+     * @return the original document UUID, or null if not set
+     */
+    public String getDocumentId() {
+        return this.documentId;
     }
 }

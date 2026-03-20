@@ -75,6 +75,9 @@
           "type": "integer"
         }
       }
+    },
+    "document.id": {
+      "type": "keyword"
     }
   }
 }
