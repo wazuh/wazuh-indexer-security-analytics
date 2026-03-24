@@ -66,7 +66,7 @@ public class WIndexRuleRequest extends ActionRequest {
     private final String documentId;
 
     /** The space this rule belongs to (e.g., "draft", "test", "custom"). */
-    private final String source;
+    private final String space;
 
     /**
      * Constructs a new WIndexRuleRequest (backward-compatible, without documentId/space).
@@ -98,7 +98,7 @@ public class WIndexRuleRequest extends ActionRequest {
      * @param rule the Sigma rule YAML content
      * @param forced if true, updates the rule even if used by active detectors
      * @param documentId the UUID of the original document in the Content Manager
-     * @param source the space this rule belongs to
+     * @param space the space this rule belongs to
      */
     public WIndexRuleRequest(
             String ruleId,
@@ -108,7 +108,7 @@ public class WIndexRuleRequest extends ActionRequest {
             String rule,
             Boolean forced,
             String documentId,
-            String source) {
+            String space) {
         super();
         this.ruleId = ruleId;
         this.refreshPolicy = refreshPolicy;
@@ -117,7 +117,7 @@ public class WIndexRuleRequest extends ActionRequest {
         this.rule = rule;
         this.forced = forced;
         this.documentId = documentId;
-        this.source = source;
+        this.space = space;
     }
 
     /**
@@ -157,7 +157,7 @@ public class WIndexRuleRequest extends ActionRequest {
         out.writeString(this.rule);
         out.writeBoolean(this.forced);
         out.writeOptionalString(this.documentId);
-        out.writeOptionalString(this.source);
+        out.writeOptionalString(this.space);
     }
 
     /**
@@ -228,7 +228,7 @@ public class WIndexRuleRequest extends ActionRequest {
      *
      * @return the space name, or null if not set
      */
-    public String getSource() {
-        return this.source;
+    public String getSpace() {
+        return this.space;
     }
 }

@@ -34,7 +34,7 @@ import java.util.Map;
  * Represents a Wazuh integration configuration.
  *
  * <p>An integration defines a log type with associated metadata including name, description,
- * category, source, tags, and associated rule IDs. Integrations are used to configure how different
+ * category, space, tags, and associated rule IDs. Integrations are used to configure how different
  * log sources are processed and analyzed within Security Analytics.
  *
  * <p>This class implements {@link Writeable} for cluster serialization and {@link ToXContentObject}
@@ -64,7 +64,7 @@ public class Integration implements Writeable, ToXContentObject {
     private static final String DESCRIPTION_FIELD = "description";
 
     private static final String CATEGORY_FIELD = "category";
-    private static final String SOURCE_FIELD = "source";
+    private static final String SPACE_FIELD = "space";
 
     private static final String TAGS_FIELD = "tags";
 
@@ -80,7 +80,7 @@ public class Integration implements Writeable, ToXContentObject {
 
     private final String category;
 
-    private final String source;
+    private final String space;
 
     private Map<String, Object> tags;
 
@@ -94,7 +94,7 @@ public class Integration implements Writeable, ToXContentObject {
      * @param name the display name of the integration
      * @param description a description of what this integration does
      * @param category the category this integration belongs to (must be in WAZUH_CATEGORIES)
-     * @param source the source identifier for this integration
+     * @param space the lifecycle space for this integration
      * @param tags additional metadata tags for this integration
      */
     public Integration(
@@ -103,9 +103,9 @@ public class Integration implements Writeable, ToXContentObject {
             String name,
             String description,
             String category,
-            String source,
+            String space,
             Map<String, Object> tags) {
-        this(id, version, name, description, category, source, tags, null);
+        this(id, version, name, description, category, space, tags, null);
     }
 
     /**
@@ -116,7 +116,7 @@ public class Integration implements Writeable, ToXContentObject {
      * @param name the display name of the integration
      * @param description a description of what this integration does
      * @param category the category this integration belongs to (must be in WAZUH_CATEGORIES)
-     * @param source the source identifier for this integration
+     * @param space the lifecycle space for this integration
      * @param tags additional metadata tags for this integration
      * @param documentId the UUID of the original document in the Content Manager plugin
      */
@@ -126,7 +126,7 @@ public class Integration implements Writeable, ToXContentObject {
             String name,
             String description,
             String category,
-            String source,
+            String space,
             Map<String, Object> tags,
             String documentId) {
         this.id = id != null ? id : "";
@@ -134,7 +134,7 @@ public class Integration implements Writeable, ToXContentObject {
         this.name = name;
         this.description = description;
         this.category = category;
-        this.source = source;
+        this.space = space;
         this.tags = tags;
         this.documentId = documentId;
     }
@@ -170,7 +170,7 @@ public class Integration implements Writeable, ToXContentObject {
                 input.get(NAME_FIELD).toString(),
                 input.get(DESCRIPTION_FIELD).toString(),
                 input.containsKey(CATEGORY_FIELD) ? input.get(CATEGORY_FIELD).toString() : null,
-                input.get(SOURCE_FIELD).toString(),
+                input.get(SPACE_FIELD).toString(),
                 (Map<String, Object>) input.get(TAGS_FIELD),
                 input.containsKey(DOCUMENT_ID_FIELD) ? input.get(DOCUMENT_ID_FIELD).toString() : null);
     }
@@ -182,18 +182,19 @@ public class Integration implements Writeable, ToXContentObject {
         out.writeString(this.name);
         out.writeString(this.description);
         out.writeString(this.category);
-        out.writeString(this.source);
+        out.writeString(this.space);
         out.writeMap(this.tags);
         out.writeOptionalString(this.documentId);
     }
 
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
-        builder.startObject()
+        builder
+                .startObject()
                 .field(NAME_FIELD, this.name)
                 .field(DESCRIPTION_FIELD, this.description)
                 .field(CATEGORY_FIELD, this.category)
-                .field(SOURCE_FIELD, this.source)
+                .field(SPACE_FIELD, this.space)
                 .field(TAGS_FIELD, this.tags);
         if (this.documentId != null) {
             builder.field(DOCUMENT_ID_FIELD, this.documentId);
@@ -233,7 +234,7 @@ public class Integration implements Writeable, ToXContentObject {
         String name = null;
         String description = null;
         String category = null;
-        String source = null;
+        String space = null;
         Map<String, Object> tags = null;
         String documentId = null;
         List<String> rules = new ArrayList<>();
@@ -254,8 +255,8 @@ public class Integration implements Writeable, ToXContentObject {
                 case CATEGORY_FIELD:
                     category = xcp.textOrNull();
                     break;
-                case SOURCE_FIELD:
-                    source = xcp.text();
+                case SPACE_FIELD:
+                    space = xcp.text();
                     break;
                 case TAGS_FIELD:
                     tags = xcp.map();
@@ -267,7 +268,7 @@ public class Integration implements Writeable, ToXContentObject {
                     xcp.skipChildren();
             }
         }
-        return new Integration(id, version, name, description, category, source, tags, documentId);
+        return new Integration(id, version, name, description, category, space, tags, documentId);
     }
 
     /**
@@ -345,12 +346,12 @@ public class Integration implements Writeable, ToXContentObject {
     }
 
     /**
-     * Gets the source of the integration.
+     * Gets the lifecycle space of the integration.
      *
-     * @return the integration source
+     * @return the integration space
      */
-    public String getSource() {
-        return this.source;
+    public String getSpace() {
+        return this.space;
     }
 
     /**

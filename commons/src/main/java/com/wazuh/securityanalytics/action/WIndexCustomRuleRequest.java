@@ -37,7 +37,7 @@ public class WIndexCustomRuleRequest extends ActionRequest {
     private final String rule;
     private final Boolean forced;
     private final String documentId;
-    private final String source;
+    private final String space;
 
     public WIndexCustomRuleRequest(
             String ruleId,
@@ -57,7 +57,7 @@ public class WIndexCustomRuleRequest extends ActionRequest {
             String rule,
             Boolean forced,
             String documentId,
-            String source) {
+            String space) {
         super();
         this.ruleId = ruleId;
         this.refreshPolicy = refreshPolicy;
@@ -66,7 +66,7 @@ public class WIndexCustomRuleRequest extends ActionRequest {
         this.rule = rule;
         this.forced = forced;
         this.documentId = documentId;
-        this.source = source;
+        this.space = space;
     }
 
     public WIndexCustomRuleRequest(StreamInput sin) throws IOException {
@@ -99,7 +99,7 @@ public class WIndexCustomRuleRequest extends ActionRequest {
         out.writeString(this.rule);
         out.writeBoolean(this.forced);
         out.writeOptionalString(this.documentId);
-        out.writeOptionalString(this.source);
+        out.writeOptionalString(this.space);
     }
 
     public String getRuleId() {
@@ -130,7 +130,7 @@ public class WIndexCustomRuleRequest extends ActionRequest {
         return this.documentId;
     }
 
-    public String getSource() {
-        return this.source;
+    public String getSpace() {
+        return this.space;
     }
 }

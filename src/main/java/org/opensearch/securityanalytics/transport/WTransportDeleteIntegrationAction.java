@@ -18,7 +18,6 @@ package org.opensearch.securityanalytics.transport;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
 import org.opensearch.action.search.SearchRequest;
 import org.opensearch.action.search.SearchResponse;
 import org.opensearch.action.support.ActionFilters;
@@ -48,7 +47,7 @@ public class WTransportDeleteIntegrationAction
     private static final Logger log = LogManager.getLogger(WTransportDeleteIntegrationAction.class);
 
     private static final String DOCUMENT_ID_FIELD = "document.id";
-    private static final String SOURCE_FIELD = "source";
+    private static final String SPACE_FIELD = "space";
 
     @Inject
     public WTransportDeleteIntegrationAction(
@@ -66,7 +65,7 @@ public class WTransportDeleteIntegrationAction
             Task task,
             WDeleteIntegrationRequest request,
             ActionListener<WDeleteIntegrationResponse> listener) {
-        if (request.getDocumentId() != null && request.getSource() != null) {
+        if (request.getDocumentId() != null && request.getSpace() != null) {
             this.resolveAndDelete(request, listener);
         } else {
             this.deleteById(request.getLogTypeId(), request.getRefreshPolicy(), listener);
@@ -74,14 +73,11 @@ public class WTransportDeleteIntegrationAction
     }
 
     private void resolveAndDelete(
-            WDeleteIntegrationRequest request,
-            ActionListener<WDeleteIntegrationResponse> listener) {
+            WDeleteIntegrationRequest request, ActionListener<WDeleteIntegrationResponse> listener) {
         BoolQueryBuilder query =
                 QueryBuilders.boolQuery()
                         .must(QueryBuilders.termQuery(DOCUMENT_ID_FIELD, request.getDocumentId()))
-                        .must(
-                                QueryBuilders.termQuery(
-                                        SOURCE_FIELD + ".keyword", request.getSource()));
+                        .must(QueryBuilders.termQuery(SPACE_FIELD + ".keyword", request.getSpace()));
 
         SearchSourceBuilder searchSource = new SearchSourceBuilder().query(query).size(1);
         SearchRequest searchRequest =
@@ -95,24 +91,24 @@ public class WTransportDeleteIntegrationAction
                         SearchHit[] hits = searchResponse.getHits().getHits();
                         if (hits.length == 0) {
                             log.warn(
-                                    "No integration found with document.id [{}] and source [{}]",
+                                    "No integration found with document.id [{}] and space [{}]",
                                     request.getDocumentId(),
-                                    request.getSource());
+                                    request.getSpace());
                             listener.onFailure(
                                     new org.opensearch.OpenSearchStatusException(
                                             "Integration not found for document.id ["
                                                     + request.getDocumentId()
-                                                    + "] and source ["
-                                                    + request.getSource()
+                                                    + "] and space ["
+                                                    + request.getSpace()
                                                     + "]",
                                             org.opensearch.core.rest.RestStatus.NOT_FOUND));
                             return;
                         }
                         String resolvedId = hits[0].getId();
                         log.info(
-                                "Resolved integration document.id [{}] source [{}] to _id [{}]",
+                                "Resolved integration document.id [{}] space [{}] to _id [{}]",
                                 request.getDocumentId(),
-                                request.getSource(),
+                                request.getSpace(),
                                 resolvedId);
                         WTransportDeleteIntegrationAction.this.deleteById(
                                 resolvedId, request.getRefreshPolicy(), listener);
@@ -120,9 +116,7 @@ public class WTransportDeleteIntegrationAction
 
                     @Override
                     public void onFailure(Exception e) {
-                        log.error(
-                                "Failed to search for integration by document.id: {}",
-                                e.getMessage());
+                        log.error("Failed to search for integration by document.id: {}", e.getMessage());
                         listener.onFailure(e);
                     }
                 });
@@ -140,13 +134,10 @@ public class WTransportDeleteIntegrationAction
                 new ActionListener<DeleteCustomLogTypeResponse>() {
                     @Override
                     public void onResponse(DeleteCustomLogTypeResponse response) {
-                        log.info(
-                                "Successfully deleted integration with id: {}", response.getId());
+                        log.info("Successfully deleted integration with id: {}", response.getId());
                         listener.onResponse(
                                 new WDeleteIntegrationResponse(
-                                        response.getId(),
-                                        response.getVersion(),
-                                        response.getStatus()));
+                                        response.getId(), response.getVersion(), response.getStatus()));
                     }
 
                     @Override

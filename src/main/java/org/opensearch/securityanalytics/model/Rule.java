@@ -1,28 +1,41 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.model;
 
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.opensearch.core.ParseField;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
 import org.opensearch.core.common.io.stream.Writeable;
-import org.opensearch.core.xcontent.XContentParserUtils;
-import org.opensearch.core.ParseField;
 import org.opensearch.core.xcontent.NamedXContentRegistry;
 import org.opensearch.core.xcontent.ToXContent;
 import org.opensearch.core.xcontent.ToXContentObject;
 import org.opensearch.core.xcontent.XContentBuilder;
 import org.opensearch.core.xcontent.XContentParser;
+import org.opensearch.core.xcontent.XContentParserUtils;
 import org.opensearch.securityanalytics.rules.aggregation.AggregationItem;
 import org.opensearch.securityanalytics.rules.backend.OSQueryBackend.AggregationQueries;
 import org.opensearch.securityanalytics.rules.condition.ConditionItem;
 import org.opensearch.securityanalytics.rules.exceptions.SigmaConditionError;
 import org.opensearch.securityanalytics.rules.objects.SigmaCondition;
 import org.opensearch.securityanalytics.rules.objects.SigmaRule;
+
 import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -36,7 +49,6 @@ import java.util.stream.Collectors;
 import static org.opensearch.securityanalytics.model.Detector.LAST_UPDATE_TIME_FIELD;
 import static org.opensearch.securityanalytics.model.Detector.NO_ID;
 import static org.opensearch.securityanalytics.model.Detector.NO_VERSION;
-
 
 public class Rule implements Writeable, ToXContentObject {
 
@@ -70,25 +82,13 @@ public class Rule implements Writeable, ToXContentObject {
     public static final String AGGREGATION_QUERIES = "aggregationQueries";
 
     public static final String DOCUMENT_ID_FIELD = "document.id";
-    /**
-     * Field name representing the lifecycle "space" of the rule (for example,
-     * distinguishing pre-packaged vs custom rule spaces). This is intentionally
-     * separate from any integration "source" concepts (such as Sigma rule source).
-     *
-     * Prefer using {@link #SPACE_FIELD} in new code to avoid confusion.
-     */
-    @Deprecated
-    public static final String SOURCE_FIELD = "source";
-    /**
-     * Preferred field name constant for the rule's lifecycle space.
-     */
+
+    /** Field name for the rule lifecycle space (for example, pre-packaged vs custom). */
     public static final String SPACE_FIELD = "space";
 
-    public static final NamedXContentRegistry.Entry XCONTENT_REGISTRY = new NamedXContentRegistry.Entry(
-            Rule.class,
-            new ParseField(CATEGORY),
-            xcp -> Rule.parse(xcp, null, null)
-    );
+    public static final NamedXContentRegistry.Entry XCONTENT_REGISTRY =
+            new NamedXContentRegistry.Entry(
+                    Rule.class, new ParseField(CATEGORY), xcp -> Rule.parse(xcp, null, null));
 
     private String id;
 
@@ -132,24 +132,72 @@ public class Rule implements Writeable, ToXContentObject {
 
     private String documentId;
 
-    private String source;
+    private String space;
 
-    public Rule(String id, Long version, String title, String category, String logSource,
-                String description, List<Value> references, List<Value> tags, String level,
-                List<Value> falsePositives, String author, String status, Instant date,
-                List<Value> queries, List<Value> queryFieldNames, String rule, List<Value> aggregationQueries) {
-        this(id, version, title, category, logSource, description, references, tags, level,
-                falsePositives, author, status, date, queries, queryFieldNames, rule, aggregationQueries,
-                Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap());
+    public Rule(
+            String id,
+            Long version,
+            String title,
+            String category,
+            String logSource,
+            String description,
+            List<Value> references,
+            List<Value> tags,
+            String level,
+            List<Value> falsePositives,
+            String author,
+            String status,
+            Instant date,
+            List<Value> queries,
+            List<Value> queryFieldNames,
+            String rule,
+            List<Value> aggregationQueries) {
+        this(
+                id,
+                version,
+                title,
+                category,
+                logSource,
+                description,
+                references,
+                tags,
+                level,
+                falsePositives,
+                author,
+                status,
+                date,
+                queries,
+                queryFieldNames,
+                rule,
+                aggregationQueries,
+                Collections.emptyMap(),
+                Collections.emptyMap(),
+                Collections.emptyMap());
     }
 
-    public Rule(String id, Long version, String title, String category, String logSource,
-                String description, List<Value> references, List<Value> tags, String level,
-                List<Value> falsePositives, String author, String status, Instant date,
-                List<Value> queries, List<Value> queryFieldNames, String rule, List<Value> aggregationQueries,
-                Map<String, Object> mitre, Map<String, Object> complianceMap, Map<String, Object> metadata) {
-        this.id = id != null? id: NO_ID;
-        this.version = version != null? version: NO_VERSION;
+    public Rule(
+            String id,
+            Long version,
+            String title,
+            String category,
+            String logSource,
+            String description,
+            List<Value> references,
+            List<Value> tags,
+            String level,
+            List<Value> falsePositives,
+            String author,
+            String status,
+            Instant date,
+            List<Value> queries,
+            List<Value> queryFieldNames,
+            String rule,
+            List<Value> aggregationQueries,
+            Map<String, Object> mitre,
+            Map<String, Object> complianceMap,
+            Map<String, Object> metadata) {
+        this.id = id != null ? id : NO_ID;
+        this.version = version != null ? version : NO_VERSION;
 
         this.title = title;
         this.category = category;
@@ -176,32 +224,56 @@ public class Rule implements Writeable, ToXContentObject {
         this.metadata = metadata != null ? metadata : Collections.emptyMap();
     }
 
-    public Rule(String id, Long version, SigmaRule rule, String category,
-                List<Object> queries, List<String> queryFieldNames, String original) {
+    public Rule(
+            String id,
+            Long version,
+            SigmaRule rule,
+            String category,
+            List<Object> queries,
+            List<String> queryFieldNames,
+            String original) {
         this(
                 id,
                 version,
                 rule.getTitle(),
                 category,
-                rule.getLogSource().getCategory() != null? rule.getLogSource().getCategory():
-                        (rule.getLogSource().getProduct() != null? rule.getLogSource().getProduct(): rule.getLogSource().getService()),
+                rule.getLogSource().getCategory() != null
+                        ? rule.getLogSource().getCategory()
+                        : (rule.getLogSource().getProduct() != null
+                                ? rule.getLogSource().getProduct()
+                                : rule.getLogSource().getService()),
                 rule.getDescription(),
                 rule.getReferences().stream().map(Value::new).collect(Collectors.toList()),
-                rule.getTags().stream().map(ruleTag -> new Value(String.format(Locale.getDefault(), "%s.%s", ruleTag.getNamespace(), ruleTag.getName())))
+                rule.getTags().stream()
+                        .map(
+                                ruleTag ->
+                                        new Value(
+                                                String.format(
+                                                        Locale.getDefault(),
+                                                        "%s.%s",
+                                                        ruleTag.getNamespace(),
+                                                        ruleTag.getName())))
                         .collect(Collectors.toList()),
                 rule.getLevel().toString(),
                 rule.getFalsePositives().stream().map(Value::new).collect(Collectors.toList()),
                 rule.getAuthor(),
                 rule.getStatus().toString(),
                 Instant.ofEpochMilli(rule.getDate().getTime()),
-                queries.stream().filter(query -> !(query instanceof AggregationQueries)).map(query -> new Value(query.toString())).collect(Collectors.toList()),
+                queries.stream()
+                        .filter(query -> !(query instanceof AggregationQueries))
+                        .map(query -> new Value(query.toString()))
+                        .collect(Collectors.toList()),
                 queryFieldNames.stream().map(Value::new).collect(Collectors.toList()),
                 original,
                 // If one of the queries is AggregationQuery -> the whole rule can be considered as Agg
-                queries.stream().filter(query -> query instanceof AggregationQueries).map(it -> new Value(it.toString())).collect(Collectors.toList()),
-
+                queries.stream()
+                        .filter(query -> query instanceof AggregationQueries)
+                        .map(it -> new Value(it.toString()))
+                        .collect(Collectors.toList()),
                 rule.getMitre() != null ? rule.getMitre().toMitreMap() : Collections.emptyMap(),
-                rule.getCompliance() != null ? rule.getCompliance().toComplianceMap() : Collections.emptyMap(),
+                rule.getCompliance() != null
+                        ? rule.getCompliance().toComplianceMap()
+                        : Collections.emptyMap(),
                 rule.getMetadata() != null ? rule.getMetadata().toMap() : Collections.emptyMap());
     }
 
@@ -227,10 +299,10 @@ public class Rule implements Writeable, ToXContentObject {
                 sin.readList(Value::readFrom),
                 (Map<String, Object>) sin.readGenericValue(), // mitre
                 (Map<String, Object>) sin.readGenericValue(), // compliance
-                (Map<String, Object>) sin.readGenericValue()  // metadata
-        );
+                (Map<String, Object>) sin.readGenericValue() // metadata
+                );
         this.documentId = sin.readOptionalString();
-        this.source = sin.readOptionalString();
+        this.space = sin.readOptionalString();
     }
 
     @Override
@@ -262,7 +334,7 @@ public class Rule implements Writeable, ToXContentObject {
         out.writeGenericValue(this.complianceMap);
         out.writeGenericValue(this.metadata);
         out.writeOptionalString(this.documentId);
-        out.writeOptionalString(this.source);
+        out.writeOptionalString(this.space);
     }
 
     @Override
@@ -270,28 +342,30 @@ public class Rule implements Writeable, ToXContentObject {
         return this.createXContentBuilder(builder, params);
     }
 
-    private XContentBuilder createXContentBuilder(XContentBuilder builder, ToXContent.Params params) throws IOException {
+    private XContentBuilder createXContentBuilder(XContentBuilder builder, ToXContent.Params params)
+            throws IOException {
         builder.startObject();
         if (params.paramAsBoolean("with_type", false)) {
             builder.startObject("rule");
         }
 
-        builder.field(CATEGORY, this.category)
+        builder
+                .field(CATEGORY, this.category)
                 .field(TITLE, this.title)
                 .field(LOG_SOURCE, this.logSource)
                 .field(DESCRIPTION, this.description);
 
-        Value[] refArray = new Value[]{};
+        Value[] refArray = new Value[] {};
         refArray = this.references.toArray(refArray);
         builder.field(REFERENCES, refArray);
 
-        Value[] tagArray = new Value[]{};
+        Value[] tagArray = new Value[] {};
         tagArray = this.tags.toArray(tagArray);
         builder.field(TAGS, tagArray);
 
         builder.field(LEVEL, this.level);
 
-        Value[] falsePosArray = new Value[]{};
+        Value[] falsePosArray = new Value[] {};
         falsePosArray = this.falsePositives.toArray(falsePosArray);
         builder.field(FALSE_POSITIVES, falsePosArray);
 
@@ -299,14 +373,14 @@ public class Rule implements Writeable, ToXContentObject {
         builder.field(STATUS, this.status);
         builder.timeField(LAST_UPDATE_TIME_FIELD, this.date);
 
-        Value[] queryArray = new Value[]{};
+        Value[] queryArray = new Value[] {};
         queryArray = this.queries.toArray(queryArray);
         builder.field(QUERIES, queryArray);
-        Value[] queryFieldNamesArray = new Value[]{};
+        Value[] queryFieldNamesArray = new Value[] {};
         queryFieldNamesArray = this.queryFieldNames.toArray(queryFieldNamesArray);
         builder.field(QUERY_FIELD_NAMES, queryFieldNamesArray);
 
-        Value[] aggregationsArray = new Value[]{};
+        Value[] aggregationsArray = new Value[] {};
         aggregationsArray = this.aggregationQueries.toArray(aggregationsArray);
         builder.field(AGGREGATION_QUERIES, aggregationsArray);
 
@@ -325,8 +399,8 @@ public class Rule implements Writeable, ToXContentObject {
         if (this.documentId != null) {
             builder.field(DOCUMENT_ID_FIELD, this.documentId);
         }
-        if (this.source != null) {
-            builder.field(SOURCE_FIELD, this.source);
+        if (this.space != null) {
+            builder.field(SPACE_FIELD, this.space);
         }
 
         if (params.paramAsBoolean("with_type", false)) {
@@ -336,9 +410,11 @@ public class Rule implements Writeable, ToXContentObject {
     }
 
     public static Rule docParse(XContentParser xcp, String id, Long version) throws IOException {
-        XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.nextToken(), xcp);
+        XContentParserUtils.ensureExpectedToken(
+                XContentParser.Token.START_OBJECT, xcp.nextToken(), xcp);
         XContentParserUtils.ensureExpectedToken(XContentParser.Token.FIELD_NAME, xcp.nextToken(), xcp);
-        XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.nextToken(), xcp);
+        XContentParserUtils.ensureExpectedToken(
+                XContentParser.Token.START_OBJECT, xcp.nextToken(), xcp);
         Rule rule = Rule.parse(xcp, id, version);
         XContentParserUtils.ensureExpectedToken(XContentParser.Token.END_OBJECT, xcp.nextToken(), xcp);
 
@@ -378,9 +454,10 @@ public class Rule implements Writeable, ToXContentObject {
         Map<String, Object> compliance = Collections.emptyMap();
         Map<String, Object> metadata = Collections.emptyMap();
         String documentId = null;
-        String source = null;
+        String space = null;
 
-        XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
+        XContentParserUtils.ensureExpectedToken(
+                XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
         while (xcp.nextToken() != XContentParser.Token.END_OBJECT) {
             String fieldName = xcp.currentName();
             xcp.nextToken();
@@ -399,13 +476,15 @@ public class Rule implements Writeable, ToXContentObject {
                     description = xcp.text();
                     break;
                 case REFERENCES:
-                    XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_ARRAY, xcp.currentToken(), xcp);
+                    XContentParserUtils.ensureExpectedToken(
+                            XContentParser.Token.START_ARRAY, xcp.currentToken(), xcp);
                     while (xcp.nextToken() != XContentParser.Token.END_ARRAY) {
                         references.add(Value.parse(xcp));
                     }
                     break;
                 case TAGS:
-                    XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_ARRAY, xcp.currentToken(), xcp);
+                    XContentParserUtils.ensureExpectedToken(
+                            XContentParser.Token.START_ARRAY, xcp.currentToken(), xcp);
                     while (xcp.nextToken() != XContentParser.Token.END_ARRAY) {
                         tags.add(Value.parse(xcp));
                     }
@@ -414,7 +493,8 @@ public class Rule implements Writeable, ToXContentObject {
                     level = xcp.text();
                     break;
                 case FALSE_POSITIVES:
-                    XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_ARRAY, xcp.currentToken(), xcp);
+                    XContentParserUtils.ensureExpectedToken(
+                            XContentParser.Token.START_ARRAY, xcp.currentToken(), xcp);
                     while (xcp.nextToken() != XContentParser.Token.END_ARRAY) {
                         falsePositives.add(Value.parse(xcp));
                     }
@@ -429,13 +509,15 @@ public class Rule implements Writeable, ToXContentObject {
                     date = Instant.parse(xcp.text());
                     break;
                 case QUERIES:
-                    XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_ARRAY, xcp.currentToken(), xcp);
+                    XContentParserUtils.ensureExpectedToken(
+                            XContentParser.Token.START_ARRAY, xcp.currentToken(), xcp);
                     while (xcp.nextToken() != XContentParser.Token.END_ARRAY) {
                         queries.add(Value.parse(xcp));
                     }
                     break;
                 case QUERY_FIELD_NAMES:
-                    XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_ARRAY, xcp.currentToken(), xcp);
+                    XContentParserUtils.ensureExpectedToken(
+                            XContentParser.Token.START_ARRAY, xcp.currentToken(), xcp);
                     while (xcp.nextToken() != XContentParser.Token.END_ARRAY) {
                         queryFields.add(Value.parse(xcp));
                     }
@@ -444,7 +526,8 @@ public class Rule implements Writeable, ToXContentObject {
                     original = xcp.text();
                     break;
                 case AGGREGATION_QUERIES:
-                    XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_ARRAY, xcp.currentToken(), xcp);
+                    XContentParserUtils.ensureExpectedToken(
+                            XContentParser.Token.START_ARRAY, xcp.currentToken(), xcp);
                     while (xcp.nextToken() != XContentParser.Token.END_ARRAY) {
                         aggregationQueries.add(Value.parse(xcp));
                     }
@@ -461,38 +544,38 @@ public class Rule implements Writeable, ToXContentObject {
                 case DOCUMENT_ID_FIELD:
                     documentId = xcp.textOrNull();
                     break;
-                case SOURCE_FIELD:
-                    source = xcp.textOrNull();
+                case SPACE_FIELD:
+                    space = xcp.textOrNull();
                     break;
                 default:
                     xcp.skipChildren();
             }
         }
 
-        Rule rule = new Rule(
-                id,
-                version,
-                Objects.requireNonNull(title, "Rule Title is null"),
-                Objects.requireNonNull(category, "Rule Category is null"),
-                Objects.requireNonNull(logSource, "Rule LogSource is null"),
-                description,
-                references,
-                tags,
-                level,
-                falsePositives,
-                author,
-                status,
-                date,
-                queries,
-                queryFields,
-                Objects.requireNonNull(original, "Rule String is null"),
-                aggregationQueries,
-                mitre,
-                compliance,
-                metadata
-        );
+        Rule rule =
+                new Rule(
+                        id,
+                        version,
+                        Objects.requireNonNull(title, "Rule Title is null"),
+                        Objects.requireNonNull(category, "Rule Category is null"),
+                        Objects.requireNonNull(logSource, "Rule LogSource is null"),
+                        description,
+                        references,
+                        tags,
+                        level,
+                        falsePositives,
+                        author,
+                        status,
+                        date,
+                        queries,
+                        queryFields,
+                        Objects.requireNonNull(original, "Rule String is null"),
+                        aggregationQueries,
+                        mitre,
+                        compliance,
+                        metadata);
         rule.setDocumentId(documentId);
-        rule.setSource(source);
+        rule.setSpace(space);
         return rule;
     }
 
@@ -572,7 +655,9 @@ public class Rule implements Writeable, ToXContentObject {
         return this.queryFieldNames;
     }
 
-    public List<Value> getAggregationQueries() { return this.aggregationQueries; }
+    public List<Value> getAggregationQueries() {
+        return this.aggregationQueries;
+    }
 
     public boolean isAggregationRule() {
         return this.aggregationQueries != null && !this.aggregationQueries.isEmpty();
@@ -613,24 +698,24 @@ public class Rule implements Writeable, ToXContentObject {
      *
      * @return the space name (e.g., "draft", "test", "custom"), or null if not set
      */
-    public String getSource() {
-        return this.source;
+    public String getSpace() {
+        return this.space;
     }
 
     /**
      * Sets the space this rule belongs to.
      *
-     * @param source the space name
+     * @param space the space name
      */
-    public void setSource(String source) {
-        this.source = source;
+    public void setSpace(String space) {
+        this.space = space;
     }
 
-    public List<AggregationItem> getAggregationItemsFromRule () throws SigmaConditionError {
+    public List<AggregationItem> getAggregationItemsFromRule() throws SigmaConditionError {
         SigmaRule sigmaRule = SigmaRule.fromYaml(this.rule, true);
         // TODO: Check if there are cx errors from the rule created and throw errors
         List<AggregationItem> aggregationItems = new ArrayList<>();
-        for (SigmaCondition condition: sigmaRule.getDetection().getParsedCondition()) {
+        for (SigmaCondition condition : sigmaRule.getDetection().getParsedCondition()) {
             Pair<ConditionItem, AggregationItem> parsedItems = condition.parsed();
             AggregationItem aggItem = parsedItems.getRight();
             aggItem.setTimeframe(sigmaRule.getDetection().getTimeframe());
