@@ -29,13 +29,13 @@ import org.opensearch.commons.alerting.model.DocLevelQuery;
 import org.opensearch.commons.alerting.model.Finding;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.securityanalytics.config.monitors.DetectorMonitorConfig;
+import org.opensearch.securityanalytics.model.LOG_CATEGORY;
 import org.opensearch.securityanalytics.model.Rule;
 import org.opensearch.transport.client.Client;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Enriches Alerting findings with the full triggering event source and Sigma rule metadata, then
@@ -49,19 +49,6 @@ public class WazuhEnrichedFindingService {
     private static final Logger log = LogManager.getLogger(WazuhEnrichedFindingService.class);
 
     private static final String DEFAULT_CATEGORY = "unclassified";
-
-    // spotless:off
-    private static final Set<String> VALID_CATEGORIES = Set.of(
-        "access-management",
-        "applications",
-        "cloud-services",
-        "network-activity",
-        "other",
-        "security",
-        "system-activity",
-        "unclassified"
-    );
-    // spotless:on
 
     private final Client client;
     private final TimeValue indexTimeout;
@@ -100,7 +87,7 @@ public class WazuhEnrichedFindingService {
                 docId,
                 ActionListener.wrap(
                         eventSource -> {
-                            String category = resolveCategory(eventSource);
+                            String category = WazuhEnrichedFindingService.resolveCategory(eventSource);
                             this.fetchRuleMetadataAndIndex(finding, category, eventSource);
                         },
                         e -> {
@@ -158,7 +145,7 @@ public class WazuhEnrichedFindingService {
             return DEFAULT_CATEGORY;
         }
         String category = categoryObj.toString();
-        return VALID_CATEGORIES.contains(category) ? category : DEFAULT_CATEGORY;
+        return LOG_CATEGORY.isValidCategory(category) ? category : DEFAULT_CATEGORY;
     }
 
     // ── Step 2: fetch rule metadata, then build and index ────────────────────
