@@ -29,13 +29,16 @@ import org.opensearch.commons.alerting.model.DocLevelQuery;
 import org.opensearch.commons.alerting.model.Finding;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.securityanalytics.config.monitors.DetectorMonitorConfig;
+import org.opensearch.securityanalytics.model.LOG_CATEGORY;
 import org.opensearch.securityanalytics.model.Rule;
 import org.opensearch.transport.client.Client;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Enriches Alerting findings with the full triggering event source and Sigma rule metadata, then
@@ -48,18 +51,11 @@ public class WazuhEnrichedFindingService {
 
     private static final Logger log = LogManager.getLogger(WazuhEnrichedFindingService.class);
 
-    // spotless:off
-    private static final Set<String> VALID_CATEGORIES = Set.of(
-        "access-management",
-        "applications",
-        "cloud-services",
-        "network-activity",
-        "other",
-        "security",
-        "system-activity",
-        "unclassified"
-    );
-    // spotless:on
+    /** Valid base categories derived from {@link LOG_CATEGORY}. */
+    private static final Set<String> VALID_CATEGORIES =
+            Arrays.stream(LOG_CATEGORY.values())
+                    .map(LOG_CATEGORY::getLowerCaseName)
+                    .collect(Collectors.toUnmodifiableSet());
 
     private final Client client;
     private final TimeValue indexTimeout;
