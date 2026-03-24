@@ -35,6 +35,7 @@ import org.opensearch.transport.client.Client;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Enriches Alerting findings with the full triggering event source and Sigma rule metadata, then
@@ -46,6 +47,21 @@ import java.util.Map;
 public class WazuhEnrichedFindingService {
 
     private static final Logger log = LogManager.getLogger(WazuhEnrichedFindingService.class);
+
+    private static final String DEFAULT_CATEGORY = "unclassified";
+
+    // spotless:off
+    private static final Set<String> VALID_CATEGORIES = Set.of(
+        "access-management",
+        "applications",
+        "cloud-services",
+        "network-activity",
+        "other",
+        "security",
+        "system-activity",
+        "unclassified"
+    );
+    // spotless:on
 
     private final Client client;
     private final TimeValue indexTimeout;
@@ -83,7 +99,10 @@ public class WazuhEnrichedFindingService {
                 sourceIndex,
                 docId,
                 ActionListener.wrap(
-                        eventSource -> this.fetchRuleMetadataAndIndex(finding, logType, eventSource),
+                        eventSource -> {
+                            String category = resolveCategory(eventSource);
+                            this.fetchRuleMetadataAndIndex(finding, category, eventSource);
+                        },
                         e -> {
                             log.warn(
                                     "Failed to fetch triggering event {}/{} for finding {}, indexing without event source",
@@ -91,7 +110,7 @@ public class WazuhEnrichedFindingService {
                                     docId,
                                     finding.getId(),
                                     e);
-                            this.fetchRuleMetadataAndIndex(finding, logType, Map.of());
+                            this.fetchRuleMetadataAndIndex(finding, DEFAULT_CATEGORY, Map.of());
                         }));
     }
 
@@ -115,6 +134,31 @@ public class WazuhEnrichedFindingService {
                             }
                         },
                         listener::onFailure));
+    }
+
+    // ── Category resolution ─────────────────────────────────────────────────
+
+    /**
+     * Extracts the findings category from the triggering event's {@code wazuh.integration.category}
+     * field. Falls back to {@link #DEFAULT_CATEGORY} when the field is missing or contains an
+     * unrecognised value.
+     */
+    @SuppressWarnings("unchecked")
+    private static String resolveCategory(Map<String, Object> eventSource) {
+        Object wazuhObj = eventSource.get("wazuh");
+        if (!(wazuhObj instanceof Map)) {
+            return DEFAULT_CATEGORY;
+        }
+        Object integrationObj = ((Map<String, Object>) wazuhObj).get("integration");
+        if (!(integrationObj instanceof Map)) {
+            return DEFAULT_CATEGORY;
+        }
+        Object categoryObj = ((Map<String, Object>) integrationObj).get("category");
+        if (categoryObj == null) {
+            return DEFAULT_CATEGORY;
+        }
+        String category = categoryObj.toString();
+        return VALID_CATEGORIES.contains(category) ? category : DEFAULT_CATEGORY;
     }
 
     // ── Step 2: fetch rule metadata, then build and index ────────────────────
@@ -225,7 +269,7 @@ public class WazuhEnrichedFindingService {
 
         Object mitre = nested.get("mitre");
         if (mitre != null) {
-            rule.put("mitre", compliance);
+            rule.put("mitre", mitre);
         }
 
         return rule;
