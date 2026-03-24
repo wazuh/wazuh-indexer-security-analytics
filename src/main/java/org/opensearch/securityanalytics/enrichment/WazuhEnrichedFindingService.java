@@ -43,10 +43,10 @@ import java.util.stream.Collectors;
 
 /**
  * Enriches Alerting findings with the full triggering event source and Sigma rule metadata, then
- * indexes the result into {@code wazuh-findings-v5-{logtype}-*}.
+ * indexes the result into {@code wazuh-findings-v5-{category}-*}.
  *
  * <p>Enrichment is fire-and-forget: failures are logged at WARN level and never propagate to the
- * caller. The existing {@code .opensearch-sap-{logtype}-findings-*} write path is unaffected.
+ * caller. The existing {@code .opensearch-sap-{category}-findings-*} write path is unaffected.
  */
 public class WazuhEnrichedFindingService {
 
@@ -76,7 +76,7 @@ public class WazuhEnrichedFindingService {
      * Entry point. Called from {@code TransportCorrelateFindingAction} after the detector is
      * resolved. All work is async; the caller is not blocked.
      */
-    public void enrich(Finding finding, String logType) {
+    public void enrich(Finding finding) {
         if (!this.enabled) {
             return;
         }
@@ -95,7 +95,7 @@ public class WazuhEnrichedFindingService {
                 docId,
                 ActionListener.wrap(
                         eventSource -> {
-                            String category = resolveCategory(eventSource);
+                            String category = WazuhEnrichedFindingService.resolveCategory(eventSource);
                             if (category == null) {
                                 log.warn(
                                         "No valid wazuh.integration.category in event {}/{} for finding {}, skipping enrichment",
@@ -141,8 +141,8 @@ public class WazuhEnrichedFindingService {
 
     /**
      * Extracts the findings category from the triggering event's {@code wazuh.integration.category}
-     * field. Returns {@code null} when the field is missing or contains an unrecognised value,
-     * signalling that enrichment should be skipped for this event.
+     * field. Returns {@code null} when the field is missing or contains an unrecognized value,
+     * signaling that enrichment should be skipped for this event.
      */
     @SuppressWarnings("unchecked")
     private static String resolveCategory(Map<String, Object> eventSource) {
@@ -165,10 +165,10 @@ public class WazuhEnrichedFindingService {
     // ── Step 2: fetch rule metadata, then build and index ────────────────────
 
     private void fetchRuleMetadataAndIndex(
-            Finding finding, String logType, Map<String, Object> eventSource) {
+            Finding finding, String category, Map<String, Object> eventSource) {
         List<DocLevelQuery> queries = finding.getDocLevelQueries();
         if (queries.isEmpty()) {
-            this.buildAndIndex(finding, logType, eventSource, null, Map.of());
+            this.buildAndIndex(finding, category, eventSource, null, Map.of());
             return;
         }
 
@@ -184,14 +184,14 @@ public class WazuhEnrichedFindingService {
                 ActionListener.wrap(
                         response -> {
                             Map<String, Object> ruleMetadata = this.extractFirstHit(response);
-                            this.buildAndIndex(finding, logType, eventSource, primaryQuery, ruleMetadata);
+                            this.buildAndIndex(finding, category, eventSource, primaryQuery, ruleMetadata);
                         },
                         e -> {
                             log.warn(
                                     "Failed to fetch rule metadata for rule {}, indexing without rule fields",
                                     ruleId,
                                     e);
-                            this.buildAndIndex(finding, logType, eventSource, primaryQuery, Map.of());
+                            this.buildAndIndex(finding, category, eventSource, primaryQuery, Map.of());
                         }));
     }
 
@@ -209,7 +209,7 @@ public class WazuhEnrichedFindingService {
     @SuppressWarnings("unchecked")
     private void buildAndIndex(
             Finding finding,
-            String logType,
+            String category,
             Map<String, Object> eventSource,
             DocLevelQuery primaryQuery,
             Map<String, Object> ruleMetadata) {
@@ -235,7 +235,7 @@ public class WazuhEnrichedFindingService {
             doc.put("rule", this.buildRuleObject(primaryQuery, ruleMetadata));
         }
 
-        this.indexEnrichedFinding(logType, doc);
+        this.indexEnrichedFinding(category, doc);
     }
 
     @SuppressWarnings("unchecked")
@@ -276,10 +276,10 @@ public class WazuhEnrichedFindingService {
         return rule;
     }
 
-    // ── Step 4: index to wazuh-findings-v5-{logtype}-* ───────────────────────
+    // ── Step 4: index to wazuh-findings-v5-{category}-* ───────────────────────
 
-    private void indexEnrichedFinding(String logType, Map<String, Object> document) {
-        String alias = DetectorMonitorConfig.getWazuhFindingsIndex(logType);
+    private void indexEnrichedFinding(String category, Map<String, Object> document) {
+        String alias = DetectorMonitorConfig.getWazuhFindingsIndex(category);
 
         IndexRequest request =
                 new IndexRequest(alias)
