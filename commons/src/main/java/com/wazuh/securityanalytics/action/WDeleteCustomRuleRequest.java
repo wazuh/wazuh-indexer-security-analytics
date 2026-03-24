@@ -54,12 +54,11 @@ public class WDeleteCustomRuleRequest extends ActionRequest {
 
     public WDeleteCustomRuleRequest(StreamInput sin) throws IOException {
         this(
-            sin.readString(),
-            WriteRequest.RefreshPolicy.readFrom(sin),
-            sin.readBoolean(),
-            sin.readOptionalString(),
-            sin.readOptionalString()
-        );
+                sin.readString(),
+                WriteRequest.RefreshPolicy.readFrom(sin),
+                sin.readBoolean(),
+                sin.readOptionalString(),
+                sin.readOptionalString());
     }
 
     @Override
@@ -67,11 +66,10 @@ public class WDeleteCustomRuleRequest extends ActionRequest {
         ActionRequestValidationException validationException = null;
         if ((this.ruleId == null || this.ruleId.isEmpty())
                 && ((this.documentId == null || this.documentId.isEmpty())
-                    || (this.source == null || this.source.isEmpty()))) {
-            validationException = addValidationError(
-                "Either ruleId or both documentId and source must be provided",
-                validationException
-            );
+                        || (this.source == null || this.source.isEmpty()))) {
+            validationException =
+                    addValidationError(
+                            "Either ruleId or both documentId and source must be provided", validationException);
         }
         return validationException;
     }

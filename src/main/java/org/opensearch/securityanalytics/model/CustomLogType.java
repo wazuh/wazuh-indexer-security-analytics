@@ -1,15 +1,27 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.model;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.opensearch.core.ParseField;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
 import org.opensearch.core.common.io.stream.Writeable;
-import org.opensearch.core.ParseField;
 import org.opensearch.core.xcontent.NamedXContentRegistry;
 import org.opensearch.core.xcontent.ToXContentObject;
 import org.opensearch.core.xcontent.XContentBuilder;
@@ -28,16 +40,16 @@ public class CustomLogType implements Writeable, ToXContentObject {
 
     private static final Logger log = LogManager.getLogger(CustomLogType.class);
 
-    public static final List<String> VALID_LOG_CATEGORIES = List.of(
-            "Access Management",
-            "Applications",
-            "Cloud Services",
-            "Network Activity",
-            "Security",
-            "System Activity",
-            "Other",
-            "Unclassified"
-    );
+    public static final List<String> VALID_LOG_CATEGORIES =
+            List.of(
+                    "Access Management",
+                    "Applications",
+                    "Cloud Services",
+                    "Network Activity",
+                    "Security",
+                    "System Activity",
+                    "Other",
+                    "Unclassified");
 
     public static final String CUSTOM_LOG_TYPE_ID_FIELD = "custom_logtype_id";
 
@@ -68,35 +80,37 @@ public class CustomLogType implements Writeable, ToXContentObject {
 
     private String documentId;
 
-    public static final NamedXContentRegistry.Entry XCONTENT_REGISTRY = new NamedXContentRegistry.Entry(
-            CustomLogType.class,
-            new ParseField(CUSTOM_LOG_TYPES_FIELD),
-            xcp -> CustomLogType.parse(xcp, null, null)
-    );
+    public static final NamedXContentRegistry.Entry XCONTENT_REGISTRY =
+            new NamedXContentRegistry.Entry(
+                    CustomLogType.class,
+                    new ParseField(CUSTOM_LOG_TYPES_FIELD),
+                    xcp -> CustomLogType.parse(xcp, null, null));
 
-    public CustomLogType(String id,
-                         Long version,
-                         String name,
-                         String description,
-                         String category,
-                         String source,
-                         Map<String, Object> tags) {
+    public CustomLogType(
+            String id,
+            Long version,
+            String name,
+            String description,
+            String category,
+            String source,
+            Map<String, Object> tags) {
         this(id, version, name, description, category, source, tags, null);
     }
 
-    public CustomLogType(String id,
-                         Long version,
-                         String name,
-                         String description,
-                         String category,
-                         String source,
-                         Map<String, Object> tags,
-                         String documentId) {
+    public CustomLogType(
+            String id,
+            Long version,
+            String name,
+            String description,
+            String category,
+            String source,
+            Map<String, Object> tags,
+            String documentId) {
         this.id = id != null ? id : NO_ID;
         this.version = version != null ? version : NO_VERSION;
         this.name = name;
         this.description = description;
-        this.category = category != null? category: "Other";
+        this.category = category != null ? category : "Other";
         this.source = source;
         this.tags = tags;
         this.documentId = documentId;
@@ -111,8 +125,7 @@ public class CustomLogType implements Writeable, ToXContentObject {
                 sin.readString(),
                 sin.readString(),
                 sin.readMap(),
-                sin.readOptionalString()
-        );
+                sin.readOptionalString());
     }
 
     @SuppressWarnings("unchecked")
@@ -122,11 +135,10 @@ public class CustomLogType implements Writeable, ToXContentObject {
                 null,
                 input.get(NAME_FIELD).toString(),
                 input.get(DESCRIPTION_FIELD).toString(),
-                input.containsKey(CATEGORY_FIELD)? input.get(CATEGORY_FIELD).toString(): null,
+                input.containsKey(CATEGORY_FIELD) ? input.get(CATEGORY_FIELD).toString() : null,
                 input.get(SOURCE_FIELD).toString(),
                 (Map<String, Object>) input.get(TAGS_FIELD),
-                input.containsKey(DOCUMENT_ID_FIELD) ? input.get(DOCUMENT_ID_FIELD).toString() : null
-        );
+                input.containsKey(DOCUMENT_ID_FIELD) ? input.get(DOCUMENT_ID_FIELD).toString() : null);
     }
 
     @Override
@@ -143,7 +155,8 @@ public class CustomLogType implements Writeable, ToXContentObject {
 
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
-        builder.startObject()
+        builder
+                .startObject()
                 .field(NAME_FIELD, this.name)
                 .field(DESCRIPTION_FIELD, this.description)
                 .field(CATEGORY_FIELD, this.category)
@@ -155,7 +168,8 @@ public class CustomLogType implements Writeable, ToXContentObject {
         return builder.endObject();
     }
 
-    public static CustomLogType parse(XContentParser xcp, String id, Long version) throws IOException {
+    public static CustomLogType parse(XContentParser xcp, String id, Long version)
+            throws IOException {
         if (id == null) {
             id = NO_ID;
         }
@@ -170,7 +184,8 @@ public class CustomLogType implements Writeable, ToXContentObject {
         Map<String, Object> tags = null;
         String documentId = null;
 
-        XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
+        XContentParserUtils.ensureExpectedToken(
+                XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
         while (xcp.nextToken() != XContentParser.Token.END_OBJECT) {
             String fieldName = xcp.currentName();
             xcp.nextToken();

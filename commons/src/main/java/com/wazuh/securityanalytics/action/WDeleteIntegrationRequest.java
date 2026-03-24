@@ -37,7 +37,11 @@ public class WDeleteIntegrationRequest extends ActionRequest {
         this(logTypeId, refreshPolicy, null, null);
     }
 
-    public WDeleteIntegrationRequest(String logTypeId, WriteRequest.RefreshPolicy refreshPolicy, String documentId, String source) {
+    public WDeleteIntegrationRequest(
+            String logTypeId,
+            WriteRequest.RefreshPolicy refreshPolicy,
+            String documentId,
+            String source) {
         this.logTypeId = logTypeId;
         this.refreshPolicy = refreshPolicy;
         this.documentId = documentId;
@@ -45,7 +49,11 @@ public class WDeleteIntegrationRequest extends ActionRequest {
     }
 
     public WDeleteIntegrationRequest(StreamInput sin) throws IOException {
-        this(sin.readString(), WriteRequest.RefreshPolicy.readFrom(sin), sin.readOptionalString(), sin.readOptionalString());
+        this(
+                sin.readString(),
+                WriteRequest.RefreshPolicy.readFrom(sin),
+                sin.readOptionalString(),
+                sin.readOptionalString());
     }
 
     @Override
@@ -68,20 +76,15 @@ public class WDeleteIntegrationRequest extends ActionRequest {
         }
 
         if (!hasDocumentId && !hasSource) {
-            validationException = addValidationError(
-                "logTypeId or (documentId and source) is required",
-                validationException
-            );
+            validationException =
+                    addValidationError(
+                            "logTypeId or (documentId and source) is required", validationException);
         } else if (hasDocumentId && !hasSource) {
-            validationException = addValidationError(
-                "source is required when documentId is provided",
-                validationException
-            );
+            validationException =
+                    addValidationError("source is required when documentId is provided", validationException);
         } else if (!hasDocumentId && hasSource) {
-            validationException = addValidationError(
-                "documentId is required when source is provided",
-                validationException
-            );
+            validationException =
+                    addValidationError("documentId is required when source is provided", validationException);
         }
         return validationException;
     }

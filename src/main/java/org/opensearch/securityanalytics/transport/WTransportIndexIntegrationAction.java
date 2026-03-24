@@ -126,9 +126,7 @@ public class WTransportIndexIntegrationAction
                         new ActionListener<IndexCustomLogTypeResponse>() {
                             @Override
                             public void onResponse(IndexCustomLogTypeResponse response) {
-                                log.info(
-                                        "Successfully indexed custom integration with id: {}",
-                                        response.getId());
+                                log.info("Successfully indexed custom integration with id: {}", response.getId());
                                 listener.onResponse(
                                         new WIndexIntegrationResponse(
                                                 response.getId(),
@@ -152,10 +150,7 @@ public class WTransportIndexIntegrationAction
             String sapId = UUID.randomUUID().toString();
             try {
                 IndexRequest indexRequest =
-                        new IndexRequest()
-                                .index(LOG_TYPE_INDEX)
-                                .id(sapId)
-                                .source(integration.toXContent());
+                        new IndexRequest().index(LOG_TYPE_INDEX).id(sapId).source(integration.toXContent());
 
                 this.client.index(
                         indexRequest,

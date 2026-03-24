@@ -18,7 +18,6 @@ package org.opensearch.securityanalytics.transport;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
 import org.opensearch.action.search.SearchRequest;
 import org.opensearch.action.search.SearchResponse;
 import org.opensearch.action.support.ActionFilters;
@@ -74,14 +73,11 @@ public class WTransportDeleteIntegrationAction
     }
 
     private void resolveAndDelete(
-            WDeleteIntegrationRequest request,
-            ActionListener<WDeleteIntegrationResponse> listener) {
+            WDeleteIntegrationRequest request, ActionListener<WDeleteIntegrationResponse> listener) {
         BoolQueryBuilder query =
                 QueryBuilders.boolQuery()
                         .must(QueryBuilders.termQuery(DOCUMENT_ID_FIELD, request.getDocumentId()))
-                        .must(
-                                QueryBuilders.termQuery(
-                                        SOURCE_FIELD + ".keyword", request.getSource()));
+                        .must(QueryBuilders.termQuery(SOURCE_FIELD + ".keyword", request.getSource()));
 
         SearchSourceBuilder searchSource = new SearchSourceBuilder().query(query).size(1);
         SearchRequest searchRequest =
@@ -120,9 +116,7 @@ public class WTransportDeleteIntegrationAction
 
                     @Override
                     public void onFailure(Exception e) {
-                        log.error(
-                                "Failed to search for integration by document.id: {}",
-                                e.getMessage());
+                        log.error("Failed to search for integration by document.id: {}", e.getMessage());
                         listener.onFailure(e);
                     }
                 });
@@ -140,13 +134,10 @@ public class WTransportDeleteIntegrationAction
                 new ActionListener<DeleteCustomLogTypeResponse>() {
                     @Override
                     public void onResponse(DeleteCustomLogTypeResponse response) {
-                        log.info(
-                                "Successfully deleted integration with id: {}", response.getId());
+                        log.info("Successfully deleted integration with id: {}", response.getId());
                         listener.onResponse(
                                 new WDeleteIntegrationResponse(
-                                        response.getId(),
-                                        response.getVersion(),
-                                        response.getStatus()));
+                                        response.getId(), response.getVersion(), response.getStatus()));
                     }
 
                     @Override

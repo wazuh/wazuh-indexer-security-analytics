@@ -18,14 +18,13 @@ package org.opensearch.securityanalytics.transport;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
+import org.apache.lucene.search.join.ScoreMode;
 import org.opensearch.action.search.SearchRequest;
 import org.opensearch.action.search.SearchResponse;
 import org.opensearch.action.support.ActionFilters;
 import org.opensearch.action.support.HandledTransportAction;
 import org.opensearch.common.inject.Inject;
 import org.opensearch.core.action.ActionListener;
-import org.apache.lucene.search.join.ScoreMode;
 import org.opensearch.index.query.QueryBuilders;
 import org.opensearch.search.SearchHit;
 import org.opensearch.search.builder.SearchSourceBuilder;
@@ -61,26 +60,18 @@ public class WTransportDeleteCustomRuleAction
 
     @Override
     protected void doExecute(
-            Task task,
-            WDeleteCustomRuleRequest request,
-            ActionListener<WDeleteRuleResponse> listener) {
+            Task task, WDeleteCustomRuleRequest request, ActionListener<WDeleteRuleResponse> listener) {
         if (request.getDocumentId() != null && request.getSpace() != null) {
             // Search by document.id + source, then delete the found document.
             this.resolveAndDelete(task, request, listener);
         } else {
             this.deleteById(
-                    task,
-                    request.getRuleId(),
-                    request.getRefreshPolicy(),
-                    request.isForced(),
-                    listener);
+                    task, request.getRuleId(), request.getRefreshPolicy(), request.isForced(), listener);
         }
     }
 
     private void resolveAndDelete(
-            Task task,
-            WDeleteCustomRuleRequest request,
-            ActionListener<WDeleteRuleResponse> listener) {
+            Task task, WDeleteCustomRuleRequest request, ActionListener<WDeleteRuleResponse> listener) {
         // Rules are stored in a nested "rule" object; query nested fields.
         SearchSourceBuilder searchSource =
                 new SearchSourceBuilder()
@@ -90,16 +81,13 @@ public class WTransportDeleteCustomRuleAction
                                         QueryBuilders.boolQuery()
                                                 .must(
                                                         QueryBuilders.termQuery(
-                                                                "rule." + Rule.DOCUMENT_ID_FIELD,
-                                                                request.getDocumentId()))
+                                                                "rule." + Rule.DOCUMENT_ID_FIELD, request.getDocumentId()))
                                                 .must(
                                                         QueryBuilders.termQuery(
-                                                                "rule." + Rule.SPACE_FIELD,
-                                                                request.getSpace())),
+                                                                "rule." + Rule.SPACE_FIELD, request.getSpace())),
                                         ScoreMode.None))
                         .size(1);
-        SearchRequest searchRequest =
-                new SearchRequest(Rule.CUSTOM_RULES_INDEX).source(searchSource);
+        SearchRequest searchRequest = new SearchRequest(Rule.CUSTOM_RULES_INDEX).source(searchSource);
 
         this.client.search(
                 searchRequest,
@@ -129,18 +117,12 @@ public class WTransportDeleteCustomRuleAction
                                 request.getSpace(),
                                 resolvedId);
                         WTransportDeleteCustomRuleAction.this.deleteById(
-                                task,
-                                resolvedId,
-                                request.getRefreshPolicy(),
-                                request.isForced(),
-                                listener);
+                                task, resolvedId, request.getRefreshPolicy(), request.isForced(), listener);
                     }
 
                     @Override
                     public void onFailure(Exception e) {
-                        log.error(
-                                "Failed to search for custom rule by document.id: {}",
-                                e.getMessage());
+                        log.error("Failed to search for custom rule by document.id: {}", e.getMessage());
                         listener.onFailure(e);
                     }
                 });
@@ -159,13 +141,10 @@ public class WTransportDeleteCustomRuleAction
                 new ActionListener<DeleteRuleResponse>() {
                     @Override
                     public void onResponse(DeleteRuleResponse response) {
-                        log.info(
-                                "Successfully deleted custom rule with id: {}", response.getId());
+                        log.info("Successfully deleted custom rule with id: {}", response.getId());
                         listener.onResponse(
                                 new WDeleteRuleResponse(
-                                        response.getId(),
-                                        response.getVersion(),
-                                        response.getStatus()));
+                                        response.getId(), response.getVersion(), response.getStatus()));
                     }
 
                     @Override

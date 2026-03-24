@@ -189,7 +189,8 @@ public class Integration implements Writeable, ToXContentObject {
 
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
-        builder.startObject()
+        builder
+                .startObject()
                 .field(NAME_FIELD, this.name)
                 .field(DESCRIPTION_FIELD, this.description)
                 .field(CATEGORY_FIELD, this.category)

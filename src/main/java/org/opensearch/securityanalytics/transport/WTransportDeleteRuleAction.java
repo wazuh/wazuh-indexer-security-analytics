@@ -18,6 +18,7 @@ package org.opensearch.securityanalytics.transport;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.lucene.search.join.ScoreMode;
 import org.opensearch.action.search.SearchRequest;
 import org.opensearch.action.search.SearchResponse;
 import org.opensearch.action.support.ActionFilters;
@@ -25,7 +26,6 @@ import org.opensearch.action.support.HandledTransportAction;
 import org.opensearch.common.inject.Inject;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.xcontent.NamedXContentRegistry;
-import org.apache.lucene.search.join.ScoreMode;
 import org.opensearch.index.query.QueryBuilders;
 import org.opensearch.search.SearchHit;
 import org.opensearch.search.builder.SearchSourceBuilder;
@@ -65,25 +65,17 @@ public class WTransportDeleteRuleAction
 
     @Override
     protected void doExecute(
-            Task task,
-            WDeleteRuleRequest request,
-            ActionListener<WDeleteRuleResponse> listener) {
+            Task task, WDeleteRuleRequest request, ActionListener<WDeleteRuleResponse> listener) {
         if (request.getDocumentId() != null && request.getSpace() != null) {
             this.resolveAndDelete(task, request, listener);
         } else {
             this.deleteById(
-                    task,
-                    request.getRuleId(),
-                    request.getRefreshPolicy(),
-                    request.isForced(),
-                    listener);
+                    task, request.getRuleId(), request.getRefreshPolicy(), request.isForced(), listener);
         }
     }
 
     private void resolveAndDelete(
-            Task task,
-            WDeleteRuleRequest request,
-            ActionListener<WDeleteRuleResponse> listener) {
+            Task task, WDeleteRuleRequest request, ActionListener<WDeleteRuleResponse> listener) {
         SearchSourceBuilder searchSource =
                 new SearchSourceBuilder()
                         .query(
@@ -92,12 +84,10 @@ public class WTransportDeleteRuleAction
                                         QueryBuilders.boolQuery()
                                                 .must(
                                                         QueryBuilders.termQuery(
-                                                                "rule." + Rule.DOCUMENT_ID_FIELD,
-                                                                request.getDocumentId()))
+                                                                "rule." + Rule.DOCUMENT_ID_FIELD, request.getDocumentId()))
                                                 .must(
                                                         QueryBuilders.termQuery(
-                                                                "rule." + Rule.SPACE_FIELD,
-                                                                request.getSpace())),
+                                                                "rule." + Rule.SPACE_FIELD, request.getSpace())),
                                         ScoreMode.None))
                         .size(1);
         SearchRequest searchRequest =
@@ -131,18 +121,12 @@ public class WTransportDeleteRuleAction
                                 request.getSpace(),
                                 resolvedId);
                         WTransportDeleteRuleAction.this.deleteById(
-                                task,
-                                resolvedId,
-                                request.getRefreshPolicy(),
-                                request.isForced(),
-                                listener);
+                                task, resolvedId, request.getRefreshPolicy(), request.isForced(), listener);
                     }
 
                     @Override
                     public void onFailure(Exception e) {
-                        log.error(
-                                "Failed to search for pre-packaged rule by document.id: {}",
-                                e.getMessage());
+                        log.error("Failed to search for pre-packaged rule by document.id: {}", e.getMessage());
                         listener.onFailure(e);
                     }
                 });
@@ -164,9 +148,7 @@ public class WTransportDeleteRuleAction
                         log.info("Successfully deleted rule with id: {}", response.getId());
                         listener.onResponse(
                                 new WDeleteRuleResponse(
-                                        response.getId(),
-                                        response.getVersion(),
-                                        response.getStatus()));
+                                        response.getId(), response.getVersion(), response.getStatus()));
                     }
 
                     @Override

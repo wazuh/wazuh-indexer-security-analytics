@@ -54,12 +54,11 @@ public class WDeleteRuleRequest extends ActionRequest {
 
     public WDeleteRuleRequest(StreamInput sin) throws IOException {
         this(
-            sin.readString(),
-            WriteRequest.RefreshPolicy.readFrom(sin),
-            sin.readBoolean(),
-            sin.readOptionalString(),
-            sin.readOptionalString()
-        );
+                sin.readString(),
+                WriteRequest.RefreshPolicy.readFrom(sin),
+                sin.readBoolean(),
+                sin.readOptionalString(),
+                sin.readOptionalString());
     }
 
     @Override
@@ -72,10 +71,8 @@ public class WDeleteRuleRequest extends ActionRequest {
 
         // Require either a ruleId, or both documentId and source
         if (ruleIdMissing && (documentIdMissing || sourceMissing)) {
-            validationException = addValidationError(
-                "ruleId or (documentId and source) is required",
-                validationException
-            );
+            validationException =
+                    addValidationError("ruleId or (documentId and source) is required", validationException);
         }
         return validationException;
     }
