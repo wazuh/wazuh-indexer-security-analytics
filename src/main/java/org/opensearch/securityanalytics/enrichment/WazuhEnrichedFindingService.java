@@ -18,6 +18,7 @@ package org.opensearch.securityanalytics.enrichment;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.opensearch.action.DocWriteRequest;
 import org.opensearch.action.get.MultiGetItemResponse;
 import org.opensearch.action.get.MultiGetRequest;
 import org.opensearch.action.get.MultiGetResponse;
@@ -96,7 +97,7 @@ public class WazuhEnrichedFindingService {
                         eventSource -> {
                             String category = resolveCategory(eventSource);
                             if (category == null) {
-                                log.debug(
+                                log.warn(
                                         "No valid wazuh.integration.category in event {}/{} for finding {}, skipping enrichment",
                                         sourceIndex,
                                         docId,
@@ -281,7 +282,10 @@ public class WazuhEnrichedFindingService {
         String alias = DetectorMonitorConfig.getWazuhFindingsIndex(logType);
 
         IndexRequest request =
-                new IndexRequest(alias).source(document, XContentType.JSON).timeout(this.indexTimeout);
+                new IndexRequest(alias)
+                        .source(document, XContentType.JSON)
+                        .opType(DocWriteRequest.OpType.CREATE)
+                        .timeout(this.indexTimeout);
 
         this.client.index(
                 request,
