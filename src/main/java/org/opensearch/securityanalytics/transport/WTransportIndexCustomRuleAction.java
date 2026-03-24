@@ -62,7 +62,7 @@ public class WTransportIndexCustomRuleAction
                         request.getRule(),
                         request.isForced(),
                         request.getDocumentId(),
-                        request.getSource());
+                        request.getSpace());
         this.client.execute(
                 IndexRuleAction.INSTANCE,
                 internalRequest,

@@ -64,7 +64,7 @@ public class WTransportDeleteCustomRuleAction
             Task task,
             WDeleteCustomRuleRequest request,
             ActionListener<WDeleteRuleResponse> listener) {
-        if (request.getDocumentId() != null && request.getSource() != null) {
+        if (request.getDocumentId() != null && request.getSpace() != null) {
             // Search by document.id + source, then delete the found document.
             this.resolveAndDelete(task, request, listener);
         } else {
@@ -94,8 +94,8 @@ public class WTransportDeleteCustomRuleAction
                                                                 request.getDocumentId()))
                                                 .must(
                                                         QueryBuilders.termQuery(
-                                                                "rule." + Rule.SOURCE_FIELD,
-                                                                request.getSource())),
+                                                                "rule." + Rule.SPACE_FIELD,
+                                                                request.getSpace())),
                                         ScoreMode.None))
                         .size(1);
         SearchRequest searchRequest =
@@ -109,24 +109,24 @@ public class WTransportDeleteCustomRuleAction
                         SearchHit[] hits = searchResponse.getHits().getHits();
                         if (hits.length == 0) {
                             log.warn(
-                                    "No custom rule found with document.id [{}] and source [{}]",
+                                    "No custom rule found with document.id [{}] and space [{}]",
                                     request.getDocumentId(),
-                                    request.getSource());
+                                    request.getSpace());
                             listener.onFailure(
                                     new org.opensearch.OpenSearchStatusException(
                                             "Rule not found for document.id ["
                                                     + request.getDocumentId()
-                                                    + "] and source ["
-                                                    + request.getSource()
+                                                    + "] and space ["
+                                                    + request.getSpace()
                                                     + "]",
                                             org.opensearch.core.rest.RestStatus.NOT_FOUND));
                             return;
                         }
                         String resolvedId = hits[0].getId();
                         log.info(
-                                "Resolved custom rule document.id [{}] source [{}] to _id [{}]",
+                                "Resolved custom rule document.id [{}] space [{}] to _id [{}]",
                                 request.getDocumentId(),
-                                request.getSource(),
+                                request.getSpace(),
                                 resolvedId);
                         WTransportDeleteCustomRuleAction.this.deleteById(
                                 task,

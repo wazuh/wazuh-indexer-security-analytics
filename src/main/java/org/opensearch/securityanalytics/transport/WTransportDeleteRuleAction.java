@@ -68,7 +68,7 @@ public class WTransportDeleteRuleAction
             Task task,
             WDeleteRuleRequest request,
             ActionListener<WDeleteRuleResponse> listener) {
-        if (request.getDocumentId() != null && request.getSource() != null) {
+        if (request.getDocumentId() != null && request.getSpace() != null) {
             this.resolveAndDelete(task, request, listener);
         } else {
             this.deleteById(
@@ -96,8 +96,8 @@ public class WTransportDeleteRuleAction
                                                                 request.getDocumentId()))
                                                 .must(
                                                         QueryBuilders.termQuery(
-                                                                "rule." + Rule.SOURCE_FIELD,
-                                                                request.getSource())),
+                                                                "rule." + Rule.SPACE_FIELD,
+                                                                request.getSpace())),
                                         ScoreMode.None))
                         .size(1);
         SearchRequest searchRequest =
@@ -111,24 +111,24 @@ public class WTransportDeleteRuleAction
                         SearchHit[] hits = searchResponse.getHits().getHits();
                         if (hits.length == 0) {
                             log.warn(
-                                    "No pre-packaged rule found with document.id [{}] and source [{}]",
+                                    "No pre-packaged rule found with document.id [{}] and space [{}]",
                                     request.getDocumentId(),
-                                    request.getSource());
+                                    request.getSpace());
                             listener.onFailure(
                                     new org.opensearch.OpenSearchStatusException(
                                             "Rule not found for document.id ["
                                                     + request.getDocumentId()
-                                                    + "] and source ["
-                                                    + request.getSource()
+                                                    + "] and space ["
+                                                    + request.getSpace()
                                                     + "]",
                                             org.opensearch.core.rest.RestStatus.NOT_FOUND));
                             return;
                         }
                         String resolvedId = hits[0].getId();
                         log.info(
-                                "Resolved pre-packaged rule document.id [{}] source [{}] to _id [{}]",
+                                "Resolved pre-packaged rule document.id [{}] space [{}] to _id [{}]",
                                 request.getDocumentId(),
-                                request.getSource(),
+                                request.getSpace(),
                                 resolvedId);
                         WTransportDeleteRuleAction.this.deleteById(
                                 task,

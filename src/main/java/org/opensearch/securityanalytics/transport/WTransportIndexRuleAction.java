@@ -253,7 +253,7 @@ public class WTransportIndexRuleAction
                                 new ArrayList<>(queryFieldNames),
                                 ruleStr);
                 rule.setDocumentId(this.request.getDocumentId());
-                rule.setSource(this.request.getSource());
+                rule.setSpace(this.request.getSpace());
 
                 this.indexRule(rule, fieldMappings);
 

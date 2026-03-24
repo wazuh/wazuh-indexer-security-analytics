@@ -223,7 +223,7 @@ public class TransportIndexRuleAction extends HandledTransportAction<IndexRuleRe
                                     rule
                             );
                             ruleDoc.setDocumentId(AsyncIndexRulesAction.this.request.getDocumentId());
-                            ruleDoc.setSource(AsyncIndexRulesAction.this.request.getSource());
+                            ruleDoc.setSpace(AsyncIndexRulesAction.this.request.getSpace());
                             AsyncIndexRulesAction.this.indexRule(ruleDoc, fieldMappings);
                         } catch (IOException | SigmaError | CompositeSigmaErrors e) {
                             AsyncIndexRulesAction.this.onFailures(e);

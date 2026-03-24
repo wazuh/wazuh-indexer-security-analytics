@@ -70,18 +70,6 @@ public class Rule implements Writeable, ToXContentObject {
     public static final String AGGREGATION_QUERIES = "aggregationQueries";
 
     public static final String DOCUMENT_ID_FIELD = "document.id";
-    /**
-     * Field name representing the lifecycle "space" of the rule (for example,
-     * distinguishing pre-packaged vs custom rule spaces). This is intentionally
-     * separate from any integration "source" concepts (such as Sigma rule source).
-     *
-     * Prefer using {@link #SPACE_FIELD} in new code to avoid confusion.
-     */
-    @Deprecated
-    public static final String SOURCE_FIELD = "source";
-    /**
-     * Preferred field name constant for the rule's lifecycle space.
-     */
     public static final String SPACE_FIELD = "space";
 
     public static final NamedXContentRegistry.Entry XCONTENT_REGISTRY = new NamedXContentRegistry.Entry(
@@ -132,7 +120,7 @@ public class Rule implements Writeable, ToXContentObject {
 
     private String documentId;
 
-    private String source;
+    private String space;
 
     public Rule(String id, Long version, String title, String category, String logSource,
                 String description, List<Value> references, List<Value> tags, String level,
@@ -230,7 +218,7 @@ public class Rule implements Writeable, ToXContentObject {
                 (Map<String, Object>) sin.readGenericValue()  // metadata
         );
         this.documentId = sin.readOptionalString();
-        this.source = sin.readOptionalString();
+        this.space = sin.readOptionalString();
     }
 
     @Override
@@ -262,7 +250,7 @@ public class Rule implements Writeable, ToXContentObject {
         out.writeGenericValue(this.complianceMap);
         out.writeGenericValue(this.metadata);
         out.writeOptionalString(this.documentId);
-        out.writeOptionalString(this.source);
+        out.writeOptionalString(this.space);
     }
 
     @Override
@@ -325,8 +313,8 @@ public class Rule implements Writeable, ToXContentObject {
         if (this.documentId != null) {
             builder.field(DOCUMENT_ID_FIELD, this.documentId);
         }
-        if (this.source != null) {
-            builder.field(SOURCE_FIELD, this.source);
+        if (this.space != null) {
+            builder.field(SPACE_FIELD, this.space);
         }
 
         if (params.paramAsBoolean("with_type", false)) {
@@ -378,7 +366,7 @@ public class Rule implements Writeable, ToXContentObject {
         Map<String, Object> compliance = Collections.emptyMap();
         Map<String, Object> metadata = Collections.emptyMap();
         String documentId = null;
-        String source = null;
+        String space = null;
 
         XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
         while (xcp.nextToken() != XContentParser.Token.END_OBJECT) {
@@ -461,8 +449,8 @@ public class Rule implements Writeable, ToXContentObject {
                 case DOCUMENT_ID_FIELD:
                     documentId = xcp.textOrNull();
                     break;
-                case SOURCE_FIELD:
-                    source = xcp.textOrNull();
+                case SPACE_FIELD:
+                    space = xcp.textOrNull();
                     break;
                 default:
                     xcp.skipChildren();
@@ -492,7 +480,7 @@ public class Rule implements Writeable, ToXContentObject {
                 metadata
         );
         rule.setDocumentId(documentId);
-        rule.setSource(source);
+        rule.setSpace(space);
         return rule;
     }
 
@@ -613,17 +601,17 @@ public class Rule implements Writeable, ToXContentObject {
      *
      * @return the space name (e.g., "draft", "test", "custom"), or null if not set
      */
-    public String getSource() {
-        return this.source;
+    public String getSpace() {
+        return this.space;
     }
 
     /**
      * Sets the space this rule belongs to.
      *
-     * @param source the space name
+     * @param space the space name
      */
-    public void setSource(String source) {
-        this.source = source;
+    public void setSpace(String space) {
+        this.space = space;
     }
 
     public List<AggregationItem> getAggregationItemsFromRule () throws SigmaConditionError {

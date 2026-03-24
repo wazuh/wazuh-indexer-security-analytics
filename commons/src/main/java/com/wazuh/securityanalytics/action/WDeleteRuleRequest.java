@@ -32,7 +32,7 @@ public class WDeleteRuleRequest extends ActionRequest {
     private final WriteRequest.RefreshPolicy refreshPolicy;
     private final Boolean forced;
     private final String documentId;
-    private final String source;
+    private final String space;
 
     public WDeleteRuleRequest(
             String ruleId, WriteRequest.RefreshPolicy refreshPolicy, Boolean forced) {
@@ -44,12 +44,12 @@ public class WDeleteRuleRequest extends ActionRequest {
             WriteRequest.RefreshPolicy refreshPolicy,
             Boolean forced,
             String documentId,
-            String source) {
+            String space) {
         this.ruleId = ruleId;
         this.refreshPolicy = refreshPolicy;
         this.forced = forced;
         this.documentId = documentId;
-        this.source = source;
+        this.space = space;
     }
 
     public WDeleteRuleRequest(StreamInput sin) throws IOException {
@@ -86,7 +86,7 @@ public class WDeleteRuleRequest extends ActionRequest {
         this.refreshPolicy.writeTo(out);
         out.writeBoolean(this.forced);
         out.writeOptionalString(this.documentId);
-        out.writeOptionalString(this.source);
+        out.writeOptionalString(this.space);
     }
 
     public String getRuleId() {
@@ -105,7 +105,7 @@ public class WDeleteRuleRequest extends ActionRequest {
         return this.documentId;
     }
 
-    public String getSource() {
-        return this.source;
+    public String getSpace() {
+        return this.space;
     }
 }
