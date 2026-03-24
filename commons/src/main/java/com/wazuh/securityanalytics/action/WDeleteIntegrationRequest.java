@@ -51,8 +51,37 @@ public class WDeleteIntegrationRequest extends ActionRequest {
     @Override
     public ActionRequestValidationException validate() {
         ActionRequestValidationException validationException = null;
-        if ((this.logTypeId == null || this.logTypeId.isEmpty()) && (this.documentId == null || this.documentId.isEmpty())) {
-            validationException = addValidationError("logTypeId or documentId is required", validationException);
+
+        boolean hasLogTypeId = this.logTypeId != null && this.logTypeId.isEmpty() == false;
+        boolean hasDocumentId = this.documentId != null && this.documentId.isEmpty() == false;
+        boolean hasSource = this.source != null && this.source.isEmpty() == false;
+
+        // Valid combinations:
+        //   - logTypeId is present (documentId/source ignored), OR
+        //   - both documentId and source are present.
+        if (hasLogTypeId) {
+            return null;
+        }
+
+        if (hasDocumentId && hasSource) {
+            return null;
+        }
+
+        if (!hasDocumentId && !hasSource) {
+            validationException = addValidationError(
+                "logTypeId or (documentId and source) is required",
+                validationException
+            );
+        } else if (hasDocumentId && !hasSource) {
+            validationException = addValidationError(
+                "source is required when documentId is provided",
+                validationException
+            );
+        } else if (!hasDocumentId && hasSource) {
+            validationException = addValidationError(
+                "documentId is required when source is provided",
+                validationException
+            );
         }
         return validationException;
     }

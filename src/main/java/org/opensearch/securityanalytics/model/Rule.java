@@ -70,7 +70,19 @@ public class Rule implements Writeable, ToXContentObject {
     public static final String AGGREGATION_QUERIES = "aggregationQueries";
 
     public static final String DOCUMENT_ID_FIELD = "document.id";
+    /**
+     * Field name representing the lifecycle "space" of the rule (for example,
+     * distinguishing pre-packaged vs custom rule spaces). This is intentionally
+     * separate from any integration "source" concepts (such as Sigma rule source).
+     *
+     * Prefer using {@link #SPACE_FIELD} in new code to avoid confusion.
+     */
+    @Deprecated
     public static final String SOURCE_FIELD = "source";
+    /**
+     * Preferred field name constant for the rule's lifecycle space.
+     */
+    public static final String SPACE_FIELD = "space";
 
     public static final NamedXContentRegistry.Entry XCONTENT_REGISTRY = new NamedXContentRegistry.Entry(
             Rule.class,

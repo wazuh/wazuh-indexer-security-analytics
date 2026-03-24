@@ -65,8 +65,13 @@ public class WDeleteCustomRuleRequest extends ActionRequest {
     @Override
     public ActionRequestValidationException validate() {
         ActionRequestValidationException validationException = null;
-        if ((this.ruleId == null || this.ruleId.isEmpty()) && (this.documentId == null || this.documentId.isEmpty())) {
-            validationException = addValidationError("ruleId is missing", validationException);
+        if ((this.ruleId == null || this.ruleId.isEmpty())
+                && ((this.documentId == null || this.documentId.isEmpty())
+                    || (this.source == null || this.source.isEmpty()))) {
+            validationException = addValidationError(
+                "Either ruleId or both documentId and source must be provided",
+                validationException
+            );
         }
         return validationException;
     }
