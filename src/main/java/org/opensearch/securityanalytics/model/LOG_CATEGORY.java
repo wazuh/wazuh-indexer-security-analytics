@@ -45,6 +45,6 @@ public enum LOG_CATEGORY {
 
     public static boolean isValidCategory(String categoryName) {
         return Arrays.stream(LOG_CATEGORY.values())
-                .anyMatch(c -> c.name().equalsIgnoreCase(categoryName));
+                .anyMatch(c -> c.getCategoryName().equalsIgnoreCase(categoryName));
     }
 }
