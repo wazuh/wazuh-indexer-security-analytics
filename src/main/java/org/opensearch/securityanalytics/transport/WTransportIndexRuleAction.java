@@ -242,7 +242,10 @@ public class WTransportIndexRuleAction
                             category);
                 }
 
-                String sapId = UUID.randomUUID().toString();
+                String sapId =
+                        this.request.getDocumentId() != null
+                                ? this.request.getDocumentId()
+                                : UUID.randomUUID().toString();
                 Rule rule =
                         new Rule(
                                 sapId,
