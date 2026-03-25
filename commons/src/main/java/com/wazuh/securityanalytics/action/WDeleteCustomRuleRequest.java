@@ -31,23 +31,45 @@ public class WDeleteCustomRuleRequest extends ActionRequest {
     private final String ruleId;
     private final WriteRequest.RefreshPolicy refreshPolicy;
     private final Boolean forced;
+    private final String documentId;
+    private final String space;
 
     public WDeleteCustomRuleRequest(
             String ruleId, WriteRequest.RefreshPolicy refreshPolicy, Boolean forced) {
+        this(ruleId, refreshPolicy, forced, null, null);
+    }
+
+    public WDeleteCustomRuleRequest(
+            String ruleId,
+            WriteRequest.RefreshPolicy refreshPolicy,
+            Boolean forced,
+            String documentId,
+            String space) {
         this.ruleId = ruleId;
         this.refreshPolicy = refreshPolicy;
         this.forced = forced;
+        this.documentId = documentId;
+        this.space = space;
     }
 
     public WDeleteCustomRuleRequest(StreamInput sin) throws IOException {
-        this(sin.readString(), WriteRequest.RefreshPolicy.readFrom(sin), sin.readBoolean());
+        this(
+                sin.readString(),
+                WriteRequest.RefreshPolicy.readFrom(sin),
+                sin.readBoolean(),
+                sin.readOptionalString(),
+                sin.readOptionalString());
     }
 
     @Override
     public ActionRequestValidationException validate() {
         ActionRequestValidationException validationException = null;
-        if (this.ruleId == null || this.ruleId.isEmpty()) {
-            validationException = addValidationError("ruleId is missing", validationException);
+        if ((this.ruleId == null || this.ruleId.isEmpty())
+                && ((this.documentId == null || this.documentId.isEmpty())
+                        || (this.space == null || this.space.isEmpty()))) {
+            validationException =
+                    addValidationError(
+                            "Either ruleId or both documentId and space must be provided", validationException);
         }
         return validationException;
     }
@@ -57,6 +79,8 @@ public class WDeleteCustomRuleRequest extends ActionRequest {
         out.writeString(this.ruleId);
         this.refreshPolicy.writeTo(out);
         out.writeBoolean(this.forced);
+        out.writeOptionalString(this.documentId);
+        out.writeOptionalString(this.space);
     }
 
     public String getRuleId() {
@@ -69,5 +93,13 @@ public class WDeleteCustomRuleRequest extends ActionRequest {
 
     public Boolean isForced() {
         return this.forced;
+    }
+
+    public String getDocumentId() {
+        return this.documentId;
+    }
+
+    public String getSpace() {
+        return this.space;
     }
 }

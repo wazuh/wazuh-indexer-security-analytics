@@ -54,6 +54,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -241,15 +242,21 @@ public class WTransportIndexRuleAction
                             category);
                 }
 
+                String sapId =
+                        this.request.getDocumentId() != null
+                                ? this.request.getDocumentId()
+                                : UUID.randomUUID().toString();
                 Rule rule =
                         new Rule(
-                                parsedRule.getId().toString(),
+                                sapId,
                                 NO_VERSION,
                                 parsedRule,
                                 category,
                                 queries,
                                 new ArrayList<>(queryFieldNames),
                                 ruleStr);
+                rule.setDocumentId(this.request.getDocumentId());
+                rule.setSpace(this.request.getSpace());
 
                 this.indexRule(rule, fieldMappings);
 

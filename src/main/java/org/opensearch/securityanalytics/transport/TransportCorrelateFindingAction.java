@@ -712,7 +712,7 @@ public class TransportCorrelateFindingAction
 
         private SearchRequest getSearchLogTypeIndexRequest() {
             BoolQueryBuilder queryBuilder =
-                    QueryBuilders.boolQuery().must(QueryBuilders.existsQuery("source"));
+                    QueryBuilders.boolQuery().must(QueryBuilders.existsQuery("space"));
             SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
             searchSourceBuilder.query(queryBuilder);
             searchSourceBuilder.fetchSource(true);
