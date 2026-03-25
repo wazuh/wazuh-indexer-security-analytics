@@ -31,21 +31,26 @@ public class WDeleteIntegrationRequest extends ActionRequest {
     private final String logTypeId;
     private final WriteRequest.RefreshPolicy refreshPolicy;
     private final String documentId;
-    private final String source;
+    private final String space;
 
     public WDeleteIntegrationRequest(String logTypeId, WriteRequest.RefreshPolicy refreshPolicy) {
         this(logTypeId, refreshPolicy, null, null);
     }
 
-    public WDeleteIntegrationRequest(String logTypeId, WriteRequest.RefreshPolicy refreshPolicy, String documentId, String source) {
+    public WDeleteIntegrationRequest(
+            String logTypeId, WriteRequest.RefreshPolicy refreshPolicy, String documentId, String space) {
         this.logTypeId = logTypeId;
         this.refreshPolicy = refreshPolicy;
         this.documentId = documentId;
-        this.source = source;
+        this.space = space;
     }
 
     public WDeleteIntegrationRequest(StreamInput sin) throws IOException {
-        this(sin.readString(), WriteRequest.RefreshPolicy.readFrom(sin), sin.readOptionalString(), sin.readOptionalString());
+        this(
+                sin.readString(),
+                WriteRequest.RefreshPolicy.readFrom(sin),
+                sin.readOptionalString(),
+                sin.readOptionalString());
     }
 
     @Override
@@ -54,34 +59,29 @@ public class WDeleteIntegrationRequest extends ActionRequest {
 
         boolean hasLogTypeId = this.logTypeId != null && this.logTypeId.isEmpty() == false;
         boolean hasDocumentId = this.documentId != null && this.documentId.isEmpty() == false;
-        boolean hasSource = this.source != null && this.source.isEmpty() == false;
+        boolean hasSpace = this.space != null && this.space.isEmpty() == false;
 
         // Valid combinations:
-        //   - logTypeId is present (documentId/source ignored), OR
-        //   - both documentId and source are present.
+        //   - logTypeId is present (documentId/space ignored), OR
+        //   - both documentId and space are present.
         if (hasLogTypeId) {
             return null;
         }
 
-        if (hasDocumentId && hasSource) {
+        if (hasDocumentId && hasSpace) {
             return null;
         }
 
-        if (!hasDocumentId && !hasSource) {
-            validationException = addValidationError(
-                "logTypeId or (documentId and source) is required",
-                validationException
-            );
-        } else if (hasDocumentId && !hasSource) {
-            validationException = addValidationError(
-                "source is required when documentId is provided",
-                validationException
-            );
-        } else if (!hasDocumentId && hasSource) {
-            validationException = addValidationError(
-                "documentId is required when source is provided",
-                validationException
-            );
+        if (!hasDocumentId && !hasSpace) {
+            validationException =
+                    addValidationError(
+                            "logTypeId or (documentId and space) is required", validationException);
+        } else if (hasDocumentId && !hasSpace) {
+            validationException =
+                    addValidationError("space is required when documentId is provided", validationException);
+        } else if (!hasDocumentId && hasSpace) {
+            validationException =
+                    addValidationError("documentId is required when space is provided", validationException);
         }
         return validationException;
     }
@@ -91,7 +91,7 @@ public class WDeleteIntegrationRequest extends ActionRequest {
         out.writeString(this.logTypeId);
         this.refreshPolicy.writeTo(out);
         out.writeOptionalString(this.documentId);
-        out.writeOptionalString(this.source);
+        out.writeOptionalString(this.space);
     }
 
     public String getLogTypeId() {
@@ -106,7 +106,7 @@ public class WDeleteIntegrationRequest extends ActionRequest {
         return this.documentId;
     }
 
-    public String getSource() {
-        return this.source;
+    public String getSpace() {
+        return this.space;
     }
 }

@@ -121,7 +121,7 @@
         "document.id": {
           "type": "keyword"
         },
-        "source": {
+        "space": {
           "type": "keyword"
         }
       }

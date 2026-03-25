@@ -242,7 +242,10 @@ public class WTransportIndexRuleAction
                             category);
                 }
 
-                String sapId = UUID.randomUUID().toString();
+                String sapId =
+                        this.request.getDocumentId() != null
+                                ? this.request.getDocumentId()
+                                : UUID.randomUUID().toString();
                 Rule rule =
                         new Rule(
                                 sapId,
@@ -253,7 +256,7 @@ public class WTransportIndexRuleAction
                                 new ArrayList<>(queryFieldNames),
                                 ruleStr);
                 rule.setDocumentId(this.request.getDocumentId());
-                rule.setSource(this.request.getSource());
+                rule.setSpace(this.request.getSpace());
 
                 this.indexRule(rule, fieldMappings);
 

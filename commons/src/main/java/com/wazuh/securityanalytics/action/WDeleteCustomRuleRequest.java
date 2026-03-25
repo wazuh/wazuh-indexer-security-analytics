@@ -32,7 +32,7 @@ public class WDeleteCustomRuleRequest extends ActionRequest {
     private final WriteRequest.RefreshPolicy refreshPolicy;
     private final Boolean forced;
     private final String documentId;
-    private final String source;
+    private final String space;
 
     public WDeleteCustomRuleRequest(
             String ruleId, WriteRequest.RefreshPolicy refreshPolicy, Boolean forced) {
@@ -44,22 +44,21 @@ public class WDeleteCustomRuleRequest extends ActionRequest {
             WriteRequest.RefreshPolicy refreshPolicy,
             Boolean forced,
             String documentId,
-            String source) {
+            String space) {
         this.ruleId = ruleId;
         this.refreshPolicy = refreshPolicy;
         this.forced = forced;
         this.documentId = documentId;
-        this.source = source;
+        this.space = space;
     }
 
     public WDeleteCustomRuleRequest(StreamInput sin) throws IOException {
         this(
-            sin.readString(),
-            WriteRequest.RefreshPolicy.readFrom(sin),
-            sin.readBoolean(),
-            sin.readOptionalString(),
-            sin.readOptionalString()
-        );
+                sin.readString(),
+                WriteRequest.RefreshPolicy.readFrom(sin),
+                sin.readBoolean(),
+                sin.readOptionalString(),
+                sin.readOptionalString());
     }
 
     @Override
@@ -67,11 +66,10 @@ public class WDeleteCustomRuleRequest extends ActionRequest {
         ActionRequestValidationException validationException = null;
         if ((this.ruleId == null || this.ruleId.isEmpty())
                 && ((this.documentId == null || this.documentId.isEmpty())
-                    || (this.source == null || this.source.isEmpty()))) {
-            validationException = addValidationError(
-                "Either ruleId or both documentId and source must be provided",
-                validationException
-            );
+                        || (this.space == null || this.space.isEmpty()))) {
+            validationException =
+                    addValidationError(
+                            "Either ruleId or both documentId and space must be provided", validationException);
         }
         return validationException;
     }
@@ -82,7 +80,7 @@ public class WDeleteCustomRuleRequest extends ActionRequest {
         this.refreshPolicy.writeTo(out);
         out.writeBoolean(this.forced);
         out.writeOptionalString(this.documentId);
-        out.writeOptionalString(this.source);
+        out.writeOptionalString(this.space);
     }
 
     public String getRuleId() {
@@ -101,7 +99,7 @@ public class WDeleteCustomRuleRequest extends ActionRequest {
         return this.documentId;
     }
 
-    public String getSource() {
-        return this.source;
+    public String getSpace() {
+        return this.space;
     }
 }

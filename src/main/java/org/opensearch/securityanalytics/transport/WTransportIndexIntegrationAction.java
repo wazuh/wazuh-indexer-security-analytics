@@ -49,7 +49,7 @@ import static org.opensearch.securityanalytics.logtype.LogTypeService.LOG_TYPE_I
  * sources are processed and analyzed.
  *
  * <p>Integrations define log type configurations including metadata such as name, description,
- * category, source, tags, and associated rule IDs. This action persists these configurations to
+ * category, space, tags, and associated rule IDs. This action persists these configurations to
  * enable the Security Analytics plugin to process logs from various sources.
  *
  * <p>The action implements {@link SecureTransportAction} to ensure proper security context handling
@@ -103,7 +103,7 @@ public class WTransportIndexIntegrationAction
         Integration integration = request.getIntegration();
 
         // Custom integration / log type.
-        if (!Objects.equals(integration.getSource(), "Sigma")) {
+        if (!Objects.equals(integration.getSpace(), "Sigma")) {
             try {
                 String sapId = UUID.randomUUID().toString();
                 IndexCustomLogTypeRequest internalRequest =
@@ -117,7 +117,7 @@ public class WTransportIndexIntegrationAction
                                         integration.getName(),
                                         integration.getDescription(),
                                         integration.getCategory(),
-                                        integration.getSource(),
+                                        integration.getSpace(),
                                         integration.getTags(),
                                         integration.getDocumentId()));
                 this.client.execute(
@@ -126,9 +126,7 @@ public class WTransportIndexIntegrationAction
                         new ActionListener<IndexCustomLogTypeResponse>() {
                             @Override
                             public void onResponse(IndexCustomLogTypeResponse response) {
-                                log.info(
-                                        "Successfully indexed custom integration with id: {}",
-                                        response.getId());
+                                log.info("Successfully indexed custom integration with id: {}", response.getId());
                                 listener.onResponse(
                                         new WIndexIntegrationResponse(
                                                 response.getId(),
@@ -152,10 +150,7 @@ public class WTransportIndexIntegrationAction
             String sapId = UUID.randomUUID().toString();
             try {
                 IndexRequest indexRequest =
-                        new IndexRequest()
-                                .index(LOG_TYPE_INDEX)
-                                .id(sapId)
-                                .source(integration.toXContent());
+                        new IndexRequest().index(LOG_TYPE_INDEX).id(sapId).source(integration.toXContent());
 
                 this.client.index(
                         indexRequest,

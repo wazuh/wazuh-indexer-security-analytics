@@ -32,7 +32,7 @@ public class WDeleteRuleRequest extends ActionRequest {
     private final WriteRequest.RefreshPolicy refreshPolicy;
     private final Boolean forced;
     private final String documentId;
-    private final String source;
+    private final String space;
 
     public WDeleteRuleRequest(
             String ruleId, WriteRequest.RefreshPolicy refreshPolicy, Boolean forced) {
@@ -44,22 +44,21 @@ public class WDeleteRuleRequest extends ActionRequest {
             WriteRequest.RefreshPolicy refreshPolicy,
             Boolean forced,
             String documentId,
-            String source) {
+            String space) {
         this.ruleId = ruleId;
         this.refreshPolicy = refreshPolicy;
         this.forced = forced;
         this.documentId = documentId;
-        this.source = source;
+        this.space = space;
     }
 
     public WDeleteRuleRequest(StreamInput sin) throws IOException {
         this(
-            sin.readString(),
-            WriteRequest.RefreshPolicy.readFrom(sin),
-            sin.readBoolean(),
-            sin.readOptionalString(),
-            sin.readOptionalString()
-        );
+                sin.readString(),
+                WriteRequest.RefreshPolicy.readFrom(sin),
+                sin.readBoolean(),
+                sin.readOptionalString(),
+                sin.readOptionalString());
     }
 
     @Override
@@ -68,14 +67,12 @@ public class WDeleteRuleRequest extends ActionRequest {
 
         boolean ruleIdMissing = this.ruleId == null || this.ruleId.isEmpty();
         boolean documentIdMissing = this.documentId == null || this.documentId.isEmpty();
-        boolean sourceMissing = this.source == null || this.source.isEmpty();
+        boolean spaceMissing = this.space == null || this.space.isEmpty();
 
-        // Require either a ruleId, or both documentId and source
-        if (ruleIdMissing && (documentIdMissing || sourceMissing)) {
-            validationException = addValidationError(
-                "ruleId or (documentId and source) is required",
-                validationException
-            );
+        // Require either a ruleId, or both documentId and space
+        if (ruleIdMissing && (documentIdMissing || spaceMissing)) {
+            validationException =
+                    addValidationError("ruleId or (documentId and space) is required", validationException);
         }
         return validationException;
     }
@@ -86,7 +83,7 @@ public class WDeleteRuleRequest extends ActionRequest {
         this.refreshPolicy.writeTo(out);
         out.writeBoolean(this.forced);
         out.writeOptionalString(this.documentId);
-        out.writeOptionalString(this.source);
+        out.writeOptionalString(this.space);
     }
 
     public String getRuleId() {
@@ -105,7 +102,7 @@ public class WDeleteRuleRequest extends ActionRequest {
         return this.documentId;
     }
 
-    public String getSource() {
-        return this.source;
+    public String getSpace() {
+        return this.space;
     }
 }
