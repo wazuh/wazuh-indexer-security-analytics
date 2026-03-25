@@ -354,7 +354,7 @@ public class TransportCorrelateFindingAction
                                                                     hit.getSourceAsString());
                                             Detector detector = Detector.docParse(xcp, hit.getId(), hit.getVersion());
                                             // Fire-and-forget enrichment — must not block the correlation path
-                                            enrichedFindingService.enrich(finding, detector.getDetectorType());
+                                            enrichedFindingService.enrich(finding);
                                             joinEngine.onSearchDetectorResponse(detector, finding);
                                         } catch (Exception e) {
                                             log.error(

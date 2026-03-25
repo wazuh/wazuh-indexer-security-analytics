@@ -29,7 +29,6 @@ import org.opensearch.core.xcontent.XContentParser;
 import org.opensearch.core.xcontent.XContentParserUtils;
 
 import java.io.IOException;
-import java.util.List;
 import java.util.Map;
 
 import static org.opensearch.securityanalytics.action.IndexCustomLogTypeResponse.CUSTOM_LOG_TYPES_FIELD;
@@ -40,16 +39,6 @@ public class CustomLogType implements Writeable, ToXContentObject {
 
     private static final Logger log = LogManager.getLogger(CustomLogType.class);
 
-    public static final List<String> VALID_LOG_CATEGORIES =
-            List.of(
-                    "Access Management",
-                    "Applications",
-                    "Cloud Services",
-                    "Network Activity",
-                    "Security",
-                    "System Activity",
-                    "Other",
-                    "Unclassified");
 
     public static final String CUSTOM_LOG_TYPE_ID_FIELD = "custom_logtype_id";
 
@@ -85,7 +74,8 @@ public class CustomLogType implements Writeable, ToXContentObject {
             new NamedXContentRegistry.Entry(
                     CustomLogType.class,
                     new ParseField(CUSTOM_LOG_TYPES_FIELD),
-                    xcp -> CustomLogType.parse(xcp, null, null));
+                    xcp -> parse(xcp, null, null));
+
 
     public CustomLogType(
             String id,
@@ -158,11 +148,11 @@ public class CustomLogType implements Writeable, ToXContentObject {
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
         builder
                 .startObject()
-                .field(NAME_FIELD, this.name)
-                .field(DESCRIPTION_FIELD, this.description)
-                .field(CATEGORY_FIELD, this.category)
-                .field(SPACE_FIELD, this.space)
-                .field(TAGS_FIELD, this.tags);
+                .field(NAME_FIELD, name)
+                .field(DESCRIPTION_FIELD, description)
+                .field(CATEGORY_FIELD, category)
+                .field(SPACE_FIELD, space)
+                .field(TAGS_FIELD, tags);
         if (this.documentId != null) {
             builder.field(DOCUMENT_ID_FIELD, this.documentId);
         }
