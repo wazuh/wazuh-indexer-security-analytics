@@ -30,36 +30,83 @@ public class WDeleteIntegrationRequest extends ActionRequest {
 
     private final String logTypeId;
     private final WriteRequest.RefreshPolicy refreshPolicy;
+    private final String documentId;
+    private final String space;
 
     public WDeleteIntegrationRequest(String logTypeId, WriteRequest.RefreshPolicy refreshPolicy) {
+        this(logTypeId, refreshPolicy, null, null);
+    }
+
+    public WDeleteIntegrationRequest(
+            String logTypeId, WriteRequest.RefreshPolicy refreshPolicy, String documentId, String space) {
         this.logTypeId = logTypeId;
         this.refreshPolicy = refreshPolicy;
+        this.documentId = documentId;
+        this.space = space;
     }
 
     public WDeleteIntegrationRequest(StreamInput sin) throws IOException {
-        this(sin.readString(), WriteRequest.RefreshPolicy.readFrom(sin));
+        this(
+                sin.readString(),
+                WriteRequest.RefreshPolicy.readFrom(sin),
+                sin.readOptionalString(),
+                sin.readOptionalString());
     }
 
     @Override
     public ActionRequestValidationException validate() {
         ActionRequestValidationException validationException = null;
-        if (logTypeId == null || logTypeId.isEmpty()) {
-            validationException = addValidationError("logTypeId is missing", validationException);
+
+        boolean hasLogTypeId = this.logTypeId != null && this.logTypeId.isEmpty() == false;
+        boolean hasDocumentId = this.documentId != null && this.documentId.isEmpty() == false;
+        boolean hasSpace = this.space != null && this.space.isEmpty() == false;
+
+        // Valid combinations:
+        //   - logTypeId is present (documentId/space ignored), OR
+        //   - both documentId and space are present.
+        if (hasLogTypeId) {
+            return null;
+        }
+
+        if (hasDocumentId && hasSpace) {
+            return null;
+        }
+
+        if (!hasDocumentId && !hasSpace) {
+            validationException =
+                    addValidationError(
+                            "logTypeId or (documentId and space) is required", validationException);
+        } else if (hasDocumentId && !hasSpace) {
+            validationException =
+                    addValidationError("space is required when documentId is provided", validationException);
+        } else if (!hasDocumentId && hasSpace) {
+            validationException =
+                    addValidationError("documentId is required when space is provided", validationException);
         }
         return validationException;
     }
 
     @Override
     public void writeTo(StreamOutput out) throws IOException {
-        out.writeString(logTypeId);
-        refreshPolicy.writeTo(out);
+        out.writeString(this.logTypeId);
+        this.refreshPolicy.writeTo(out);
+        out.writeOptionalString(this.documentId);
+        out.writeOptionalString(this.space);
     }
 
     public String getLogTypeId() {
-        return logTypeId;
+        return this.logTypeId;
     }
 
     public WriteRequest.RefreshPolicy getRefreshPolicy() {
-        return refreshPolicy;
+        return this.refreshPolicy;
+    }
+
+    public String getDocumentId() {
+        return this.documentId;
+    }
+
+    public String getSpace() {
+        return this.space;
     }
 }

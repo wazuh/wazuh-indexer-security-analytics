@@ -1,12 +1,21 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.action;
 
-import java.util.Arrays;
-import java.util.Locale;
-import java.util.Optional;
 import org.opensearch.action.ActionRequest;
 import org.opensearch.action.ActionRequestValidationException;
 import org.opensearch.action.support.WriteRequest;
@@ -15,43 +24,40 @@ import org.opensearch.core.common.io.stream.StreamOutput;
 import org.opensearch.rest.RestRequest;
 
 import java.io.IOException;
-import org.opensearch.securityanalytics.model.Detector;
-
+import java.util.Locale;
 
 import static org.opensearch.action.ValidateActions.addValidationError;
 
 public class IndexRuleRequest extends ActionRequest {
 
-    /**
-     * the ruleId to update
-     */
-    private String ruleId;
+    /** the ruleId to update */
+    private final String ruleId;
+
+    /** refreshPolicy for create/update */
+    private final WriteRequest.RefreshPolicy refreshPolicy;
 
     /**
-     * refreshPolicy for create/update
+     * the log type of the rule which has 1-1 mapping to log type. We have 8 pre-defined log types
+     * today.
      */
-    private WriteRequest.RefreshPolicy refreshPolicy;
+    private final String logType;
+
+    /** REST method for the request PUT/POST */
+    private final RestRequest.Method method;
+
+    /** the actual Sigma Rule yaml */
+    private final String rule;
 
     /**
-     * the log type of the rule which has 1-1 mapping to log type. We have 8 pre-defined log types today.
+     * this boolean field forces updating of rule from any running detectors & updates detector
+     * metadata. setting this to false, will result in throwing an error if rule is actively used by
+     * other detectors.
      */
-    private String logType;
+    private final Boolean forced;
 
-    /**
-     * REST method for the request PUT/POST
-     */
-    private RestRequest.Method method;
+    private final String documentId;
 
-    /**
-     * the actual Sigma Rule yaml
-     */
-    private String rule;
-
-    /**
-     * this boolean field forces updating of rule from any running detectors & updates detector metadata.
-     * setting this to false, will result in throwing an error if rule is actively used by other detectors.
-     */
-    private Boolean forced;
+    private final String space;
 
     public IndexRuleRequest(
             String ruleId,
@@ -59,8 +65,19 @@ public class IndexRuleRequest extends ActionRequest {
             String logType,
             RestRequest.Method method,
             String rule,
-            Boolean forced
-    ) {
+            Boolean forced) {
+        this(ruleId, refreshPolicy, logType, method, rule, forced, null, null);
+    }
+
+    public IndexRuleRequest(
+            String ruleId,
+            WriteRequest.RefreshPolicy refreshPolicy,
+            String logType,
+            RestRequest.Method method,
+            String rule,
+            Boolean forced,
+            String documentId,
+            String space) {
         super();
         this.ruleId = ruleId;
         this.refreshPolicy = refreshPolicy;
@@ -68,22 +85,27 @@ public class IndexRuleRequest extends ActionRequest {
         this.method = method;
         this.rule = rule;
         this.forced = forced;
+        this.documentId = documentId;
+        this.space = space;
     }
 
     public IndexRuleRequest(StreamInput sin) throws IOException {
-        this(sin.readString(),
-             WriteRequest.RefreshPolicy.readFrom(sin),
-             sin.readString(),
-             sin.readEnum(RestRequest.Method.class),
-             sin.readString(),
-             sin.readBoolean());
+        this(
+                sin.readString(),
+                WriteRequest.RefreshPolicy.readFrom(sin),
+                sin.readString(),
+                sin.readEnum(RestRequest.Method.class),
+                sin.readString(),
+                sin.readBoolean(),
+                sin.readOptionalString(),
+                sin.readOptionalString());
     }
 
     @Override
     public ActionRequestValidationException validate() {
         ActionRequestValidationException validationException = null;
 
-        if (logType == null || logType.length() == 0) {
+        if (this.logType == null || this.logType.isEmpty()) {
             validationException = addValidationError("rule categoty is missing", validationException);
         }
         return validationException;
@@ -91,35 +113,45 @@ public class IndexRuleRequest extends ActionRequest {
 
     @Override
     public void writeTo(StreamOutput out) throws IOException {
-        out.writeString(ruleId);
-        refreshPolicy.writeTo(out);
-        out.writeString(logType);
-        out.writeEnum(method);
-        out.writeString(rule);
-        out.writeBoolean(forced);
+        out.writeString(this.ruleId);
+        this.refreshPolicy.writeTo(out);
+        out.writeString(this.logType);
+        out.writeEnum(this.method);
+        out.writeString(this.rule);
+        out.writeBoolean(this.forced);
+        out.writeOptionalString(this.documentId);
+        out.writeOptionalString(this.space);
     }
 
     public String getRuleId() {
-        return ruleId;
+        return this.ruleId;
     }
 
     public WriteRequest.RefreshPolicy getRefreshPolicy() {
-        return refreshPolicy;
+        return this.refreshPolicy;
     }
 
     public String getLogType() {
-        return logType;
+        return this.logType;
     }
 
     public RestRequest.Method getMethod() {
-        return method;
+        return this.method;
     }
 
     public String getRule() {
-        return rule;
+        return this.rule;
     }
 
     public Boolean isForced() {
-        return forced;
+        return this.forced;
+    }
+
+    public String getDocumentId() {
+        return this.documentId;
+    }
+
+    public String getSpace() {
+        return this.space;
     }
 }

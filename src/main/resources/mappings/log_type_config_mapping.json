@@ -59,7 +59,7 @@
         }
       }
     },
-    "source": {
+    "space": {
       "type": "text",
       "fields": {
         "keyword": {
@@ -75,6 +75,9 @@
           "type": "integer"
         }
       }
+    },
+    "document.id": {
+      "type": "keyword"
     }
   }
 }

@@ -1,14 +1,21 @@
 /*
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
  *
- * The OpenSearch Contributors require contributions made to
- * this file be licensed under the Apache-2.0 license or a
- * compatible open source license.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-
 package org.opensearch.securityanalytics.transport;
 
-import org.apache.commons.logging.Log;
 import org.apache.lucene.search.join.ScoreMode;
 import org.opensearch.OpenSearchStatusException;
 import org.opensearch.action.ActionRunnable;
@@ -54,7 +61,9 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.opensearch.securityanalytics.model.Detector.NO_VERSION;
 
-public class TransportDeleteCustomLogTypeAction extends HandledTransportAction<DeleteCustomLogTypeRequest, DeleteCustomLogTypeResponse> implements SecureTransportAction {
+public class TransportDeleteCustomLogTypeAction
+        extends HandledTransportAction<DeleteCustomLogTypeRequest, DeleteCustomLogTypeResponse>
+        implements SecureTransportAction {
 
     private final Client client;
 
@@ -75,16 +84,21 @@ public class TransportDeleteCustomLogTypeAction extends HandledTransportAction<D
     private volatile TimeValue indexTimeout;
 
     @Inject
-    public TransportDeleteCustomLogTypeAction(TransportService transportService,
-                                              Client client,
-                                              ActionFilters actionFilters,
-                                              ClusterService clusterService,
-                                              DetectorIndices detectorIndices,
-                                              RuleIndices ruleIndices,
-                                              CustomLogTypeIndices customLogTypeIndices,
-                                              Settings settings,
-                                              ThreadPool threadPool) {
-        super(DeleteCustomLogTypeAction.NAME, transportService, actionFilters, DeleteCustomLogTypeRequest::new);
+    public TransportDeleteCustomLogTypeAction(
+            TransportService transportService,
+            Client client,
+            ActionFilters actionFilters,
+            ClusterService clusterService,
+            DetectorIndices detectorIndices,
+            RuleIndices ruleIndices,
+            CustomLogTypeIndices customLogTypeIndices,
+            Settings settings,
+            ThreadPool threadPool) {
+        super(
+                DeleteCustomLogTypeAction.NAME,
+                transportService,
+                actionFilters,
+                DeleteCustomLogTypeRequest::new);
         this.client = client;
         this.clusterService = clusterService;
         this.threadPool = threadPool;
@@ -95,21 +109,32 @@ public class TransportDeleteCustomLogTypeAction extends HandledTransportAction<D
         this.filterByEnabled = SecurityAnalyticsSettings.FILTER_BY_BACKEND_ROLES.get(this.settings);
         this.indexTimeout = SecurityAnalyticsSettings.INDEX_TIMEOUT.get(this.settings);
 
-        this.clusterService.getClusterSettings().addSettingsUpdateConsumer(SecurityAnalyticsSettings.FILTER_BY_BACKEND_ROLES, this::setFilterByEnabled);
-        this.clusterService.getClusterSettings().addSettingsUpdateConsumer(SecurityAnalyticsSettings.INDEX_TIMEOUT, this::setIndexTimeout);
+        this.clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        SecurityAnalyticsSettings.FILTER_BY_BACKEND_ROLES, this::setFilterByEnabled);
+        this.clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(SecurityAnalyticsSettings.INDEX_TIMEOUT, this::setIndexTimeout);
     }
 
     @Override
-    protected void doExecute(Task task, DeleteCustomLogTypeRequest request, ActionListener<DeleteCustomLogTypeResponse> listener) {
+    protected void doExecute(
+            Task task,
+            DeleteCustomLogTypeRequest request,
+            ActionListener<DeleteCustomLogTypeResponse> listener) {
         User user = readUserFromThreadContext(this.threadPool);
 
         String validateBackendRoleMessage = validateUserBackendRoles(user, this.filterByEnabled);
         if (!"".equals(validateBackendRoleMessage)) {
-            listener.onFailure(SecurityAnalyticsException.wrap(new OpenSearchStatusException(validateBackendRoleMessage, RestStatus.FORBIDDEN)));
+            listener.onFailure(
+                    SecurityAnalyticsException.wrap(
+                            new OpenSearchStatusException(validateBackendRoleMessage, RestStatus.FORBIDDEN)));
             return;
         }
         this.threadPool.getThreadContext().stashContext();
-        AsyncDeleteCustomLogTypeAction deleteCustomLogTypeAction = new AsyncDeleteCustomLogTypeAction(task, request, listener);
+        AsyncDeleteCustomLogTypeAction deleteCustomLogTypeAction =
+                new AsyncDeleteCustomLogTypeAction(task, request, listener);
         deleteCustomLogTypeAction.start();
     }
 
@@ -127,8 +152,7 @@ public class TransportDeleteCustomLogTypeAction extends HandledTransportAction<D
         AsyncDeleteCustomLogTypeAction(
                 Task task,
                 DeleteCustomLogTypeRequest request,
-                ActionListener<DeleteCustomLogTypeResponse> listener
-        ) {
+                ActionListener<DeleteCustomLogTypeResponse> listener) {
             this.task = task;
             this.request = request;
             this.listener = listener;
@@ -137,142 +161,200 @@ public class TransportDeleteCustomLogTypeAction extends HandledTransportAction<D
 
         void start() {
             if (!customLogTypeIndices.customLogTypeIndexExists()) {
-                onFailures(new OpenSearchStatusException(
-                        String.format(Locale.getDefault(),
-                                "Log Type with id %s is not found",
-                                request.getLogTypeId()),
-                        RestStatus.NOT_FOUND));
+                onFailures(
+                        new OpenSearchStatusException(
+                                String.format(
+                                        Locale.getDefault(),
+                                        "Log Type with id %s is not found",
+                                        request.getLogTypeId()),
+                                RestStatus.NOT_FOUND));
                 return;
             }
             String logTypeId = request.getLogTypeId();
             GetRequest getRequest = new GetRequest(LogTypeService.LOG_TYPE_INDEX, logTypeId);
-            client.get(getRequest, new ActionListener<>() {
-                @Override
-                public void onResponse(GetResponse response) {
-                    if (!response.isExists()) {
-                        onFailures(new OpenSearchStatusException(String.format(Locale.getDefault(), "Log Type with id %s is not found", logTypeId), RestStatus.NOT_FOUND));
-                        return;
-                    }
+            client.get(
+                    getRequest,
+                    new ActionListener<>() {
+                        @Override
+                        public void onResponse(GetResponse response) {
+                            if (!response.isExists()) {
+                                onFailures(
+                                        new OpenSearchStatusException(
+                                                String.format(
+                                                        Locale.getDefault(), "Log Type with id %s is not found", logTypeId),
+                                                RestStatus.NOT_FOUND));
+                                return;
+                            }
 
-                    Map<String, Object> sourceMap = response.getSourceAsMap();
-                    CustomLogType logType = new CustomLogType(sourceMap);
-                    logType.setId(response.getId());
-                    logType.setVersion(response.getVersion());
+                            Map<String, Object> sourceMap = response.getSourceAsMap();
+                            CustomLogType logType = new CustomLogType(sourceMap);
+                            logType.setId(response.getId());
+                            logType.setVersion(response.getVersion());
 
-                    onGetResponse(logType);
-                }
+                            onGetResponse(logType);
+                        }
 
-                @Override
-                public void onFailure(Exception e) {
-                    onFailures(new OpenSearchStatusException(String.format(Locale.getDefault(), "Log Type with id %s is not found", logTypeId), RestStatus.NOT_FOUND));
-                }
-            });
+                        @Override
+                        public void onFailure(Exception e) {
+                            onFailures(
+                                    new OpenSearchStatusException(
+                                            String.format(
+                                                    Locale.getDefault(), "Log Type with id %s is not found", logTypeId),
+                                            RestStatus.NOT_FOUND));
+                        }
+                    });
         }
 
         private void onGetResponse(CustomLogType logType) {
             // TODO: Remove this check when we load our Integrations and Rules as pre-packaged.
             String enabledPrepackaged = System.getProperty("default_rules.enabled");
-            if (enabledPrepackaged != null &&  enabledPrepackaged.equals("true")) {
-                if (logType.getSource().equals("Sigma")) {
-                    onFailures(new OpenSearchStatusException(String.format(Locale.getDefault(),
-                            "Log Type with id %s cannot be deleted because source is sigma", logType.getId()), RestStatus.BAD_REQUEST));
+            if (enabledPrepackaged != null && enabledPrepackaged.equals("true")) {
+                if (logType.getSpace().equals("Sigma")) {
+                    onFailures(
+                            new OpenSearchStatusException(
+                                    String.format(
+                                            Locale.getDefault(),
+                                            "Log Type with id %s cannot be deleted because source is sigma",
+                                            logType.getId()),
+                                    RestStatus.BAD_REQUEST));
                 }
             }
             if (detectorIndices.detectorIndexExists()) {
-                searchDetectors(logType.getName(), new ActionListener<>() {
-                    @Override
-                    public void onResponse(SearchResponse response) {
-                        if (response.isTimedOut()) {
-                            onFailures(new OpenSearchStatusException(String.format(Locale.getDefault(),
-                                    "Search request timed out. Log Type with id %s cannot be deleted", logType.getId()), RestStatus.REQUEST_TIMEOUT));
-                            return;
-                        }
+                searchDetectors(
+                        logType.getName(),
+                        new ActionListener<>() {
+                            @Override
+                            public void onResponse(SearchResponse response) {
+                                if (response.isTimedOut()) {
+                                    onFailures(
+                                            new OpenSearchStatusException(
+                                                    String.format(
+                                                            Locale.getDefault(),
+                                                            "Search request timed out. Log Type with id %s cannot be deleted",
+                                                            logType.getId()),
+                                                    RestStatus.REQUEST_TIMEOUT));
+                                    return;
+                                }
 
-                        if (response.getHits().getTotalHits().value() > 0) {
-                            onFailures(new OpenSearchStatusException(String.format(Locale.getDefault(), "Log Type with id %s cannot be deleted because active detectors exist", logType.getId()), RestStatus.BAD_REQUEST));
-                            return;
-                        }
+                                if (response.getHits().getTotalHits().value() > 0) {
+                                    onFailures(
+                                            new OpenSearchStatusException(
+                                                    String.format(
+                                                            Locale.getDefault(),
+                                                            "Log Type with id %s cannot be deleted because active detectors exist",
+                                                            logType.getId()),
+                                                    RestStatus.BAD_REQUEST));
+                                    return;
+                                }
 
-                        checkRuleIndexAndDeleteLogType(logType);
-                    }
+                                checkRuleIndexAndDeleteLogType(logType);
+                            }
 
-                    @Override
-                    public void onFailure(Exception e) {
-                        onFailures(e);
-                    }
-                });
+                            @Override
+                            public void onFailure(Exception e) {
+                                onFailures(e);
+                            }
+                        });
             } else {
                 checkRuleIndexAndDeleteLogType(logType);
             }
         }
 
         void checkRuleIndexAndDeleteLogType(CustomLogType logType) {
-            if(ruleIndices.ruleIndexExists(false)) {
-                ruleIndices.searchRules(logType.getName(), new ActionListener<>() {
-                    @Override
-                    public void onResponse(SearchResponse response) {
-                        if (response.isTimedOut()) {
-                            onFailures(new OpenSearchStatusException(String.format(Locale.getDefault(), "Search request timed out. Log Type with id %s cannot be deleted", logType.getId()), RestStatus.REQUEST_TIMEOUT));
-                            return;
-                        }
+            if (ruleIndices.ruleIndexExists(false)) {
+                ruleIndices.searchRules(
+                        logType.getName(),
+                        new ActionListener<>() {
+                            @Override
+                            public void onResponse(SearchResponse response) {
+                                if (response.isTimedOut()) {
+                                    onFailures(
+                                            new OpenSearchStatusException(
+                                                    String.format(
+                                                            Locale.getDefault(),
+                                                            "Search request timed out. Log Type with id %s cannot be deleted",
+                                                            logType.getId()),
+                                                    RestStatus.REQUEST_TIMEOUT));
+                                    return;
+                                }
 
-                        if (response.getHits().getTotalHits().value() > 0) {
-                            onFailures(new OpenSearchStatusException(String.format(Locale.getDefault(), "Log Type with id %s cannot be deleted because active rules exist", logType.getId()), RestStatus.BAD_REQUEST));
-                            return;
-                        }
-                        deleteLogType(logType);
-                    }
+                                if (response.getHits().getTotalHits().value() > 0) {
+                                    onFailures(
+                                            new OpenSearchStatusException(
+                                                    String.format(
+                                                            Locale.getDefault(),
+                                                            "Log Type with id %s cannot be deleted because active rules exist",
+                                                            logType.getId()),
+                                                    RestStatus.BAD_REQUEST));
+                                    return;
+                                }
+                                deleteLogType(logType);
+                            }
 
-                    @Override
-                    public void onFailure(Exception e) {
-                        if (e instanceof IndexNotFoundException) {
-                            // let log type deletion to go through if the rule index is missing
-                            deleteLogType(logType);
-                        } else {
-                            onFailures(e);
-                        }
-                    }
-                });
+                            @Override
+                            public void onFailure(Exception e) {
+                                if (e instanceof IndexNotFoundException) {
+                                    // let log type deletion to go through if the rule index is missing
+                                    deleteLogType(logType);
+                                } else {
+                                    onFailures(e);
+                                }
+                            }
+                        });
             } else {
-                log.warn("Custom rule index missing, allowing deletion of custom log type {} to go through", logType.getId());
+                log.warn(
+                        "Custom rule index missing, allowing deletion of custom log type {} to go through",
+                        logType.getId());
                 deleteLogType(logType);
             }
-    }
+        }
 
         private void deleteLogType(CustomLogType logType) {
-            DeleteRequest deleteRequest = new DeleteRequest(LogTypeService.LOG_TYPE_INDEX, logType.getId())
-                    .setRefreshPolicy(request.getRefreshPolicy())
-                    .timeout(indexTimeout);
+            DeleteRequest deleteRequest =
+                    new DeleteRequest(LogTypeService.LOG_TYPE_INDEX, logType.getId())
+                            .setRefreshPolicy(request.getRefreshPolicy())
+                            .timeout(indexTimeout);
 
-            client.delete(deleteRequest, new ActionListener<>() {
-                @Override
-                public void onResponse(DeleteResponse response) {
-                    if (response.status() != RestStatus.OK) {
-                        onFailures(new OpenSearchStatusException(String.format(Locale.getDefault(), "Log Type with id %s cannot be deleted", logType.getId()), RestStatus.INTERNAL_SERVER_ERROR));
-                    }
-                    onOperation(response);
-                }
+            client.delete(
+                    deleteRequest,
+                    new ActionListener<>() {
+                        @Override
+                        public void onResponse(DeleteResponse response) {
+                            if (response.status() != RestStatus.OK) {
+                                onFailures(
+                                        new OpenSearchStatusException(
+                                                String.format(
+                                                        Locale.getDefault(),
+                                                        "Log Type with id %s cannot be deleted",
+                                                        logType.getId()),
+                                                RestStatus.INTERNAL_SERVER_ERROR));
+                            }
+                            onOperation(response);
+                        }
 
-                @Override
-                public void onFailure(Exception e) {
-                    onFailures(e);
-                }
-            });
+                        @Override
+                        public void onFailure(Exception e) {
+                            onFailures(e);
+                        }
+                    });
         }
 
         private void searchDetectors(String logTypeName, ActionListener<SearchResponse> listener) {
             QueryBuilder queryBuilder =
-                    QueryBuilders.nestedQuery("detector",
-                            QueryBuilders.boolQuery().must(
-                                    QueryBuilders.matchQuery("detector.detector_type", logTypeName)
-                            ), ScoreMode.Avg);
+                    QueryBuilders.nestedQuery(
+                            "detector",
+                            QueryBuilders.boolQuery()
+                                    .must(QueryBuilders.matchQuery("detector.detector_type", logTypeName)),
+                            ScoreMode.Avg);
 
-            SearchRequest searchRequest = new SearchRequest(Detector.DETECTORS_INDEX)
-                    .source(new SearchSourceBuilder()
-                            .seqNoAndPrimaryTerm(true)
-                            .version(true)
-                            .query(queryBuilder)
-                            .size(0));
+            SearchRequest searchRequest =
+                    new SearchRequest(Detector.DETECTORS_INDEX)
+                            .source(
+                                    new SearchSourceBuilder()
+                                            .seqNoAndPrimaryTerm(true)
+                                            .version(true)
+                                            .query(queryBuilder)
+                                            .size(0));
 
             client.search(searchRequest, listener);
         }
@@ -292,17 +374,25 @@ public class TransportDeleteCustomLogTypeAction extends HandledTransportAction<D
         }
 
         private void finishHim(String logTypeId, Exception t) {
-            threadPool.executor(ThreadPool.Names.GENERIC).execute(ActionRunnable.supply(listener, () -> {
-                if (t != null) {
-                    log.error(String.format(Locale.ROOT, "Failed to delete log type %s",logTypeId), t.getMessage());
-                    if (t instanceof OpenSearchStatusException) {
-                        throw t;
-                    }
-                    throw SecurityAnalyticsException.wrap(t);
-                } else {
-                    return new DeleteCustomLogTypeResponse(logTypeId, NO_VERSION, RestStatus.NO_CONTENT);
-                }
-            }));
+            threadPool
+                    .executor(ThreadPool.Names.GENERIC)
+                    .execute(
+                            ActionRunnable.supply(
+                                    listener,
+                                    () -> {
+                                        if (t != null) {
+                                            log.error(
+                                                    String.format(Locale.ROOT, "Failed to delete log type %s", logTypeId),
+                                                    t.getMessage());
+                                            if (t instanceof OpenSearchStatusException) {
+                                                throw t;
+                                            }
+                                            throw SecurityAnalyticsException.wrap(t);
+                                        } else {
+                                            return new DeleteCustomLogTypeResponse(
+                                                    logTypeId, NO_VERSION, RestStatus.NO_CONTENT);
+                                        }
+                                    }));
         }
     }
 

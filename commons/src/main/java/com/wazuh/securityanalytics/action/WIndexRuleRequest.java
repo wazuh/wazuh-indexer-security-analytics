@@ -62,8 +62,14 @@ public class WIndexRuleRequest extends ActionRequest {
      */
     private final Boolean forced;
 
+    /** The UUID of the original document in the Content Manager plugin. */
+    private final String documentId;
+
+    /** The space this rule belongs to (e.g., "draft", "test", "custom"). */
+    private final String space;
+
     /**
-     * Constructs a new WIndexRuleRequest.
+     * Constructs a new WIndexRuleRequest (backward-compatible, without documentId/space).
      *
      * @param ruleId the unique identifier for the rule
      * @param refreshPolicy the refresh policy for the index operation
@@ -79,6 +85,30 @@ public class WIndexRuleRequest extends ActionRequest {
             RestRequest.Method method,
             String rule,
             Boolean forced) {
+        this(ruleId, refreshPolicy, logType, method, rule, forced, null, null);
+    }
+
+    /**
+     * Constructs a new WIndexRuleRequest with original document ID and space.
+     *
+     * @param ruleId the unique identifier for the rule
+     * @param refreshPolicy the refresh policy for the index operation
+     * @param logType the log type category for this rule (will be lowercased)
+     * @param method the HTTP method (PUT for update, POST for create)
+     * @param rule the Sigma rule YAML content
+     * @param forced if true, updates the rule even if used by active detectors
+     * @param documentId the UUID of the original document in the Content Manager
+     * @param space the space this rule belongs to
+     */
+    public WIndexRuleRequest(
+            String ruleId,
+            WriteRequest.RefreshPolicy refreshPolicy,
+            String logType,
+            RestRequest.Method method,
+            String rule,
+            Boolean forced,
+            String documentId,
+            String space) {
         super();
         this.ruleId = ruleId;
         this.refreshPolicy = refreshPolicy;
@@ -86,6 +116,8 @@ public class WIndexRuleRequest extends ActionRequest {
         this.method = method;
         this.rule = rule;
         this.forced = forced;
+        this.documentId = documentId;
+        this.space = space;
     }
 
     /**
@@ -101,7 +133,9 @@ public class WIndexRuleRequest extends ActionRequest {
                 sin.readString(),
                 sin.readEnum(RestRequest.Method.class),
                 sin.readString(),
-                sin.readBoolean());
+                sin.readBoolean(),
+                sin.readOptionalString(),
+                sin.readOptionalString());
     }
 
     @Override
@@ -122,6 +156,8 @@ public class WIndexRuleRequest extends ActionRequest {
         out.writeEnum(this.method);
         out.writeString(this.rule);
         out.writeBoolean(this.forced);
+        out.writeOptionalString(this.documentId);
+        out.writeOptionalString(this.space);
     }
 
     /**
@@ -176,5 +212,23 @@ public class WIndexRuleRequest extends ActionRequest {
      */
     public Boolean isForced() {
         return this.forced;
+    }
+
+    /**
+     * Gets the original document ID from the Content Manager plugin.
+     *
+     * @return the original document UUID, or null if not set
+     */
+    public String getDocumentId() {
+        return this.documentId;
+    }
+
+    /**
+     * Gets the space this rule belongs to.
+     *
+     * @return the space name, or null if not set
+     */
+    public String getSpace() {
+        return this.space;
     }
 }

@@ -31,43 +31,78 @@ public class WDeleteRuleRequest extends ActionRequest {
     private final String ruleId;
     private final WriteRequest.RefreshPolicy refreshPolicy;
     private final Boolean forced;
+    private final String documentId;
+    private final String space;
 
     public WDeleteRuleRequest(
             String ruleId, WriteRequest.RefreshPolicy refreshPolicy, Boolean forced) {
+        this(ruleId, refreshPolicy, forced, null, null);
+    }
+
+    public WDeleteRuleRequest(
+            String ruleId,
+            WriteRequest.RefreshPolicy refreshPolicy,
+            Boolean forced,
+            String documentId,
+            String space) {
         this.ruleId = ruleId;
         this.refreshPolicy = refreshPolicy;
         this.forced = forced;
+        this.documentId = documentId;
+        this.space = space;
     }
 
     public WDeleteRuleRequest(StreamInput sin) throws IOException {
-        this(sin.readString(), WriteRequest.RefreshPolicy.readFrom(sin), sin.readBoolean());
+        this(
+                sin.readString(),
+                WriteRequest.RefreshPolicy.readFrom(sin),
+                sin.readBoolean(),
+                sin.readOptionalString(),
+                sin.readOptionalString());
     }
 
     @Override
     public ActionRequestValidationException validate() {
         ActionRequestValidationException validationException = null;
-        if (ruleId == null || ruleId.isEmpty()) {
-            validationException = addValidationError("ruleId is missing", validationException);
+
+        boolean ruleIdMissing = this.ruleId == null || this.ruleId.isEmpty();
+        boolean documentIdMissing = this.documentId == null || this.documentId.isEmpty();
+        boolean spaceMissing = this.space == null || this.space.isEmpty();
+
+        // Require either a ruleId, or both documentId and space
+        if (ruleIdMissing && (documentIdMissing || spaceMissing)) {
+            validationException =
+                    addValidationError("ruleId or (documentId and space) is required", validationException);
         }
         return validationException;
     }
 
     @Override
     public void writeTo(StreamOutput out) throws IOException {
-        out.writeString(ruleId);
-        refreshPolicy.writeTo(out);
-        out.writeBoolean(forced);
+        out.writeString(this.ruleId);
+        this.refreshPolicy.writeTo(out);
+        out.writeBoolean(this.forced);
+        out.writeOptionalString(this.documentId);
+        out.writeOptionalString(this.space);
     }
 
     public String getRuleId() {
-        return ruleId;
+        return this.ruleId;
     }
 
     public WriteRequest.RefreshPolicy getRefreshPolicy() {
-        return refreshPolicy;
+        return this.refreshPolicy;
     }
 
     public Boolean isForced() {
-        return forced;
+        return this.forced;
+    }
+
+    public String getDocumentId() {
+        return this.documentId;
+    }
+
+    public String getSpace() {
+        return this.space;
     }
 }
