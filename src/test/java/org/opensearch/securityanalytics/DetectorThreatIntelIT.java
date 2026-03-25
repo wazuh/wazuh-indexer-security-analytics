@@ -1,11 +1,22 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics;
 
 import org.apache.hc.core5.http.HttpStatus;
-import org.junit.Assert;
 import org.opensearch.action.search.SearchResponse;
 import org.opensearch.client.Request;
 import org.opensearch.client.Response;
@@ -16,6 +27,7 @@ import org.opensearch.securityanalytics.model.Detector;
 import org.opensearch.securityanalytics.model.DetectorInput;
 import org.opensearch.securityanalytics.model.DetectorRule;
 import org.opensearch.securityanalytics.model.DetectorTrigger;
+import org.junit.Assert;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -41,8 +53,10 @@ import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSetting
 public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
 
     // TODO: Create issue to fix the tests. Failing Reason: "IOC stuff was removed from the plugin"
+    // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
     @AwaitsFix(bugUrl = "")
-    public void testCreateDetectorWithThreatIntelEnabled_updateDetectorWithThreatIntelDisabled() throws IOException {
+    public void testCreateDetectorWithThreatIntelEnabled_updateDetectorWithThreatIntelDisabled()
+            throws IOException {
 
         updateClusterSetting(ENABLE_WORKFLOW_USAGE.getKey(), "true");
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
@@ -51,11 +65,14 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
         Request createMappingRequest = new Request("POST", SecurityAnalyticsPlugin.MAPPER_BASE_URI);
         // both req params and req body are supported
         createMappingRequest.setJsonEntity(
-                "{ \"index_name\":\"" + index + "\"," +
-                        "  \"rule_topic\":\"" + randomDetectorType() + "\", " +
-                        "  \"partial\":true" +
-                        "}"
-        );
+                "{ \"index_name\":\""
+                        + index
+                        + "\","
+                        + "  \"rule_topic\":\""
+                        + randomDetectorType()
+                        + "\", "
+                        + "  \"partial\":true"
+                        + "}");
 
         Response createMappingResponse = client().performRequest(createMappingRequest);
 
@@ -65,20 +82,39 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
 
         String randomDocRuleId = createRule(randomRule());
         List<DetectorRule> detectorRules = List.of(new DetectorRule(randomDocRuleId));
-        DetectorInput input = new DetectorInput("windows detector for security analytics", List.of("windows"), detectorRules,
-                emptyList());
-        DetectorTrigger trigger = new DetectorTrigger("all", "all", "high", List.of(randomDetectorType()), emptyList(), emptyList(), List.of(), emptyList(), List.of(DetectorTrigger.RULES_DETECTION_TYPE, DetectorTrigger.THREAT_INTEL_DETECTION_TYPE));
-        Detector detector = randomDetectorWithInputsAndThreatIntelAndTriggers(List.of(input), true, List.of(trigger));
-        Response createResponse = makeRequest(client(), "POST", SecurityAnalyticsPlugin.DETECTOR_BASE_URI, Collections.emptyMap(), toHttpEntity(detector));
+        DetectorInput input =
+                new DetectorInput(
+                        "windows detector for security analytics",
+                        List.of("windows"),
+                        detectorRules,
+                        emptyList());
+        DetectorTrigger trigger =
+                new DetectorTrigger(
+                        "all",
+                        "all",
+                        "high",
+                        List.of(randomDetectorType()),
+                        emptyList(),
+                        emptyList(),
+                        List.of(),
+                        emptyList(),
+                        List.of(
+                                DetectorTrigger.RULES_DETECTION_TYPE, DetectorTrigger.THREAT_INTEL_DETECTION_TYPE));
+        Detector detector =
+                randomDetectorWithInputsAndThreatIntelAndTriggers(List.of(input), true, List.of(trigger));
+        Response createResponse =
+                makeRequest(
+                        client(),
+                        "POST",
+                        SecurityAnalyticsPlugin.DETECTOR_BASE_URI,
+                        Collections.emptyMap(),
+                        toHttpEntity(detector));
 
-        String request = "{\n" +
-                "   \"query\" : {\n" +
-                "     \"match_all\":{\n" +
-                "     }\n" +
-                "   }\n" +
-                "}";
-        SearchResponse response = executeSearchAndGetResponse(DetectorMonitorConfig.getRuleIndex(randomDetectorType()) + "*", request, true);
-
+        String request =
+                "{\n" + "   \"query\" : {\n" + "     \"match_all\":{\n" + "     }\n" + "   }\n" + "}";
+        SearchResponse response =
+                executeSearchAndGetResponse(
+                        DetectorMonitorConfig.getRuleIndex(randomDetectorType()) + "*", request, true);
 
         assertEquals(2, response.getHits().getTotalHits().value());
 
@@ -86,24 +122,30 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
         Map<String, Object> responseBody = asMap(createResponse);
 
         String detectorId = responseBody.get("_id").toString();
-        request = "{\n" +
-                "   \"query\" : {\n" +
-                "     \"match\":{\n" +
-                "        \"_id\": \"" + detectorId + "\"\n" +
-                "     }\n" +
-                "   }\n" +
-                "}";
+        request =
+                "{\n"
+                        + "   \"query\" : {\n"
+                        + "     \"match\":{\n"
+                        + "        \"_id\": \""
+                        + detectorId
+                        + "\"\n"
+                        + "     }\n"
+                        + "   }\n"
+                        + "}";
         List<SearchHit> hits = executeSearch(Detector.DETECTORS_INDEX, request);
         SearchHit hit = hits.get(0);
-        Map<String, Object> detectorMap = (HashMap<String, Object>) (hit.getSourceAsMap().get("detector"));
+        Map<String, Object> detectorMap =
+                (HashMap<String, Object>) (hit.getSourceAsMap().get("detector"));
         List inputArr = (List) detectorMap.get("inputs");
-
 
         List<String> monitorIds = ((List<String>) (detectorMap).get("monitor_id"));
         assertEquals(1, monitorIds.size());
 
         assertNotNull("Workflow not created", detectorMap.get("workflow_ids"));
-        assertEquals("Number of workflows not correct", 1, ((List<String>) detectorMap.get("workflow_ids")).size());
+        assertEquals(
+                "Number of workflows not correct",
+                1,
+                ((List<String>) detectorMap.get("workflow_ids")).size());
 
         // Verify workflow
         verifyWorkflow(detectorMap, monitorIds, 1);
@@ -117,25 +159,42 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
 
         Response executeResponse = executeAlertingWorkflow(workflowId, Collections.emptyMap());
 
-        List<Map<String, Object>> monitorRunResults = (List<Map<String, Object>>) entityAsMap(executeResponse).get("monitor_run_results");
+        List<Map<String, Object>> monitorRunResults =
+                (List<Map<String, Object>>) entityAsMap(executeResponse).get("monitor_run_results");
         assertEquals(1, monitorRunResults.size());
 
-        Map<String, Object> docLevelQueryResults = ((List<Map<String, Object>>) ((Map<String, Object>) monitorRunResults.get(0).get("input_results")).get("results")).get(0);
+        Map<String, Object> docLevelQueryResults =
+                ((List<Map<String, Object>>)
+                                ((Map<String, Object>) monitorRunResults.get(0).get("input_results"))
+                                        .get("results"))
+                        .get(0);
         int noOfSigmaRuleMatches = docLevelQueryResults.size();
         assertEquals(2, noOfSigmaRuleMatches);
-        String threatIntelDocLevelQueryId = docLevelQueryResults.keySet().stream().filter(id -> id.startsWith("threat_intel")).findAny().get();
-        ArrayList<String> docs = (ArrayList<String>) docLevelQueryResults.get(threatIntelDocLevelQueryId);
+        String threatIntelDocLevelQueryId =
+                docLevelQueryResults.keySet().stream()
+                        .filter(id -> id.startsWith("threat_intel"))
+                        .findAny()
+                        .get();
+        ArrayList<String> docs =
+                (ArrayList<String>) docLevelQueryResults.get(threatIntelDocLevelQueryId);
         assertEquals(docs.size(), 3);
-        //verify alerts
+        // verify alerts
         Map<String, String> params = new HashMap<>();
         params.put("detector_id", detectorId);
-        Response getAlertsResponse = makeRequest(client(), "GET", SecurityAnalyticsPlugin.ALERTS_BASE_URI, params, null);
+        Response getAlertsResponse =
+                makeRequest(client(), "GET", SecurityAnalyticsPlugin.ALERTS_BASE_URI, params, null);
         Map<String, Object> getAlertsBody = asMap(getAlertsResponse);
 
         Assert.assertEquals(3, getAlertsBody.get("total_alerts"));
 
         // update detector
-        Response updateResponse = makeRequest(client(), "PUT", SecurityAnalyticsPlugin.DETECTOR_BASE_URI + "/" + detectorId, Collections.emptyMap(), toHttpEntity(randomDetectorWithInputsAndThreatIntel(List.of(input), false)));
+        Response updateResponse =
+                makeRequest(
+                        client(),
+                        "PUT",
+                        SecurityAnalyticsPlugin.DETECTOR_BASE_URI + "/" + detectorId,
+                        Collections.emptyMap(),
+                        toHttpEntity(randomDetectorWithInputsAndThreatIntel(List.of(input), false)));
 
         assertEquals("Update detector failed", RestStatus.OK, restStatus(updateResponse));
 
@@ -147,14 +206,21 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
 
         executeResponse = executeAlertingWorkflow(workflowId, Collections.emptyMap());
 
-        monitorRunResults = (List<Map<String, Object>>) entityAsMap(executeResponse).get("monitor_run_results");
+        monitorRunResults =
+                (List<Map<String, Object>>) entityAsMap(executeResponse).get("monitor_run_results");
         assertEquals(1, monitorRunResults.size());
 
-        docLevelQueryResults = ((List<Map<String, Object>>) ((Map<String, Object>) monitorRunResults.get(0).get("input_results")).get("results")).get(0);
+        docLevelQueryResults =
+                ((List<Map<String, Object>>)
+                                ((Map<String, Object>) monitorRunResults.get(0).get("input_results"))
+                                        .get("results"))
+                        .get(0);
         noOfSigmaRuleMatches = docLevelQueryResults.size();
         assertEquals(1, noOfSigmaRuleMatches);
     }
 
+    // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
+    @AwaitsFix(bugUrl = "")
     public void testCreateDetectorForSigmaRuleWithNullCondition() throws IOException {
 
         updateClusterSetting(ENABLE_WORKFLOW_USAGE.getKey(), "true");
@@ -164,11 +230,14 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
         Request createMappingRequest = new Request("POST", SecurityAnalyticsPlugin.MAPPER_BASE_URI);
         // both req params and req body are supported
         createMappingRequest.setJsonEntity(
-                "{ \"index_name\":\"" + index + "\"," +
-                        "  \"rule_topic\":\"" + randomDetectorType() + "\", " +
-                        "  \"partial\":true" +
-                        "}"
-        );
+                "{ \"index_name\":\""
+                        + index
+                        + "\","
+                        + "  \"rule_topic\":\""
+                        + randomDetectorType()
+                        + "\", "
+                        + "  \"partial\":true"
+                        + "}");
 
         Response createMappingResponse = client().performRequest(createMappingRequest);
 
@@ -178,35 +247,55 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
 
         String randomDocRuleId = createRule(randomNullRule());
         List<DetectorRule> detectorRules = List.of(new DetectorRule(randomDocRuleId));
-        DetectorInput input = new DetectorInput("windows detector for security analytics", List.of("windows"), detectorRules,
-                emptyList());
-        DetectorTrigger trigger = new DetectorTrigger("all", "all", "high", List.of(randomDetectorType()), emptyList(), emptyList(), List.of(), emptyList(), List.of(DetectorTrigger.RULES_DETECTION_TYPE, DetectorTrigger.THREAT_INTEL_DETECTION_TYPE));
+        DetectorInput input =
+                new DetectorInput(
+                        "windows detector for security analytics",
+                        List.of("windows"),
+                        detectorRules,
+                        emptyList());
+        DetectorTrigger trigger =
+                new DetectorTrigger(
+                        "all",
+                        "all",
+                        "high",
+                        List.of(randomDetectorType()),
+                        emptyList(),
+                        emptyList(),
+                        List.of(),
+                        emptyList(),
+                        List.of(
+                                DetectorTrigger.RULES_DETECTION_TYPE, DetectorTrigger.THREAT_INTEL_DETECTION_TYPE));
         Detector detector = randomDetectorWithInputs(List.of(input));
-        Response createResponse = makeRequest(client(), "POST", SecurityAnalyticsPlugin.DETECTOR_BASE_URI, Collections.emptyMap(), toHttpEntity(detector));
+        Response createResponse =
+                makeRequest(
+                        client(),
+                        "POST",
+                        SecurityAnalyticsPlugin.DETECTOR_BASE_URI,
+                        Collections.emptyMap(),
+                        toHttpEntity(detector));
 
-        String request = "{\n" +
-                "   \"query\" : {\n" +
-                "     \"match_all\":{\n" +
-                "     }\n" +
-                "   }\n" +
-                "}";
+        String request =
+                "{\n" + "   \"query\" : {\n" + "     \"match_all\":{\n" + "     }\n" + "   }\n" + "}";
 
         assertEquals("Create detector failed", RestStatus.CREATED, restStatus(createResponse));
         Map<String, Object> responseBody = asMap(createResponse);
 
         String detectorId = responseBody.get("_id").toString();
-        request = "{\n" +
-                "   \"query\" : {\n" +
-                "     \"match\":{\n" +
-                "        \"_id\": \"" + detectorId + "\"\n" +
-                "     }\n" +
-                "   }\n" +
-                "}";
+        request =
+                "{\n"
+                        + "   \"query\" : {\n"
+                        + "     \"match\":{\n"
+                        + "        \"_id\": \""
+                        + detectorId
+                        + "\"\n"
+                        + "     }\n"
+                        + "   }\n"
+                        + "}";
         List<SearchHit> hits = executeSearch(Detector.DETECTORS_INDEX, request);
         SearchHit hit = hits.get(0);
-        Map<String, Object> detectorMap = (HashMap<String, Object>) (hit.getSourceAsMap().get("detector"));
+        Map<String, Object> detectorMap =
+                (HashMap<String, Object>) (hit.getSourceAsMap().get("detector"));
         List inputArr = (List) detectorMap.get("inputs");
-
 
         List<String> monitorIds = ((List<String>) (detectorMap).get("monitor_id"));
         assertEquals(1, monitorIds.size());
@@ -221,10 +310,15 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
 
         Response executeResponse = executeAlertingWorkflow(workflowId, Collections.emptyMap());
 
-        List<Map<String, Object>> monitorRunResults = (List<Map<String, Object>>) entityAsMap(executeResponse).get("monitor_run_results");
+        List<Map<String, Object>> monitorRunResults =
+                (List<Map<String, Object>>) entityAsMap(executeResponse).get("monitor_run_results");
         assertEquals(1, monitorRunResults.size());
 
-        Map<String, Object> docLevelQueryResults = ((List<Map<String, Object>>) ((Map<String, Object>) monitorRunResults.get(0).get("input_results")).get("results")).get(0);
+        Map<String, Object> docLevelQueryResults =
+                ((List<Map<String, Object>>)
+                                ((Map<String, Object>) monitorRunResults.get(0).get("input_results"))
+                                        .get("results"))
+                        .get(0);
         int noOfSigmaRuleMatches = docLevelQueryResults.size();
         assertEquals(1, noOfSigmaRuleMatches);
         String queryId = docLevelQueryResults.keySet().stream().findAny().get();
@@ -234,18 +328,24 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
         indexDoc(index, "3", randomDoc());
         Response executeResponse1 = executeAlertingWorkflow(workflowId, Collections.emptyMap());
 
-        List<Map<String, Object>> monitorRunResults1 = (List<Map<String, Object>>) entityAsMap(executeResponse1).get("monitor_run_results");
+        List<Map<String, Object>> monitorRunResults1 =
+                (List<Map<String, Object>>) entityAsMap(executeResponse1).get("monitor_run_results");
         assertEquals(1, monitorRunResults1.size());
 
-        Map<String, Object> docLevelQueryResults1 = ((List<Map<String, Object>>) ((Map<String, Object>) monitorRunResults1.get(0).get("input_results")).get("results")).get(0);
+        Map<String, Object> docLevelQueryResults1 =
+                ((List<Map<String, Object>>)
+                                ((Map<String, Object>) monitorRunResults1.get(0).get("input_results"))
+                                        .get("results"))
+                        .get(0);
         int noOfSigmaRuleMatches1 = docLevelQueryResults1.size();
         assertEquals(0, noOfSigmaRuleMatches1);
-
     }
 
     // TODO: Create issue to fix the tests. Failing reason: "IOC stuff was removed from the plugin"
+    // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
     @AwaitsFix(bugUrl = "")
-    public void testCreateDetectorWithThreatIntelDisabled_updateDetectorWithThreatIntelEnabled() throws IOException {
+    public void testCreateDetectorWithThreatIntelDisabled_updateDetectorWithThreatIntelEnabled()
+            throws IOException {
 
         updateClusterSetting(ENABLE_WORKFLOW_USAGE.getKey(), "true");
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
@@ -254,11 +354,14 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
         Request createMappingRequest = new Request("POST", SecurityAnalyticsPlugin.MAPPER_BASE_URI);
         // both req params and req body are supported
         createMappingRequest.setJsonEntity(
-                "{ \"index_name\":\"" + index + "\"," +
-                        "  \"rule_topic\":\"" + randomDetectorType() + "\", " +
-                        "  \"partial\":true" +
-                        "}"
-        );
+                "{ \"index_name\":\""
+                        + index
+                        + "\","
+                        + "  \"rule_topic\":\""
+                        + randomDetectorType()
+                        + "\", "
+                        + "  \"partial\":true"
+                        + "}");
 
         Response createMappingResponse = client().performRequest(createMappingRequest);
 
@@ -268,19 +371,26 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
 
         String randomDocRuleId = createRule(randomRule());
         List<DetectorRule> detectorRules = List.of(new DetectorRule(randomDocRuleId));
-        DetectorInput input = new DetectorInput("windows detector for security analytics", List.of("windows"), detectorRules,
-                emptyList());
+        DetectorInput input =
+                new DetectorInput(
+                        "windows detector for security analytics",
+                        List.of("windows"),
+                        detectorRules,
+                        emptyList());
         Detector detector = randomDetectorWithInputsAndThreatIntel(List.of(input), false);
-        Response createResponse = makeRequest(client(), "POST", SecurityAnalyticsPlugin.DETECTOR_BASE_URI, Collections.emptyMap(), toHttpEntity(detector));
+        Response createResponse =
+                makeRequest(
+                        client(),
+                        "POST",
+                        SecurityAnalyticsPlugin.DETECTOR_BASE_URI,
+                        Collections.emptyMap(),
+                        toHttpEntity(detector));
 
-        String request = "{\n" +
-                "   \"query\" : {\n" +
-                "     \"match_all\":{\n" +
-                "     }\n" +
-                "   }\n" +
-                "}";
-        SearchResponse response = executeSearchAndGetResponse(DetectorMonitorConfig.getRuleIndex(randomDetectorType()) + "*", request, true);
-
+        String request =
+                "{\n" + "   \"query\" : {\n" + "     \"match_all\":{\n" + "     }\n" + "   }\n" + "}";
+        SearchResponse response =
+                executeSearchAndGetResponse(
+                        DetectorMonitorConfig.getRuleIndex(randomDetectorType()) + "*", request, true);
 
         assertEquals(1, response.getHits().getTotalHits().value());
 
@@ -288,24 +398,30 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
         Map<String, Object> responseBody = asMap(createResponse);
 
         String detectorId = responseBody.get("_id").toString();
-        request = "{\n" +
-                "   \"query\" : {\n" +
-                "     \"match\":{\n" +
-                "        \"_id\": \"" + detectorId + "\"\n" +
-                "     }\n" +
-                "   }\n" +
-                "}";
+        request =
+                "{\n"
+                        + "   \"query\" : {\n"
+                        + "     \"match\":{\n"
+                        + "        \"_id\": \""
+                        + detectorId
+                        + "\"\n"
+                        + "     }\n"
+                        + "   }\n"
+                        + "}";
         List<SearchHit> hits = executeSearch(Detector.DETECTORS_INDEX, request);
         SearchHit hit = hits.get(0);
-        Map<String, Object> detectorMap = (HashMap<String, Object>) (hit.getSourceAsMap().get("detector"));
+        Map<String, Object> detectorMap =
+                (HashMap<String, Object>) (hit.getSourceAsMap().get("detector"));
         List inputArr = (List) detectorMap.get("inputs");
-
 
         List<String> monitorIds = ((List<String>) (detectorMap).get("monitor_id"));
         assertEquals(1, monitorIds.size());
 
         assertNotNull("Workflow not created", detectorMap.get("workflow_ids"));
-        assertEquals("Number of workflows not correct", 1, ((List<String>) detectorMap.get("workflow_ids")).size());
+        assertEquals(
+                "Number of workflows not correct",
+                1,
+                ((List<String>) detectorMap.get("workflow_ids")).size());
 
         // Verify workflow
         verifyWorkflow(detectorMap, monitorIds, 1);
@@ -314,13 +430,24 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
 
         Response executeResponse = executeAlertingWorkflow(workflowId, Collections.emptyMap());
 
-        List<Map<String, Object>> monitorRunResults = (List<Map<String, Object>>) entityAsMap(executeResponse).get("monitor_run_results");
+        List<Map<String, Object>> monitorRunResults =
+                (List<Map<String, Object>>) entityAsMap(executeResponse).get("monitor_run_results");
         assertEquals(1, monitorRunResults.size());
-        Map<String, Object> docLevelQueryResults = ((List<Map<String, Object>>) ((Map<String, Object>) monitorRunResults.get(0).get("input_results")).get("results")).get(0);
+        Map<String, Object> docLevelQueryResults =
+                ((List<Map<String, Object>>)
+                                ((Map<String, Object>) monitorRunResults.get(0).get("input_results"))
+                                        .get("results"))
+                        .get(0);
         int noOfSigmaRuleMatches = docLevelQueryResults.size();
         assertEquals(1, noOfSigmaRuleMatches);
 
-        Response updateResponse = makeRequest(client(), "PUT", SecurityAnalyticsPlugin.DETECTOR_BASE_URI + "/" + detectorId, Collections.emptyMap(), toHttpEntity(randomDetectorWithInputsAndThreatIntel(List.of(input), true)));
+        Response updateResponse =
+                makeRequest(
+                        client(),
+                        "PUT",
+                        SecurityAnalyticsPlugin.DETECTOR_BASE_URI + "/" + detectorId,
+                        Collections.emptyMap(),
+                        toHttpEntity(randomDetectorWithInputsAndThreatIntel(List.of(input), true)));
 
         assertEquals("Update detector failed", RestStatus.OK, restStatus(updateResponse));
 
@@ -333,17 +460,25 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
         }
         executeResponse = executeAlertingWorkflow(workflowId, Collections.emptyMap());
 
-        monitorRunResults = (List<Map<String, Object>>) entityAsMap(executeResponse).get("monitor_run_results");
+        monitorRunResults =
+                (List<Map<String, Object>>) entityAsMap(executeResponse).get("monitor_run_results");
         assertEquals(1, monitorRunResults.size());
 
-        docLevelQueryResults = ((List<Map<String, Object>>) ((Map<String, Object>) monitorRunResults.get(0).get("input_results")).get("results")).get(0);
+        docLevelQueryResults =
+                ((List<Map<String, Object>>)
+                                ((Map<String, Object>) monitorRunResults.get(0).get("input_results"))
+                                        .get("results"))
+                        .get(0);
         noOfSigmaRuleMatches = docLevelQueryResults.size();
         assertEquals(2, noOfSigmaRuleMatches);
     }
 
     // TODO: Create issue to fix the tests. Failing Reason: "IOC stuff was removed from the plugin"
+    // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
     @AwaitsFix(bugUrl = "")
-    public void testCreateDetectorWithThreatIntelEnabledAndNoRules_triggerDetectionTypeOnlyRules_noAlertsForFindings() throws IOException {
+    public void
+            testCreateDetectorWithThreatIntelEnabledAndNoRules_triggerDetectionTypeOnlyRules_noAlertsForFindings()
+                    throws IOException {
 
         updateClusterSetting(ENABLE_WORKFLOW_USAGE.getKey(), "true");
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
@@ -352,11 +487,14 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
         Request createMappingRequest = new Request("POST", SecurityAnalyticsPlugin.MAPPER_BASE_URI);
         // both req params and req body are supported
         createMappingRequest.setJsonEntity(
-                "{ \"index_name\":\"" + index + "\"," +
-                        "  \"rule_topic\":\"" + randomDetectorType() + "\", " +
-                        "  \"partial\":true" +
-                        "}"
-        );
+                "{ \"index_name\":\""
+                        + index
+                        + "\","
+                        + "  \"rule_topic\":\""
+                        + randomDetectorType()
+                        + "\", "
+                        + "  \"partial\":true"
+                        + "}");
 
         Response createMappingResponse = client().performRequest(createMappingRequest);
 
@@ -364,22 +502,39 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
 
         String testOpCode = "Test";
 
-
         List<DetectorRule> detectorRules = emptyList();
-        DetectorInput input = new DetectorInput("windows detector for security analytics", List.of("windows"), detectorRules,
-                emptyList());
-        DetectorTrigger trigger = new DetectorTrigger("all", "all", "high", List.of(randomDetectorType()), emptyList(), emptyList(), List.of(), emptyList(), List.of(DetectorTrigger.RULES_DETECTION_TYPE));
-        Detector detector = randomDetectorWithInputsAndThreatIntelAndTriggers(List.of(input), true, List.of(trigger));
-        Response createResponse = makeRequest(client(), "POST", SecurityAnalyticsPlugin.DETECTOR_BASE_URI, Collections.emptyMap(), toHttpEntity(detector));
+        DetectorInput input =
+                new DetectorInput(
+                        "windows detector for security analytics",
+                        List.of("windows"),
+                        detectorRules,
+                        emptyList());
+        DetectorTrigger trigger =
+                new DetectorTrigger(
+                        "all",
+                        "all",
+                        "high",
+                        List.of(randomDetectorType()),
+                        emptyList(),
+                        emptyList(),
+                        List.of(),
+                        emptyList(),
+                        List.of(DetectorTrigger.RULES_DETECTION_TYPE));
+        Detector detector =
+                randomDetectorWithInputsAndThreatIntelAndTriggers(List.of(input), true, List.of(trigger));
+        Response createResponse =
+                makeRequest(
+                        client(),
+                        "POST",
+                        SecurityAnalyticsPlugin.DETECTOR_BASE_URI,
+                        Collections.emptyMap(),
+                        toHttpEntity(detector));
 
-        String request = "{\n" +
-                "   \"query\" : {\n" +
-                "     \"match_all\":{\n" +
-                "     }\n" +
-                "   }\n" +
-                "}";
-        SearchResponse response = executeSearchAndGetResponse(DetectorMonitorConfig.getRuleIndex(randomDetectorType()) + "*", request, true);
-
+        String request =
+                "{\n" + "   \"query\" : {\n" + "     \"match_all\":{\n" + "     }\n" + "   }\n" + "}";
+        SearchResponse response =
+                executeSearchAndGetResponse(
+                        DetectorMonitorConfig.getRuleIndex(randomDetectorType()) + "*", request, true);
 
         assertEquals(1, response.getHits().getTotalHits().value());
 
@@ -387,24 +542,30 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
         Map<String, Object> responseBody = asMap(createResponse);
 
         String detectorId = responseBody.get("_id").toString();
-        request = "{\n" +
-                "   \"query\" : {\n" +
-                "     \"match\":{\n" +
-                "        \"_id\": \"" + detectorId + "\"\n" +
-                "     }\n" +
-                "   }\n" +
-                "}";
+        request =
+                "{\n"
+                        + "   \"query\" : {\n"
+                        + "     \"match\":{\n"
+                        + "        \"_id\": \""
+                        + detectorId
+                        + "\"\n"
+                        + "     }\n"
+                        + "   }\n"
+                        + "}";
         List<SearchHit> hits = executeSearch(Detector.DETECTORS_INDEX, request);
         SearchHit hit = hits.get(0);
-        Map<String, Object> detectorMap = (HashMap<String, Object>) (hit.getSourceAsMap().get("detector"));
+        Map<String, Object> detectorMap =
+                (HashMap<String, Object>) (hit.getSourceAsMap().get("detector"));
         List inputArr = (List) detectorMap.get("inputs");
-
 
         List<String> monitorIds = ((List<String>) (detectorMap).get("monitor_id"));
         assertEquals(1, monitorIds.size());
 
         assertNotNull("Workflow not created", detectorMap.get("workflow_ids"));
-        assertEquals("Number of workflows not correct", 1, ((List<String>) detectorMap.get("workflow_ids")).size());
+        assertEquals(
+                "Number of workflows not correct",
+                1,
+                ((List<String>) detectorMap.get("workflow_ids")).size());
 
         // Verify workflow
         verifyWorkflow(detectorMap, monitorIds, 1);
@@ -418,27 +579,44 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
 
         Response executeResponse = executeAlertingWorkflow(workflowId, Collections.emptyMap());
 
-        List<Map<String, Object>> monitorRunResults = (List<Map<String, Object>>) entityAsMap(executeResponse).get("monitor_run_results");
+        List<Map<String, Object>> monitorRunResults =
+                (List<Map<String, Object>>) entityAsMap(executeResponse).get("monitor_run_results");
         assertEquals(1, monitorRunResults.size());
 
-        Map<String, Object> docLevelQueryResults = ((List<Map<String, Object>>) ((Map<String, Object>) monitorRunResults.get(0).get("input_results")).get("results")).get(0);
+        Map<String, Object> docLevelQueryResults =
+                ((List<Map<String, Object>>)
+                                ((Map<String, Object>) monitorRunResults.get(0).get("input_results"))
+                                        .get("results"))
+                        .get(0);
         int noOfSigmaRuleMatches = docLevelQueryResults.size();
         assertEquals(1, noOfSigmaRuleMatches);
-        String threatIntelDocLevelQueryId = docLevelQueryResults.keySet().stream().filter(id -> id.startsWith("threat_intel")).findAny().get();
-        ArrayList<String> docs = (ArrayList<String>) docLevelQueryResults.get(threatIntelDocLevelQueryId);
+        String threatIntelDocLevelQueryId =
+                docLevelQueryResults.keySet().stream()
+                        .filter(id -> id.startsWith("threat_intel"))
+                        .findAny()
+                        .get();
+        ArrayList<String> docs =
+                (ArrayList<String>) docLevelQueryResults.get(threatIntelDocLevelQueryId);
         assertEquals(docs.size(), 3);
-        //verify alerts
+        // verify alerts
         Map<String, String> params = new HashMap<>();
         params.put("detector_id", detectorId);
-        Response getAlertsResponse = makeRequest(client(), "GET", SecurityAnalyticsPlugin.ALERTS_BASE_URI, params, null);
+        Response getAlertsResponse =
+                makeRequest(client(), "GET", SecurityAnalyticsPlugin.ALERTS_BASE_URI, params, null);
         Map<String, Object> getAlertsBody = asMap(getAlertsResponse);
-        /** findings are present but alerts should not be generated as detection type mentioned in trigger is rules only */
+        /**
+         * findings are present but alerts should not be generated as detection type mentioned in
+         * trigger is rules only
+         */
         Assert.assertEquals(0, getAlertsBody.get("total_alerts"));
     }
 
     // TODO: Create issue to fix the tests. Failing reason: "IOC stuff was removed from the plugin"
+    // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
     @AwaitsFix(bugUrl = "")
-    public void testCreateDetectorWithThreatIntelEnabled_triggerDetectionTypeOnlyThreatIntel_allAlertsForFindings() throws IOException {
+    public void
+            testCreateDetectorWithThreatIntelEnabled_triggerDetectionTypeOnlyThreatIntel_allAlertsForFindings()
+                    throws IOException {
 
         updateClusterSetting(ENABLE_WORKFLOW_USAGE.getKey(), "true");
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
@@ -447,11 +625,14 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
         Request createMappingRequest = new Request("POST", SecurityAnalyticsPlugin.MAPPER_BASE_URI);
         // both req params and req body are supported
         createMappingRequest.setJsonEntity(
-                "{ \"index_name\":\"" + index + "\"," +
-                        "  \"rule_topic\":\"" + randomDetectorType() + "\", " +
-                        "  \"partial\":true" +
-                        "}"
-        );
+                "{ \"index_name\":\""
+                        + index
+                        + "\","
+                        + "  \"rule_topic\":\""
+                        + randomDetectorType()
+                        + "\", "
+                        + "  \"partial\":true"
+                        + "}");
 
         Response createMappingResponse = client().performRequest(createMappingRequest);
 
@@ -459,23 +640,39 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
 
         String testOpCode = "Test";
 
-
         List<DetectorRule> detectorRules = emptyList();
-        DetectorInput input = new DetectorInput("windows detector for security analytics", List.of("windows"), detectorRules,
-                emptyList());
-        DetectorTrigger trigger = new DetectorTrigger("all", "all", "high",
-                List.of(randomDetectorType()), emptyList(), emptyList(), List.of(), emptyList(), List.of(DetectorTrigger.THREAT_INTEL_DETECTION_TYPE));
-        Detector detector = randomDetectorWithInputsAndThreatIntelAndTriggers(List.of(input), true, List.of(trigger));
-        Response createResponse = makeRequest(client(), "POST", SecurityAnalyticsPlugin.DETECTOR_BASE_URI, Collections.emptyMap(), toHttpEntity(detector));
+        DetectorInput input =
+                new DetectorInput(
+                        "windows detector for security analytics",
+                        List.of("windows"),
+                        detectorRules,
+                        emptyList());
+        DetectorTrigger trigger =
+                new DetectorTrigger(
+                        "all",
+                        "all",
+                        "high",
+                        List.of(randomDetectorType()),
+                        emptyList(),
+                        emptyList(),
+                        List.of(),
+                        emptyList(),
+                        List.of(DetectorTrigger.THREAT_INTEL_DETECTION_TYPE));
+        Detector detector =
+                randomDetectorWithInputsAndThreatIntelAndTriggers(List.of(input), true, List.of(trigger));
+        Response createResponse =
+                makeRequest(
+                        client(),
+                        "POST",
+                        SecurityAnalyticsPlugin.DETECTOR_BASE_URI,
+                        Collections.emptyMap(),
+                        toHttpEntity(detector));
 
-        String request = "{\n" +
-                "   \"query\" : {\n" +
-                "     \"match_all\":{\n" +
-                "     }\n" +
-                "   }\n" +
-                "}";
-        SearchResponse response = executeSearchAndGetResponse(DetectorMonitorConfig.getRuleIndex(randomDetectorType()) + "*", request, true);
-
+        String request =
+                "{\n" + "   \"query\" : {\n" + "     \"match_all\":{\n" + "     }\n" + "   }\n" + "}";
+        SearchResponse response =
+                executeSearchAndGetResponse(
+                        DetectorMonitorConfig.getRuleIndex(randomDetectorType()) + "*", request, true);
 
         assertEquals(1, response.getHits().getTotalHits().value());
 
@@ -483,24 +680,30 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
         Map<String, Object> responseBody = asMap(createResponse);
 
         String detectorId = responseBody.get("_id").toString();
-        request = "{\n" +
-                "   \"query\" : {\n" +
-                "     \"match\":{\n" +
-                "        \"_id\": \"" + detectorId + "\"\n" +
-                "     }\n" +
-                "   }\n" +
-                "}";
+        request =
+                "{\n"
+                        + "   \"query\" : {\n"
+                        + "     \"match\":{\n"
+                        + "        \"_id\": \""
+                        + detectorId
+                        + "\"\n"
+                        + "     }\n"
+                        + "   }\n"
+                        + "}";
         List<SearchHit> hits = executeSearch(Detector.DETECTORS_INDEX, request);
         SearchHit hit = hits.get(0);
-        Map<String, Object> detectorMap = (HashMap<String, Object>) (hit.getSourceAsMap().get("detector"));
+        Map<String, Object> detectorMap =
+                (HashMap<String, Object>) (hit.getSourceAsMap().get("detector"));
         List inputArr = (List) detectorMap.get("inputs");
-
 
         List<String> monitorIds = ((List<String>) (detectorMap).get("monitor_id"));
         assertEquals(1, monitorIds.size());
 
         assertNotNull("Workflow not created", detectorMap.get("workflow_ids"));
-        assertEquals("Number of workflows not correct", 1, ((List<String>) detectorMap.get("workflow_ids")).size());
+        assertEquals(
+                "Number of workflows not correct",
+                1,
+                ((List<String>) detectorMap.get("workflow_ids")).size());
 
         // Verify workflow
         verifyWorkflow(detectorMap, monitorIds, 1);
@@ -514,27 +717,44 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
 
         Response executeResponse = executeAlertingWorkflow(workflowId, Collections.emptyMap());
 
-        List<Map<String, Object>> monitorRunResults = (List<Map<String, Object>>) entityAsMap(executeResponse).get("monitor_run_results");
+        List<Map<String, Object>> monitorRunResults =
+                (List<Map<String, Object>>) entityAsMap(executeResponse).get("monitor_run_results");
         assertEquals(1, monitorRunResults.size());
 
-        Map<String, Object> docLevelQueryResults = ((List<Map<String, Object>>) ((Map<String, Object>) monitorRunResults.get(0).get("input_results")).get("results")).get(0);
+        Map<String, Object> docLevelQueryResults =
+                ((List<Map<String, Object>>)
+                                ((Map<String, Object>) monitorRunResults.get(0).get("input_results"))
+                                        .get("results"))
+                        .get(0);
         int noOfSigmaRuleMatches = docLevelQueryResults.size();
         assertEquals(1, noOfSigmaRuleMatches);
-        String threatIntelDocLevelQueryId = docLevelQueryResults.keySet().stream().filter(id -> id.startsWith("threat_intel")).findAny().get();
-        ArrayList<String> docs = (ArrayList<String>) docLevelQueryResults.get(threatIntelDocLevelQueryId);
+        String threatIntelDocLevelQueryId =
+                docLevelQueryResults.keySet().stream()
+                        .filter(id -> id.startsWith("threat_intel"))
+                        .findAny()
+                        .get();
+        ArrayList<String> docs =
+                (ArrayList<String>) docLevelQueryResults.get(threatIntelDocLevelQueryId);
         assertEquals(docs.size(), 3);
-        //verify alerts
+        // verify alerts
         Map<String, String> params = new HashMap<>();
         params.put("detector_id", detectorId);
-        Response getAlertsResponse = makeRequest(client(), "GET", SecurityAnalyticsPlugin.ALERTS_BASE_URI, params, null);
+        Response getAlertsResponse =
+                makeRequest(client(), "GET", SecurityAnalyticsPlugin.ALERTS_BASE_URI, params, null);
         Map<String, Object> getAlertsBody = asMap(getAlertsResponse);
-        /** findings are present and alerts are generated as detection type mentioned in trigger is threat_intel only */
+        /**
+         * findings are present and alerts are generated as detection type mentioned in trigger is
+         * threat_intel only
+         */
         Assert.assertEquals(3, getAlertsBody.get("total_alerts"));
     }
 
     // TODO: Create issue to fix the tests. Failing reason: "IOC stuff was removed from the plugin"
+    // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
     @AwaitsFix(bugUrl = "")
-    public void testCreateDetectorWithThreatIntelEnabled_triggerWithBothDetectionType_allAlertsForFindings() throws IOException {
+    public void
+            testCreateDetectorWithThreatIntelEnabled_triggerWithBothDetectionType_allAlertsForFindings()
+                    throws IOException {
 
         updateClusterSetting(ENABLE_WORKFLOW_USAGE.getKey(), "true");
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
@@ -543,11 +763,14 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
         Request createMappingRequest = new Request("POST", SecurityAnalyticsPlugin.MAPPER_BASE_URI);
         // both req params and req body are supported
         createMappingRequest.setJsonEntity(
-                "{ \"index_name\":\"" + index + "\"," +
-                        "  \"rule_topic\":\"" + randomDetectorType() + "\", " +
-                        "  \"partial\":true" +
-                        "}"
-        );
+                "{ \"index_name\":\""
+                        + index
+                        + "\","
+                        + "  \"rule_topic\":\""
+                        + randomDetectorType()
+                        + "\", "
+                        + "  \"partial\":true"
+                        + "}");
 
         Response createMappingResponse = client().performRequest(createMappingRequest);
 
@@ -555,24 +778,40 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
 
         String testOpCode = "Test";
 
-
         List<DetectorRule> detectorRules = emptyList();
-        DetectorInput input = new DetectorInput("windows detector for security analytics", List.of("windows"), detectorRules,
-                emptyList());
-        DetectorTrigger trigger = new DetectorTrigger("all", "all", "high",
-                List.of(randomDetectorType()), emptyList(), emptyList(), List.of(), emptyList(),
-                List.of(DetectorTrigger.THREAT_INTEL_DETECTION_TYPE, DetectorTrigger.RULES_DETECTION_TYPE));
-        Detector detector = randomDetectorWithInputsAndThreatIntelAndTriggers(List.of(input), true, List.of(trigger));
-        Response createResponse = makeRequest(client(), "POST", SecurityAnalyticsPlugin.DETECTOR_BASE_URI, Collections.emptyMap(), toHttpEntity(detector));
+        DetectorInput input =
+                new DetectorInput(
+                        "windows detector for security analytics",
+                        List.of("windows"),
+                        detectorRules,
+                        emptyList());
+        DetectorTrigger trigger =
+                new DetectorTrigger(
+                        "all",
+                        "all",
+                        "high",
+                        List.of(randomDetectorType()),
+                        emptyList(),
+                        emptyList(),
+                        List.of(),
+                        emptyList(),
+                        List.of(
+                                DetectorTrigger.THREAT_INTEL_DETECTION_TYPE, DetectorTrigger.RULES_DETECTION_TYPE));
+        Detector detector =
+                randomDetectorWithInputsAndThreatIntelAndTriggers(List.of(input), true, List.of(trigger));
+        Response createResponse =
+                makeRequest(
+                        client(),
+                        "POST",
+                        SecurityAnalyticsPlugin.DETECTOR_BASE_URI,
+                        Collections.emptyMap(),
+                        toHttpEntity(detector));
 
-        String request = "{\n" +
-                "   \"query\" : {\n" +
-                "     \"match_all\":{\n" +
-                "     }\n" +
-                "   }\n" +
-                "}";
-        SearchResponse response = executeSearchAndGetResponse(DetectorMonitorConfig.getRuleIndex(randomDetectorType()) + "*", request, true);
-
+        String request =
+                "{\n" + "   \"query\" : {\n" + "     \"match_all\":{\n" + "     }\n" + "   }\n" + "}";
+        SearchResponse response =
+                executeSearchAndGetResponse(
+                        DetectorMonitorConfig.getRuleIndex(randomDetectorType()) + "*", request, true);
 
         assertEquals(1, response.getHits().getTotalHits().value());
 
@@ -580,24 +819,30 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
         Map<String, Object> responseBody = asMap(createResponse);
 
         String detectorId = responseBody.get("_id").toString();
-        request = "{\n" +
-                "   \"query\" : {\n" +
-                "     \"match\":{\n" +
-                "        \"_id\": \"" + detectorId + "\"\n" +
-                "     }\n" +
-                "   }\n" +
-                "}";
+        request =
+                "{\n"
+                        + "   \"query\" : {\n"
+                        + "     \"match\":{\n"
+                        + "        \"_id\": \""
+                        + detectorId
+                        + "\"\n"
+                        + "     }\n"
+                        + "   }\n"
+                        + "}";
         List<SearchHit> hits = executeSearch(Detector.DETECTORS_INDEX, request);
         SearchHit hit = hits.get(0);
-        Map<String, Object> detectorMap = (HashMap<String, Object>) (hit.getSourceAsMap().get("detector"));
+        Map<String, Object> detectorMap =
+                (HashMap<String, Object>) (hit.getSourceAsMap().get("detector"));
         List inputArr = (List) detectorMap.get("inputs");
-
 
         List<String> monitorIds = ((List<String>) (detectorMap).get("monitor_id"));
         assertEquals(1, monitorIds.size());
 
         assertNotNull("Workflow not created", detectorMap.get("workflow_ids"));
-        assertEquals("Number of workflows not correct", 1, ((List<String>) detectorMap.get("workflow_ids")).size());
+        assertEquals(
+                "Number of workflows not correct",
+                1,
+                ((List<String>) detectorMap.get("workflow_ids")).size());
 
         // Verify workflow
         verifyWorkflow(detectorMap, monitorIds, 1);
@@ -611,25 +856,43 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
 
         Response executeResponse = executeAlertingWorkflow(workflowId, Collections.emptyMap());
 
-        List<Map<String, Object>> monitorRunResults = (List<Map<String, Object>>) entityAsMap(executeResponse).get("monitor_run_results");
+        List<Map<String, Object>> monitorRunResults =
+                (List<Map<String, Object>>) entityAsMap(executeResponse).get("monitor_run_results");
         assertEquals(1, monitorRunResults.size());
 
-        Map<String, Object> docLevelQueryResults = ((List<Map<String, Object>>) ((Map<String, Object>) monitorRunResults.get(0).get("input_results")).get("results")).get(0);
+        Map<String, Object> docLevelQueryResults =
+                ((List<Map<String, Object>>)
+                                ((Map<String, Object>) monitorRunResults.get(0).get("input_results"))
+                                        .get("results"))
+                        .get(0);
         int noOfSigmaRuleMatches = docLevelQueryResults.size();
         assertEquals(1, noOfSigmaRuleMatches);
-        String threatIntelDocLevelQueryId = docLevelQueryResults.keySet().stream().filter(id -> id.startsWith("threat_intel")).findAny().get();
-        ArrayList<String> docs = (ArrayList<String>) docLevelQueryResults.get(threatIntelDocLevelQueryId);
+        String threatIntelDocLevelQueryId =
+                docLevelQueryResults.keySet().stream()
+                        .filter(id -> id.startsWith("threat_intel"))
+                        .findAny()
+                        .get();
+        ArrayList<String> docs =
+                (ArrayList<String>) docLevelQueryResults.get(threatIntelDocLevelQueryId);
         assertEquals(docs.size(), 3);
-        //verify alerts
+        // verify alerts
         Map<String, String> params = new HashMap<>();
         params.put("detector_id", detectorId);
-        Response getAlertsResponse = makeRequest(client(), "GET", SecurityAnalyticsPlugin.ALERTS_BASE_URI, params, null);
+        Response getAlertsResponse =
+                makeRequest(client(), "GET", SecurityAnalyticsPlugin.ALERTS_BASE_URI, params, null);
         Map<String, Object> getAlertsBody = asMap(getAlertsResponse);
-        /** findings are present and alerts are generated as both detection type mentioned in trigger is threat_intel only */
+        /**
+         * findings are present and alerts are generated as both detection type mentioned in trigger is
+         * threat_intel only
+         */
         Assert.assertEquals(3, getAlertsBody.get("total_alerts"));
     }
 
-    public void testCreateDetectorWithThreatIntelDisabled_triggerWithThreatIntelDetectionType_mpAlertsForFindings() throws IOException {
+    // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
+    @AwaitsFix(bugUrl = "")
+    public void
+            testCreateDetectorWithThreatIntelDisabled_triggerWithThreatIntelDetectionType_mpAlertsForFindings()
+                    throws IOException {
 
         updateClusterSetting(ENABLE_WORKFLOW_USAGE.getKey(), "true");
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
@@ -638,33 +901,52 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
         Request createMappingRequest = new Request("POST", SecurityAnalyticsPlugin.MAPPER_BASE_URI);
         // both req params and req body are supported
         createMappingRequest.setJsonEntity(
-                "{ \"index_name\":\"" + index + "\"," +
-                        "  \"rule_topic\":\"" + randomDetectorType() + "\", " +
-                        "  \"partial\":true" +
-                        "}"
-        );
+                "{ \"index_name\":\""
+                        + index
+                        + "\","
+                        + "  \"rule_topic\":\""
+                        + randomDetectorType()
+                        + "\", "
+                        + "  \"partial\":true"
+                        + "}");
 
         Response createMappingResponse = client().performRequest(createMappingRequest);
 
         assertEquals(HttpStatus.SC_OK, createMappingResponse.getStatusLine().getStatusCode());
         String randomDocRuleId = createRule(randomRule());
         List<DetectorRule> detectorRules = List.of(new DetectorRule(randomDocRuleId));
-        DetectorInput input = new DetectorInput("windows detector for security analytics", List.of("windows"), detectorRules,
-                emptyList());
-        DetectorTrigger trigger = new DetectorTrigger("all", "all", "high",
-                List.of(randomDetectorType()), emptyList(), emptyList(), List.of(), emptyList(),
-                List.of(DetectorTrigger.THREAT_INTEL_DETECTION_TYPE));
-        Detector detector = randomDetectorWithInputsAndThreatIntelAndTriggers(List.of(input), false, List.of(trigger));
-        Response createResponse = makeRequest(client(), "POST", SecurityAnalyticsPlugin.DETECTOR_BASE_URI, Collections.emptyMap(), toHttpEntity(detector));
+        DetectorInput input =
+                new DetectorInput(
+                        "windows detector for security analytics",
+                        List.of("windows"),
+                        detectorRules,
+                        emptyList());
+        DetectorTrigger trigger =
+                new DetectorTrigger(
+                        "all",
+                        "all",
+                        "high",
+                        List.of(randomDetectorType()),
+                        emptyList(),
+                        emptyList(),
+                        List.of(),
+                        emptyList(),
+                        List.of(DetectorTrigger.THREAT_INTEL_DETECTION_TYPE));
+        Detector detector =
+                randomDetectorWithInputsAndThreatIntelAndTriggers(List.of(input), false, List.of(trigger));
+        Response createResponse =
+                makeRequest(
+                        client(),
+                        "POST",
+                        SecurityAnalyticsPlugin.DETECTOR_BASE_URI,
+                        Collections.emptyMap(),
+                        toHttpEntity(detector));
 
-        String request = "{\n" +
-                "   \"query\" : {\n" +
-                "     \"match_all\":{\n" +
-                "     }\n" +
-                "   }\n" +
-                "}";
-        SearchResponse response = executeSearchAndGetResponse(DetectorMonitorConfig.getRuleIndex(randomDetectorType()) + "*", request, true);
-
+        String request =
+                "{\n" + "   \"query\" : {\n" + "     \"match_all\":{\n" + "     }\n" + "   }\n" + "}";
+        SearchResponse response =
+                executeSearchAndGetResponse(
+                        DetectorMonitorConfig.getRuleIndex(randomDetectorType()) + "*", request, true);
 
         assertEquals(1, response.getHits().getTotalHits().value());
 
@@ -672,24 +954,30 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
         Map<String, Object> responseBody = asMap(createResponse);
 
         String detectorId = responseBody.get("_id").toString();
-        request = "{\n" +
-                "   \"query\" : {\n" +
-                "     \"match\":{\n" +
-                "        \"_id\": \"" + detectorId + "\"\n" +
-                "     }\n" +
-                "   }\n" +
-                "}";
+        request =
+                "{\n"
+                        + "   \"query\" : {\n"
+                        + "     \"match\":{\n"
+                        + "        \"_id\": \""
+                        + detectorId
+                        + "\"\n"
+                        + "     }\n"
+                        + "   }\n"
+                        + "}";
         List<SearchHit> hits = executeSearch(Detector.DETECTORS_INDEX, request);
         SearchHit hit = hits.get(0);
-        Map<String, Object> detectorMap = (HashMap<String, Object>) (hit.getSourceAsMap().get("detector"));
+        Map<String, Object> detectorMap =
+                (HashMap<String, Object>) (hit.getSourceAsMap().get("detector"));
         List inputArr = (List) detectorMap.get("inputs");
-
 
         List<String> monitorIds = ((List<String>) (detectorMap).get("monitor_id"));
         assertEquals(1, monitorIds.size());
 
         assertNotNull("Workflow not created", detectorMap.get("workflow_ids"));
-        assertEquals("Number of workflows not correct", 1, ((List<String>) detectorMap.get("workflow_ids")).size());
+        assertEquals(
+                "Number of workflows not correct",
+                1,
+                ((List<String>) detectorMap.get("workflow_ids")).size());
 
         // Verify workflow
         verifyWorkflow(detectorMap, monitorIds, 1);
@@ -703,25 +991,38 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
 
         Response executeResponse = executeAlertingWorkflow(workflowId, Collections.emptyMap());
 
-        List<Map<String, Object>> monitorRunResults = (List<Map<String, Object>>) entityAsMap(executeResponse).get("monitor_run_results");
+        List<Map<String, Object>> monitorRunResults =
+                (List<Map<String, Object>>) entityAsMap(executeResponse).get("monitor_run_results");
         assertEquals(1, monitorRunResults.size());
 
-        Map<String, Object> docLevelQueryResults = ((List<Map<String, Object>>) ((Map<String, Object>) monitorRunResults.get(0).get("input_results")).get("results")).get(0);
+        Map<String, Object> docLevelQueryResults =
+                ((List<Map<String, Object>>)
+                                ((Map<String, Object>) monitorRunResults.get(0).get("input_results"))
+                                        .get("results"))
+                        .get(0);
         int noOfSigmaRuleMatches = docLevelQueryResults.size();
         assertEquals(1, noOfSigmaRuleMatches);
         String ruleQueryId = docLevelQueryResults.keySet().stream().findAny().get();
         ArrayList<String> docs = (ArrayList<String>) docLevelQueryResults.get(ruleQueryId);
         assertEquals(docs.size(), 3);
-        //verify alerts
+        // verify alerts
         Map<String, String> params = new HashMap<>();
         params.put("detector_id", detectorId);
-        Response getAlertsResponse = makeRequest(client(), "GET", SecurityAnalyticsPlugin.ALERTS_BASE_URI, params, null);
+        Response getAlertsResponse =
+                makeRequest(client(), "GET", SecurityAnalyticsPlugin.ALERTS_BASE_URI, params, null);
         Map<String, Object> getAlertsBody = asMap(getAlertsResponse);
-        /** findings are present but alerts are NOT generated as  detection type mentioned in trigger is threat_intel only but finding is from rules*/
+        /**
+         * findings are present but alerts are NOT generated as detection type mentioned in trigger is
+         * threat_intel only but finding is from rules
+         */
         Assert.assertEquals(0, getAlertsBody.get("total_alerts"));
     }
 
-    public void testCreateDetectorWithThreatIntelDisabled_triggerWithRulesDetectionType_allAlertsForFindings() throws IOException {
+    // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
+    @AwaitsFix(bugUrl = "")
+    public void
+            testCreateDetectorWithThreatIntelDisabled_triggerWithRulesDetectionType_allAlertsForFindings()
+                    throws IOException {
 
         updateClusterSetting(ENABLE_WORKFLOW_USAGE.getKey(), "true");
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
@@ -730,33 +1031,52 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
         Request createMappingRequest = new Request("POST", SecurityAnalyticsPlugin.MAPPER_BASE_URI);
         // both req params and req body are supported
         createMappingRequest.setJsonEntity(
-                "{ \"index_name\":\"" + index + "\"," +
-                        "  \"rule_topic\":\"" + randomDetectorType() + "\", " +
-                        "  \"partial\":true" +
-                        "}"
-        );
+                "{ \"index_name\":\""
+                        + index
+                        + "\","
+                        + "  \"rule_topic\":\""
+                        + randomDetectorType()
+                        + "\", "
+                        + "  \"partial\":true"
+                        + "}");
 
         Response createMappingResponse = client().performRequest(createMappingRequest);
 
         assertEquals(HttpStatus.SC_OK, createMappingResponse.getStatusLine().getStatusCode());
         String randomDocRuleId = createRule(randomRule());
         List<DetectorRule> detectorRules = List.of(new DetectorRule(randomDocRuleId));
-        DetectorInput input = new DetectorInput("windows detector for security analytics", List.of("windows"), detectorRules,
-                emptyList());
-        DetectorTrigger trigger = new DetectorTrigger("all", "all", "high",
-                List.of(randomDetectorType()), emptyList(), emptyList(), List.of(), emptyList(),
-                List.of(DetectorTrigger.RULES_DETECTION_TYPE));
-        Detector detector = randomDetectorWithInputsAndThreatIntelAndTriggers(List.of(input), false, List.of(trigger));
-        Response createResponse = makeRequest(client(), "POST", SecurityAnalyticsPlugin.DETECTOR_BASE_URI, Collections.emptyMap(), toHttpEntity(detector));
+        DetectorInput input =
+                new DetectorInput(
+                        "windows detector for security analytics",
+                        List.of("windows"),
+                        detectorRules,
+                        emptyList());
+        DetectorTrigger trigger =
+                new DetectorTrigger(
+                        "all",
+                        "all",
+                        "high",
+                        List.of(randomDetectorType()),
+                        emptyList(),
+                        emptyList(),
+                        List.of(),
+                        emptyList(),
+                        List.of(DetectorTrigger.RULES_DETECTION_TYPE));
+        Detector detector =
+                randomDetectorWithInputsAndThreatIntelAndTriggers(List.of(input), false, List.of(trigger));
+        Response createResponse =
+                makeRequest(
+                        client(),
+                        "POST",
+                        SecurityAnalyticsPlugin.DETECTOR_BASE_URI,
+                        Collections.emptyMap(),
+                        toHttpEntity(detector));
 
-        String request = "{\n" +
-                "   \"query\" : {\n" +
-                "     \"match_all\":{\n" +
-                "     }\n" +
-                "   }\n" +
-                "}";
-        SearchResponse response = executeSearchAndGetResponse(DetectorMonitorConfig.getRuleIndex(randomDetectorType()) + "*", request, true);
-
+        String request =
+                "{\n" + "   \"query\" : {\n" + "     \"match_all\":{\n" + "     }\n" + "   }\n" + "}";
+        SearchResponse response =
+                executeSearchAndGetResponse(
+                        DetectorMonitorConfig.getRuleIndex(randomDetectorType()) + "*", request, true);
 
         assertEquals(1, response.getHits().getTotalHits().value());
 
@@ -764,24 +1084,30 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
         Map<String, Object> responseBody = asMap(createResponse);
 
         String detectorId = responseBody.get("_id").toString();
-        request = "{\n" +
-                "   \"query\" : {\n" +
-                "     \"match\":{\n" +
-                "        \"_id\": \"" + detectorId + "\"\n" +
-                "     }\n" +
-                "   }\n" +
-                "}";
+        request =
+                "{\n"
+                        + "   \"query\" : {\n"
+                        + "     \"match\":{\n"
+                        + "        \"_id\": \""
+                        + detectorId
+                        + "\"\n"
+                        + "     }\n"
+                        + "   }\n"
+                        + "}";
         List<SearchHit> hits = executeSearch(Detector.DETECTORS_INDEX, request);
         SearchHit hit = hits.get(0);
-        Map<String, Object> detectorMap = (HashMap<String, Object>) (hit.getSourceAsMap().get("detector"));
+        Map<String, Object> detectorMap =
+                (HashMap<String, Object>) (hit.getSourceAsMap().get("detector"));
         List inputArr = (List) detectorMap.get("inputs");
-
 
         List<String> monitorIds = ((List<String>) (detectorMap).get("monitor_id"));
         assertEquals(1, monitorIds.size());
 
         assertNotNull("Workflow not created", detectorMap.get("workflow_ids"));
-        assertEquals("Number of workflows not correct", 1, ((List<String>) detectorMap.get("workflow_ids")).size());
+        assertEquals(
+                "Number of workflows not correct",
+                1,
+                ((List<String>) detectorMap.get("workflow_ids")).size());
 
         // Verify workflow
         verifyWorkflow(detectorMap, monitorIds, 1);
@@ -795,21 +1121,30 @@ public class DetectorThreatIntelIT extends SecurityAnalyticsRestTestCase {
 
         Response executeResponse = executeAlertingWorkflow(workflowId, Collections.emptyMap());
 
-        List<Map<String, Object>> monitorRunResults = (List<Map<String, Object>>) entityAsMap(executeResponse).get("monitor_run_results");
+        List<Map<String, Object>> monitorRunResults =
+                (List<Map<String, Object>>) entityAsMap(executeResponse).get("monitor_run_results");
         assertEquals(1, monitorRunResults.size());
 
-        Map<String, Object> docLevelQueryResults = ((List<Map<String, Object>>) ((Map<String, Object>) monitorRunResults.get(0).get("input_results")).get("results")).get(0);
+        Map<String, Object> docLevelQueryResults =
+                ((List<Map<String, Object>>)
+                                ((Map<String, Object>) monitorRunResults.get(0).get("input_results"))
+                                        .get("results"))
+                        .get(0);
         int noOfSigmaRuleMatches = docLevelQueryResults.size();
         assertEquals(1, noOfSigmaRuleMatches);
         String ruleQueryId = docLevelQueryResults.keySet().stream().findAny().get();
         ArrayList<String> docs = (ArrayList<String>) docLevelQueryResults.get(ruleQueryId);
         assertEquals(docs.size(), 3);
-        //verify alerts
+        // verify alerts
         Map<String, String> params = new HashMap<>();
         params.put("detector_id", detectorId);
-        Response getAlertsResponse = makeRequest(client(), "GET", SecurityAnalyticsPlugin.ALERTS_BASE_URI, params, null);
+        Response getAlertsResponse =
+                makeRequest(client(), "GET", SecurityAnalyticsPlugin.ALERTS_BASE_URI, params, null);
         Map<String, Object> getAlertsBody = asMap(getAlertsResponse);
-        /** findings are present but alerts are NOT generated as  detection type mentioned in trigger is threat_intel only but finding is from rules*/
+        /**
+         * findings are present but alerts are NOT generated as detection type mentioned in trigger is
+         * threat_intel only but finding is from rules
+         */
         Assert.assertEquals(3, getAlertsBody.get("total_alerts"));
     }
 }

@@ -1,16 +1,21 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics;
 
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ExecutionException;
-import org.junit.Before;
 import org.opensearch.action.admin.indices.refresh.RefreshRequest;
 import org.opensearch.action.support.PlainActionFuture;
 import org.opensearch.common.settings.Setting;
@@ -22,16 +27,23 @@ import org.opensearch.securityanalytics.model.LogType;
 import org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings;
 import org.opensearch.test.OpenSearchIntegTestCase;
 import org.opensearch.test.transport.MockTransportService;
+import org.junit.Before;
 
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ExecutionException;
+
+import static org.opensearch.securityanalytics.logtype.LogTypeService.LOG_TYPE_INDEX;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static org.opensearch.securityanalytics.logtype.LogTypeService.LOG_TYPE_INDEX;
 
 public class LogTypeServiceTests extends OpenSearchIntegTestCase {
 
     private LogTypeService logTypeService;
-
 
     @Override
     protected Collection<Class<? extends Plugin>> nodePlugins() {
@@ -44,41 +56,53 @@ public class LogTypeServiceTests extends OpenSearchIntegTestCase {
             BuiltinLogTypeLoader builtinLogTypeLoader = mock(BuiltinLogTypeLoader.class);
             doNothing().when(builtinLogTypeLoader).ensureLogTypesLoaded();
 
-            List<LogType> dummyLogTypes = List.of(
-                new LogType(null, "test_logtype", "", true,
-                        List.of(
-                                new LogType.Mapping("rawFld1", "ecsFld1", "ocsfFld1", "ocsf11Fld1"),
-                                new LogType.Mapping("rawFld2", "ecsFld2", "ocsfFld2", "ocsf11Fld2"),
-                                new LogType.Mapping("rawFld3", "ecsFld3", "ocsfFld3", "ocsf11Fld3")
-                        ),
-                        List.of(new LogType.IocFields("ip", List.of("dst.ip")))
-                )
-            );
+            List<LogType> dummyLogTypes =
+                    List.of(
+                            new LogType(
+                                    null,
+                                    "test_logtype",
+                                    "",
+                                    true,
+                                    List.of(
+                                            new LogType.Mapping("rawFld1", "ecsFld1", "ocsfFld1", "ocsf11Fld1"),
+                                            new LogType.Mapping("rawFld2", "ecsFld2", "ocsfFld2", "ocsf11Fld2"),
+                                            new LogType.Mapping("rawFld3", "ecsFld3", "ocsfFld3", "ocsf11Fld3")),
+                                    List.of(new LogType.IocFields("ip", List.of("dst.ip")))));
             when(builtinLogTypeLoader.getAllLogTypes()).thenReturn(dummyLogTypes);
-            logTypeService = new LogTypeService(client(), clusterService(), xContentRegistry(), builtinLogTypeLoader);
+            logTypeService =
+                    new LogTypeService(client(), clusterService(), xContentRegistry(), builtinLogTypeLoader);
         }
     }
 
     // Failing due to issues in default LogTypes loading
+    // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
     @AwaitsFix(bugUrl = "")
     public void testIndexMappings() throws ExecutionException, InterruptedException {
         ensureGreen();
 
-        List<FieldMappingDoc> fieldMappingDocs = List.of(
-            new FieldMappingDoc("fld1", Map.of("ecs", "ecs_fld1", "ocsf", "ocsf_fld1"), Set.of("windows")),
-            new FieldMappingDoc("fld2", Map.of("ecs", "ecs_fld2", "ocsf", "ocsf_fld2"), Set.of("windows")),
-            new FieldMappingDoc("fld3", Map.of("ecs", "ecs_winlog.fld3", "ocsf", "ocsf_fld3"), Set.of("windows"))
-        );
+        List<FieldMappingDoc> fieldMappingDocs =
+                List.of(
+                        new FieldMappingDoc(
+                                "fld1", Map.of("ecs", "ecs_fld1", "ocsf", "ocsf_fld1"), Set.of("windows")),
+                        new FieldMappingDoc(
+                                "fld2", Map.of("ecs", "ecs_fld2", "ocsf", "ocsf_fld2"), Set.of("windows")),
+                        new FieldMappingDoc(
+                                "fld3", Map.of("ecs", "ecs_winlog.fld3", "ocsf", "ocsf_fld3"), Set.of("windows")));
 
         indexFieldMappings(fieldMappingDocs);
 
         client().admin().indices().refresh(new RefreshRequest(LOG_TYPE_INDEX)).get();
 
-        fieldMappingDocs = List.of(
-                new FieldMappingDoc("fld1", Map.of("ecs", "ecs_fld1", "ocsf", "ocsf_fld111"), Set.of("linux")),
-                new FieldMappingDoc("fld2", Map.of("ecs", "ecs_fld2", "ocsf", "ocsf_fld222"), Set.of("linux")),
-                new FieldMappingDoc("fld3", Map.of("ecs", "network.something", "ocsf", "ocsf_fld333"), Set.of("network"))
-        );
+        fieldMappingDocs =
+                List.of(
+                        new FieldMappingDoc(
+                                "fld1", Map.of("ecs", "ecs_fld1", "ocsf", "ocsf_fld111"), Set.of("linux")),
+                        new FieldMappingDoc(
+                                "fld2", Map.of("ecs", "ecs_fld2", "ocsf", "ocsf_fld222"), Set.of("linux")),
+                        new FieldMappingDoc(
+                                "fld3",
+                                Map.of("ecs", "network.something", "ocsf", "ocsf_fld333"),
+                                Set.of("network")));
 
         indexFieldMappings(fieldMappingDocs);
 
@@ -88,12 +112,12 @@ public class LogTypeServiceTests extends OpenSearchIntegTestCase {
         logTypeService.getAllFieldMappings(getAllFieldMappingsFuture);
         try {
             List<FieldMappingDoc> allFieldMappings = getAllFieldMappingsFuture.get();
-            // 3 initial ones from test_logtype, fld1 and fld2 are inserted and then updated/merged and fld3 is inserted twice since ecs field is different
+            // 3 initial ones from test_logtype, fld1 and fld2 are inserted and then updated/merged and
+            // fld3 is inserted twice since ecs field is different
             assertEquals(7, allFieldMappings.size());
         } catch (Exception e) {
             fail(e.getMessage());
         }
-
 
         List<String> allLogTypes = getAllLogTypes();
         assertEquals(4, allLogTypes.size());
@@ -102,11 +126,10 @@ public class LogTypeServiceTests extends OpenSearchIntegTestCase {
         assertTrue(allLogTypes.contains("test_logtype"));
         assertTrue(allLogTypes.contains("network"));
 
-        List<FieldMappingDoc> fieldMappings =  getFieldMappingsByLogTypes(List.of("linux"));
+        List<FieldMappingDoc> fieldMappings = getFieldMappingsByLogTypes(List.of("linux"));
         assertEquals(2, fieldMappings.size());
-        fieldMappings =  getFieldMappingsByLogTypes(List.of("windows"));
+        fieldMappings = getFieldMappingsByLogTypes(List.of("windows"));
         assertEquals(3, fieldMappings.size());
-
     }
 
     public void testSetLogTypeMappingSchema() {
@@ -154,5 +177,4 @@ public class LogTypeServiceTests extends OpenSearchIntegTestCase {
             return Arrays.asList(SecurityAnalyticsSettings.DEFAULT_MAPPING_SCHEMA);
         }
     }
-
 }
