@@ -39,7 +39,6 @@ public class CustomLogType implements Writeable, ToXContentObject {
 
     private static final Logger log = LogManager.getLogger(CustomLogType.class);
 
-
     public static final String CUSTOM_LOG_TYPE_ID_FIELD = "custom_logtype_id";
 
     private static final String NAME_FIELD = "name";
@@ -75,7 +74,6 @@ public class CustomLogType implements Writeable, ToXContentObject {
                     CustomLogType.class,
                     new ParseField(CUSTOM_LOG_TYPES_FIELD),
                     xcp -> parse(xcp, null, null));
-
 
     public CustomLogType(
             String id,
