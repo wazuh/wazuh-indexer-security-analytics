@@ -18,19 +18,34 @@ package org.opensearch.securityanalytics.transport;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.lucene.search.join.ScoreMode;
+import org.opensearch.OpenSearchStatusException;
+import org.opensearch.action.search.SearchRequest;
+import org.opensearch.action.search.SearchResponse;
 import org.opensearch.action.support.ActionFilters;
 import org.opensearch.action.support.HandledTransportAction;
+import org.opensearch.action.support.IndicesOptions;
 import org.opensearch.common.inject.Inject;
 import org.opensearch.core.action.ActionListener;
+import org.opensearch.core.rest.RestStatus;
+import org.opensearch.index.query.QueryBuilders;
 import org.opensearch.rest.RestRequest;
+import org.opensearch.search.builder.SearchSourceBuilder;
 import org.opensearch.securityanalytics.action.IndexDetectorAction;
 import org.opensearch.securityanalytics.action.IndexDetectorRequest;
 import org.opensearch.securityanalytics.action.IndexDetectorResponse;
 import org.opensearch.securityanalytics.model.Detector;
+import org.opensearch.securityanalytics.model.Rule;
 import org.opensearch.securityanalytics.util.DetectorFactory;
 import org.opensearch.tasks.Task;
 import org.opensearch.transport.TransportService;
 import org.opensearch.transport.client.Client;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import com.wazuh.securityanalytics.action.WIndexDetectorAction;
 import com.wazuh.securityanalytics.action.WIndexDetectorRequest;
@@ -56,6 +71,9 @@ public class WTransportIndexDetectorAction
         implements SecureTransportAction {
     private final Client client;
     private static final Logger log = LogManager.getLogger(WTransportIndexDetectorAction.class);
+
+    // Constant for the CTI Integrations index
+    private static final String CTI_INTEGRATIONS_INDEX = ".cti-integrations";
 
     /**
      * Constructs a new WTransportIndexDetectorAction.
@@ -86,21 +104,224 @@ public class WTransportIndexDetectorAction
     @Override
     protected void doExecute(
             Task task, WIndexDetectorRequest request, ActionListener<WIndexDetectorResponse> listener) {
-        // Create detector for this Integration
+
+        // Fetch the integration document from .cti-integrations to get the true list of rules
+        SearchRequest integrationSearch = new SearchRequest(CTI_INTEGRATIONS_INDEX);
+        integrationSearch.indicesOptions(IndicesOptions.lenientExpandOpen());
+
+        SearchSourceBuilder intSourceBuilder = new SearchSourceBuilder();
+        intSourceBuilder.query(
+                QueryBuilders.matchQuery("document.metadata.title", request.getLogTypeName()));
+        intSourceBuilder.size(1);
+        integrationSearch.source(intSourceBuilder);
+
+        this.client.search(
+                integrationSearch,
+                new ActionListener<SearchResponse>() {
+                    @Override
+                    @SuppressWarnings("unchecked")
+                    public void onResponse(SearchResponse intResponse) {
+                        if (intResponse.getHits().getHits().length == 0) {
+                            log.warn(
+                                    "Integration [{}] not found in {}",
+                                    request.getLogTypeName(),
+                                    CTI_INTEGRATIONS_INDEX);
+                            WTransportIndexDetectorAction.this.validateRulesAndCreateDetector(
+                                    request.getRules(), request, listener);
+                            return;
+                        }
+
+                        Map<String, Object> sourceAsMap = intResponse.getHits().getHits()[0].getSourceAsMap();
+                        Map<String, Object> documentMap = (Map<String, Object>) sourceAsMap.get("document");
+
+                        List<String> expectedRuleIds = null;
+                        if (documentMap != null) {
+                            expectedRuleIds = (List<String>) documentMap.get("rules");
+                        }
+
+                        if (expectedRuleIds == null || expectedRuleIds.isEmpty()) {
+                            log.debug(
+                                    "Integration [{}] found in {} but has no rules listed. "
+                                            + "Proceeding with rules from request: {}",
+                                    request.getLogTypeName(),
+                                    CTI_INTEGRATIONS_INDEX,
+                                    request.getRules());
+                            WTransportIndexDetectorAction.this.executeDetectorCreation(
+                                    request, listener, request.getRules());
+                            return;
+                        }
+                        log.debug(
+                                "Integration [{}] found with {} expected rules. Validating...",
+                                request.getLogTypeName(),
+                                expectedRuleIds.size());
+                        WTransportIndexDetectorAction.this.validateRulesAndCreateDetector(
+                                expectedRuleIds, request, listener);
+                    }
+
+                    @Override
+                    public void onFailure(Exception e) {
+                        log.error("Failed to query " + CTI_INTEGRATIONS_INDEX + " for detector creation", e);
+                        listener.onFailure(e);
+                    }
+                });
+    }
+
+    /**
+     * Validates a list of expected rule IDs against the internal rule indices before creating the
+     * detector. *
+     *
+     * <p>This method queries OpenSearch to ensure the expected rules exist and are not residing
+     * within invalid spaces (e.g., "draft" or "test"). If any rules are in an invalid space, it will
+     * fail the request. Missing rules are logged as warnings but ignored. Finally, it proceeds to
+     * create the detector strictly with the validated rules. * @param expectedRuleIds the list of
+     * rule IDs fetched from the integration document to validate
+     *
+     * @param request the original detector indexing request
+     * @param listener the listener to notify upon successful creation or validation failure
+     */
+    @SuppressWarnings("unchecked")
+    private void validateRulesAndCreateDetector(
+            List<String> expectedRuleIds,
+            WIndexDetectorRequest request,
+            ActionListener<WIndexDetectorResponse> listener) {
+        if (expectedRuleIds == null || expectedRuleIds.isEmpty()) {
+            this.executeDetectorCreation(
+                    request, listener, expectedRuleIds == null ? new ArrayList<>() : expectedRuleIds);
+            return;
+        }
+
+        SearchRequest searchRequest =
+                new SearchRequest(Rule.CUSTOM_RULES_INDEX, Rule.PRE_PACKAGED_RULES_INDEX);
+        searchRequest.indicesOptions(IndicesOptions.lenientExpandOpen());
+
+        SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
+
+        sourceBuilder.query(
+                QueryBuilders.nestedQuery(
+                        "rule", QueryBuilders.termsQuery("rule.document.id", expectedRuleIds), ScoreMode.None));
+
+        sourceBuilder.size(Math.min(expectedRuleIds.size(), 10000));
+        searchRequest.source(sourceBuilder);
+
+        this.client.search(
+                searchRequest,
+                new ActionListener<SearchResponse>() {
+                    @Override
+                    public void onResponse(SearchResponse response) {
+                        List<String> invalidSpaceRules = new ArrayList<>();
+                        Set<String> foundRuleIds = new HashSet<>();
+
+                        for (var hit : response.getHits().getHits()) {
+                            Map<String, Object> sourceMap = hit.getSourceAsMap();
+                            Map<String, Object> ruleMap = (Map<String, Object>) sourceMap.get("rule");
+
+                            String docId = null;
+                            String spaceSource = null;
+
+                            if (ruleMap != null) {
+                                docId = (String) ruleMap.get("document.id");
+                                spaceSource = (String) ruleMap.get("source");
+                            }
+
+                            if (docId == null) {
+                                docId = hit.getId();
+                            }
+
+                            foundRuleIds.add(docId);
+
+                            if ("draft".equalsIgnoreCase(spaceSource) || "test".equalsIgnoreCase(spaceSource)) {
+                                invalidSpaceRules.add(docId);
+                            }
+                        }
+
+                        List<String> missingRules = new ArrayList<>();
+                        List<String> validRulesToKeep = new ArrayList<>();
+
+                        // Filter rules: track missing, and collect only the valid ones
+                        for (String expectedId : expectedRuleIds) {
+                            if (!foundRuleIds.contains(expectedId)) {
+                                missingRules.add(expectedId);
+                            } else if (!invalidSpaceRules.contains(expectedId)) {
+                                validRulesToKeep.add(expectedId);
+                            }
+                        }
+
+                        if (!invalidSpaceRules.isEmpty()) {
+                            String errorMsg =
+                                    String.format(
+                                            "Cannot create [%s] detector. Rules %s are in draft/test space.",
+                                            request.getLogTypeName(), invalidSpaceRules);
+                            log.warn(errorMsg);
+                            listener.onFailure(new OpenSearchStatusException(errorMsg, RestStatus.BAD_REQUEST));
+                            return;
+                        }
+
+                        if (!missingRules.isEmpty()) {
+                            log.warn(
+                                    "The following rules for [{}] detector are missing or failed to sync: {}",
+                                    request.getLogTypeName(),
+                                    missingRules);
+                        }
+
+                        log.debug(
+                                "Rule validation for [{}]: expected={}, found={}, valid={}, missing={}, invalidSpace={}",
+                                request.getLogTypeName(),
+                                expectedRuleIds.size(),
+                                foundRuleIds.size(),
+                                validRulesToKeep.size(),
+                                missingRules.size(),
+                                invalidSpaceRules.size());
+
+                        // Proceed to creation with ONLY the valid, existing rules
+                        WTransportIndexDetectorAction.this.executeDetectorCreation(
+                                request, listener, validRulesToKeep);
+                    }
+
+                    @Override
+                    public void onFailure(Exception e) {
+                        log.error(
+                                "Failed to validate rules against SAP indices. Target rules: " + expectedRuleIds,
+                                e);
+                        listener.onFailure(e);
+                    }
+                });
+    }
+
+    /**
+     * Constructs the detector and executes the internal index action using the validated rules. *
+     *
+     * <p>It utilizes the {@link DetectorFactory} to map the original request parameters alongside the
+     * sanitized list of rule IDs into a new {@link Detector} instance, which is then submitted to
+     * OpenSearch via the standard {@link IndexDetectorAction}. * @param request the original detector
+     * indexing request
+     *
+     * @param listener the listener to pass back the final {@link WIndexDetectorResponse} upon
+     *     completion
+     * @param validRuleIds the sanitized list of valid rule IDs to associate with the detector
+     */
+    private void executeDetectorCreation(
+            WIndexDetectorRequest request,
+            ActionListener<WIndexDetectorResponse> listener,
+            List<String> validRuleIds) {
         Detector detector =
                 DetectorFactory.createDetector(
-                        request.getLogTypeName(), request.getCategory(), request.getRules());
+                        request.getLogTypeName(), request.getCategory(), validRuleIds);
         detector.setId(request.getDetectorId());
+
         IndexDetectorRequest indexDetectorRequest =
                 new IndexDetectorRequest(
                         detector.getId(), request.getRefreshPolicy(), RestRequest.Method.PUT, detector);
+
         this.client.execute(
                 IndexDetectorAction.INSTANCE,
                 indexDetectorRequest,
                 new ActionListener<>() {
                     @Override
                     public void onResponse(IndexDetectorResponse response) {
-                        log.info("Successfully indexed detector with id: {}", response.getId());
+                        log.info(
+                                "Successfully indexed detector for [{}] with id: {}",
+                                request.getLogTypeName(),
+                                response.getId());
                         listener.onResponse(
                                 new WIndexDetectorResponse(response.getId(), response.getVersion()));
                     }
