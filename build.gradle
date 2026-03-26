@@ -42,7 +42,7 @@ buildscript {
             // TODO consider enabling snapshot options once SA commons is published to maven central
 //            sa_commons_version += "-SNAPSHOT"
         }
-        common_utils_version = System.getProperty("common_utils.version", opensearch_build)
+        common_utils_version = System.getProperty("common_utils.version", "${wazuh_version}.${revision}")
         kotlin_version = '1.8.21'
 
         sa_commons_file_name = "security-analytics-commons-${sa_commons_version}.jar"
