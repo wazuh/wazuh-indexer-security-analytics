@@ -1,4 +1,4 @@
-run-name: Build Wazuh Indexer Security Analytics plugin | ${{ inputs.id}}
+run-name: Build Wazuh Indexer Security Analytics plugin | ${{ inputs.id }}
 name: (5.x) Build packages
 
 # This workflow runs when any of the following occur:
@@ -25,6 +25,10 @@ on:
         description: "ID used to identify the workflow uniquely."
         type: string
         required: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 # ==========================
 # Bibliography
