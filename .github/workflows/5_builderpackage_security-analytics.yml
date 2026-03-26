@@ -82,6 +82,7 @@ jobs:
           key: maven-common-utils-${{ github.ref_name }}
 
   build:
+    needs: [get-version, publish-common-utils]
     runs-on: ubuntu-24.04
     env:
       plugin_name: wazuh-indexer-security-analytics
@@ -94,6 +95,12 @@ jobs:
 
       - name: Setup Gradle # Used for caching
         uses: gradle/actions/setup-gradle@v6
+
+      - name: Restore Maven Local cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.m2/repository
+          key: maven-common-utils-${{ github.ref_name }}
 
       - name: Get version
         id: version

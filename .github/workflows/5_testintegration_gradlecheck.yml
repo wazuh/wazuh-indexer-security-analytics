@@ -57,12 +57,19 @@ jobs:
 
   call-test-workflow:
     runs-on: ubuntu-24.04
+    needs: [publish-common-utils]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 25
+
+      - name: Restore Maven Local cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.m2/repository
+          key: maven-common-utils-${{ github.ref_name }}
 
       - name: Get version
         id: version
