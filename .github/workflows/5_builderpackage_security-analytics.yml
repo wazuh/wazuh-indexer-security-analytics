@@ -40,34 +40,41 @@ on:
 #   | https://docs.github.com/en/actions/learn-github-actions/expressions#example
 
 jobs:
-  # TODO use branch resolver
-
-  # Publish common-utils to Local Maven for notifications plugin
-  publish-common-utils:
+  branches:
     runs-on: ubuntu-24.04
+    outputs:
+      common_utils_ref: ${{ steps.resolve.outputs.wazuh_indexer_common_utils_branch }}
     steps:
       - uses: actions/checkout@v6
-        with:
-          repository: wazuh/wazuh-indexer-common-utils
-          ref: ${{ github.ref_name }} # Use the same branch as the current workflow
 
+      - name: Resolve branches
+        id: resolve
+        uses: wazuh/wazuh-indexer/.github/actions/5_builderpackage_indexer_branch_resolver@main
+        with:
+          branch: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
+
+      - name: Display resolved branches
+        run: |
+          echo "Common Utils branch: ${{ steps.resolve.outputs.wazuh_indexer_common_utils_branch }}"
+
+  get-version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
       - uses: actions/checkout@v6
-        with:
-          repository: wazuh/wazuh-indexer-common-utils
-          ref: main # Use 'main' branch if the current branch is not found in the common-utils repository
-        if: ${{ failure() }}
+      - name: Get version
+        id: version
+        run: echo "version=$(jq -r .version<VERSION.json)" >> "$GITHUB_OUTPUT"
 
-      - name: Publish common-utils to Local Maven
+  publish-common-utils:
+    runs-on: ubuntu-24.04
+    needs: [branches, get-version]
+    steps:
+      - name: Publish common-utils to Maven Local
         uses: wazuh/wazuh-indexer-common-utils/.github/actions/5_local_maven_publisher@main
         with:
-          reference: ${{ github.ref_name }} # Use the same branch as the current workflow
-      
-      - name: Publish common-utils to Local Maven
-        uses: wazuh/wazuh-indexer-common-utils/.github/actions/5_local_maven_publisher@main
-        with:
-          reference: main # Use 'main' branch if the current branch is not found in the common-utils repository
-        if: ${{ failure() }}
-
+          reference: ${{ needs.branches.outputs.common_utils_ref }}
       - name: Cache Maven Local
         uses: actions/cache/save@v5
         with:
