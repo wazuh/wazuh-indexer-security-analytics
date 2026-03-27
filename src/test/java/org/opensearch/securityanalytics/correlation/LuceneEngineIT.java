@@ -1,18 +1,29 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.correlation;
 
 import org.apache.lucene.index.VectorSimilarityFunction;
-import org.junit.Assert;
 import org.opensearch.client.Response;
-import org.opensearch.core.common.Strings;
-import org.opensearch.core.xcontent.XContentBuilder;
 import org.opensearch.common.xcontent.XContentFactory;
+import org.opensearch.core.xcontent.XContentBuilder;
 import org.opensearch.securityanalytics.SecurityAnalyticsRestTestCase;
 import org.opensearch.securityanalytics.correlation.index.CorrelationParamsContext;
 import org.opensearch.securityanalytics.correlation.index.query.CorrelationQueryBuilder;
+import org.junit.Assert;
 
 import java.io.IOException;
 import java.util.List;
@@ -31,49 +42,58 @@ public class LuceneEngineIT extends SecurityAnalyticsRestTestCase {
     private static final int M = 16;
     private static final int EF_CONSTRUCTION = 128;
     private static final String INDEX_NAME = "test-index-1";
-    private static final Float[][] TEST_VECTORS = new Float[][]{{ 1.0f, 1.0f, 1.0f }, { 2.0f, 2.0f, 2.0f }, { 3.0f, 3.0f, 3.0f }};
-    private static final float[][] TEST_QUERY_VECTORS = new float[][]{ { 1.0f, 1.0f, 1.0f }, { 2.0f, 2.0f, 2.0f }, { 3.0f, 3.0f, 3.0f } };
-    private static final Map<VectorSimilarityFunction, Function<Float, Float>> VECTOR_SIMILARITY_TO_SCORE = Map.of(
-            VectorSimilarityFunction.EUCLIDEAN,
-            (similarity) -> 1 / (1 + similarity),
-            VectorSimilarityFunction.DOT_PRODUCT,
-            (similarity) -> (1 + similarity) / 2,
-            VectorSimilarityFunction.COSINE,
-            (similarity) -> (1 + similarity) / 2
-    );
+    private static final Float[][] TEST_VECTORS =
+            new Float[][] {{1.0f, 1.0f, 1.0f}, {2.0f, 2.0f, 2.0f}, {3.0f, 3.0f, 3.0f}};
+    private static final float[][] TEST_QUERY_VECTORS =
+            new float[][] {{1.0f, 1.0f, 1.0f}, {2.0f, 2.0f, 2.0f}, {3.0f, 3.0f, 3.0f}};
+    private static final Map<VectorSimilarityFunction, Function<Float, Float>>
+            VECTOR_SIMILARITY_TO_SCORE =
+                    Map.of(
+                            VectorSimilarityFunction.EUCLIDEAN,
+                            (similarity) -> 1 / (1 + similarity),
+                            VectorSimilarityFunction.DOT_PRODUCT,
+                            (similarity) -> (1 + similarity) / 2,
+                            VectorSimilarityFunction.COSINE,
+                            (similarity) -> (1 + similarity) / 2);
 
     // TODO: Create issue to fix the tests.
+    // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
     @AwaitsFix(bugUrl = "")
     @SuppressWarnings("unchecked")
     public void testQuery() throws IOException {
         String textField = "text-field";
         String luceneField = "lucene-field";
-        XContentBuilder builder = XContentFactory.jsonBuilder()
-                .startObject()
-                .startObject(PROPERTIES_FIELD_NAME)
-                .startObject(textField)
-                .field(TYPE_FIELD_NAME, "text")
-                .endObject()
-                .startObject(luceneField)
-                .field(TYPE_FIELD_NAME, SECURITY_ANALYTICS_VECTOR_TYPE)
-                .field(DIMENSION_FIELD_NAME, DIMENSION)
-                .startObject(CorrelationConstants.CORRELATION_CONTEXT)
-                .field(CorrelationParamsContext.VECTOR_SIMILARITY_FUNCTION, VectorSimilarityFunction.EUCLIDEAN.name())
-                .startObject(CorrelationParamsContext.PARAMETERS)
-                .field(CorrelationConstants.METHOD_PARAMETER_M, M)
-                .field(CorrelationConstants.METHOD_PARAMETER_EF_CONSTRUCTION, EF_CONSTRUCTION)
-                .endObject()
-                .endObject()
-                .endObject()
-                .endObject()
-                .endObject();
+        XContentBuilder builder =
+                XContentFactory.jsonBuilder()
+                        .startObject()
+                        .startObject(PROPERTIES_FIELD_NAME)
+                        .startObject(textField)
+                        .field(TYPE_FIELD_NAME, "text")
+                        .endObject()
+                        .startObject(luceneField)
+                        .field(TYPE_FIELD_NAME, SECURITY_ANALYTICS_VECTOR_TYPE)
+                        .field(DIMENSION_FIELD_NAME, DIMENSION)
+                        .startObject(CorrelationConstants.CORRELATION_CONTEXT)
+                        .field(
+                                CorrelationParamsContext.VECTOR_SIMILARITY_FUNCTION,
+                                VectorSimilarityFunction.EUCLIDEAN.name())
+                        .startObject(CorrelationParamsContext.PARAMETERS)
+                        .field(CorrelationConstants.METHOD_PARAMETER_M, M)
+                        .field(CorrelationConstants.METHOD_PARAMETER_EF_CONSTRUCTION, EF_CONSTRUCTION)
+                        .endObject()
+                        .endObject()
+                        .endObject()
+                        .endObject()
+                        .endObject();
 
         String mapping = builder.toString();
-        createTestIndexWithMappingJson(client(), INDEX_NAME, mapping, getCorrelationDefaultIndexSettings());
+        createTestIndexWithMappingJson(
+                client(), INDEX_NAME, mapping, getCorrelationDefaultIndexSettings());
 
         for (int idx = 0; idx < TEST_VECTORS.length; ++idx) {
-            addCorrelationDoc(INDEX_NAME,
-                    String.valueOf(idx+1),
+            addCorrelationDoc(
+                    INDEX_NAME,
+                    String.valueOf(idx + 1),
                     List.of(textField, luceneField),
                     List.of(UUID.randomUUID().toString(), TEST_VECTORS[idx]));
         }
@@ -81,25 +101,49 @@ public class LuceneEngineIT extends SecurityAnalyticsRestTestCase {
         Assert.assertEquals(TEST_VECTORS.length, getDocCount(INDEX_NAME));
 
         int k = 2;
-        for (float[] query: TEST_QUERY_VECTORS) {
-            Response response = searchCorrelationIndex(INDEX_NAME, new CorrelationQueryBuilder(luceneField, query, k), k);
+        for (float[] query : TEST_QUERY_VECTORS) {
+            Response response =
+                    searchCorrelationIndex(INDEX_NAME, new CorrelationQueryBuilder(luceneField, query, k), k);
             Map<String, Object> responseBody = entityAsMap(response);
-            Assert.assertEquals(2, ((List<Object>) ((Map<String, Object>) responseBody.get("hits")).get("hits")).size());
+            Assert.assertEquals(
+                    2, ((List<Object>) ((Map<String, Object>) responseBody.get("hits")).get("hits")).size());
             @SuppressWarnings("unchecked")
-            double actualScore1 = Double.parseDouble(((List<Map<String, Object>>) ((Map<String, Object>) responseBody.get("hits")).get("hits")).get(0).get("_score").toString());
+            double actualScore1 =
+                    Double.parseDouble(
+                            ((List<Map<String, Object>>)
+                                            ((Map<String, Object>) responseBody.get("hits")).get("hits"))
+                                    .get(0)
+                                    .get("_score")
+                                    .toString());
             @SuppressWarnings("unchecked")
-            double actualScore2 = Double.parseDouble(((List<Map<String, Object>>) ((Map<String, Object>) responseBody.get("hits")).get("hits")).get(1).get("_score").toString());
+            double actualScore2 =
+                    Double.parseDouble(
+                            ((List<Map<String, Object>>)
+                                            ((Map<String, Object>) responseBody.get("hits")).get("hits"))
+                                    .get(1)
+                                    .get("_score")
+                                    .toString());
             @SuppressWarnings("unchecked")
-            List<Float> hit1 = ((Map<String, List<Double>>) ((List<Map<String, Object>>) ((Map<String, Object>) responseBody.get("hits")).get("hits")).get(0).get("_source")).get(luceneField).stream()
-                            .map(Double::floatValue).collect(Collectors.toList());
+            List<Float> hit1 =
+                    ((Map<String, List<Double>>)
+                                    ((List<Map<String, Object>>)
+                                                    ((Map<String, Object>) responseBody.get("hits")).get("hits"))
+                                            .get(0)
+                                            .get("_source"))
+                            .get(luceneField).stream().map(Double::floatValue).collect(Collectors.toList());
             float[] resultVector1 = new float[hit1.size()];
             for (int i = 0; i < hit1.size(); ++i) {
                 resultVector1[i] = hit1.get(i);
             }
 
             @SuppressWarnings("unchecked")
-            List<Float> hit2 = ((Map<String, List<Double>>) ((List<Map<String, Object>>) ((Map<String, Object>) responseBody.get("hits")).get("hits")).get(1).get("_source")).get(luceneField).stream()
-                    .map(Double::floatValue).collect(Collectors.toList());
+            List<Float> hit2 =
+                    ((Map<String, List<Double>>)
+                                    ((List<Map<String, Object>>)
+                                                    ((Map<String, Object>) responseBody.get("hits")).get("hits"))
+                                            .get(1)
+                                            .get("_source"))
+                            .get(luceneField).stream().map(Double::floatValue).collect(Collectors.toList());
             float[] resultVector2 = new float[hit2.size()];
             for (int i = 0; i < hit2.size(); ++i) {
                 resultVector2[i] = hit2.get(i);
