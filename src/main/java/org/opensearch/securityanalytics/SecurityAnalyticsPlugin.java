@@ -1,31 +1,26 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics;
 
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.function.Supplier;
-
-import com.wazuh.securityanalytics.action.WDeleteCustomRuleAction;
-import com.wazuh.securityanalytics.action.WDeleteDetectorAction;
-import com.wazuh.securityanalytics.action.WDeleteIntegrationAction;
-import com.wazuh.securityanalytics.action.WDeleteRuleAction;
-import com.wazuh.securityanalytics.action.WIndexCustomRuleAction;
-import com.wazuh.securityanalytics.action.WIndexDetectorAction;
-import com.wazuh.securityanalytics.action.WIndexIntegrationAction;
-import com.wazuh.securityanalytics.action.WIndexRuleAction;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
 import org.opensearch.action.ActionRequest;
 import org.opensearch.cluster.ClusterState;
 import org.opensearch.cluster.metadata.IndexMetadata;
-import org.opensearch.securityanalytics.rules.objects.WCSFieldValidator;
 import org.opensearch.cluster.metadata.IndexNameExpressionResolver;
 import org.opensearch.cluster.node.DiscoveryNode;
 import org.opensearch.cluster.node.DiscoveryNodes;
@@ -89,9 +84,9 @@ import org.opensearch.securityanalytics.action.ValidateRulesAction;
 import org.opensearch.securityanalytics.correlation.alert.CorrelationAlertService;
 import org.opensearch.securityanalytics.correlation.alert.notifications.NotificationService;
 import org.opensearch.securityanalytics.correlation.index.codec.CorrelationCodecService;
-import org.opensearch.securityanalytics.enrichment.WazuhEnrichedFindingService;
 import org.opensearch.securityanalytics.correlation.index.mapper.CorrelationVectorFieldMapper;
 import org.opensearch.securityanalytics.correlation.index.query.CorrelationQueryBuilder;
+import org.opensearch.securityanalytics.enrichment.WazuhEnrichedFindingService;
 import org.opensearch.securityanalytics.indexmanagment.DetectorIndexManagementService;
 import org.opensearch.securityanalytics.logtype.BuiltinLogTypeLoader;
 import org.opensearch.securityanalytics.logtype.LogTypeService;
@@ -106,9 +101,7 @@ import org.opensearch.securityanalytics.resthandler.RestAcknowledgeAlertsAction;
 import org.opensearch.securityanalytics.resthandler.RestAcknowledgeCorrelationAlertsAction;
 import org.opensearch.securityanalytics.resthandler.RestCreateIndexMappingsAction;
 import org.opensearch.securityanalytics.resthandler.RestDeleteCorrelationRuleAction;
-import org.opensearch.securityanalytics.resthandler.RestDeleteCustomLogTypeAction;
 import org.opensearch.securityanalytics.resthandler.RestDeleteDetectorAction;
-import org.opensearch.securityanalytics.resthandler.RestDeleteRuleAction;
 import org.opensearch.securityanalytics.resthandler.RestGetAlertsAction;
 import org.opensearch.securityanalytics.resthandler.RestGetAllRuleCategoriesAction;
 import org.opensearch.securityanalytics.resthandler.RestGetCorrelationsAlertsAction;
@@ -117,9 +110,7 @@ import org.opensearch.securityanalytics.resthandler.RestGetFindingsAction;
 import org.opensearch.securityanalytics.resthandler.RestGetIndexMappingsAction;
 import org.opensearch.securityanalytics.resthandler.RestGetMappingsViewAction;
 import org.opensearch.securityanalytics.resthandler.RestIndexCorrelationRuleAction;
-import org.opensearch.securityanalytics.resthandler.RestIndexCustomLogTypeAction;
 import org.opensearch.securityanalytics.resthandler.RestIndexDetectorAction;
-import org.opensearch.securityanalytics.resthandler.RestIndexRuleAction;
 import org.opensearch.securityanalytics.resthandler.RestListCorrelationAction;
 import org.opensearch.securityanalytics.resthandler.RestSearchCorrelationAction;
 import org.opensearch.securityanalytics.resthandler.RestSearchCorrelationRuleAction;
@@ -128,6 +119,7 @@ import org.opensearch.securityanalytics.resthandler.RestSearchDetectorAction;
 import org.opensearch.securityanalytics.resthandler.RestSearchRuleAction;
 import org.opensearch.securityanalytics.resthandler.RestUpdateIndexMappingsAction;
 import org.opensearch.securityanalytics.resthandler.RestValidateRulesAction;
+import org.opensearch.securityanalytics.rules.objects.WCSFieldValidator;
 import org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings;
 import org.opensearch.securityanalytics.transport.TransportAckCorrelationAlertsAction;
 import org.opensearch.securityanalytics.transport.TransportAcknowledgeAlertsAction;
@@ -175,17 +167,32 @@ import org.opensearch.transport.client.Client;
 import org.opensearch.transport.client.node.NodeClient;
 import org.opensearch.watcher.ResourceWatcherService;
 
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.Supplier;
+
+import com.wazuh.securityanalytics.action.WDeleteCustomRuleAction;
+import com.wazuh.securityanalytics.action.WDeleteDetectorAction;
+import com.wazuh.securityanalytics.action.WDeleteIntegrationAction;
+import com.wazuh.securityanalytics.action.WDeleteRuleAction;
+import com.wazuh.securityanalytics.action.WIndexCustomRuleAction;
+import com.wazuh.securityanalytics.action.WIndexDetectorAction;
+import com.wazuh.securityanalytics.action.WIndexIntegrationAction;
+import com.wazuh.securityanalytics.action.WIndexRuleAction;
+
 import static org.opensearch.securityanalytics.util.CorrelationIndices.CORRELATION_ALERT_INDEX;
 
 public class SecurityAnalyticsPlugin extends Plugin
-    implements
-        ActionPlugin,
-        MapperPlugin,
-        SearchPlugin,
-        EnginePlugin,
-        ClusterPlugin,
-        SystemIndexPlugin,
-        ExtensiblePlugin {
+        implements ActionPlugin,
+                MapperPlugin,
+                SearchPlugin,
+                EnginePlugin,
+                ClusterPlugin,
+                SystemIndexPlugin,
+                ExtensiblePlugin {
 
     private static final Logger log = LogManager.getLogger(SecurityAnalyticsPlugin.class);
 
@@ -204,7 +211,8 @@ public class SecurityAnalyticsPlugin extends Plugin
     public static final String THREAT_INTEL_MONITOR_URI = PLUGINS_BASE_URI + "/threat_intel/monitors";
     public static final String LIST_IOCS_URI = PLUGINS_BASE_URI + "/threat_intel/iocs";
     public static final String THREAT_INTEL_ALERTS_URI = PLUGINS_BASE_URI + "/threat_intel/alerts";
-    public static final String THREAT_INTEL_ALERTS_STATUS_URI = PLUGINS_BASE_URI + "/threat_intel/alerts/status";
+    public static final String THREAT_INTEL_ALERTS_STATUS_URI =
+            PLUGINS_BASE_URI + "/threat_intel/alerts/status";
     public static final String TEST_CONNECTION_BASE_URI = PLUGINS_BASE_URI + "/connections/%s/test";
     public static final String TEST_S3_CONNECTION_URI = String.format(TEST_CONNECTION_BASE_URI, "s3");
 
@@ -214,14 +222,14 @@ public class SecurityAnalyticsPlugin extends Plugin
     public static final String JOB_INDEX_NAME = ".opensearch-sap--job";
     public static final String JOB_TYPE = "opensearch_sap_job";
 
-    public static final Map<String, Object> TIF_JOB_INDEX_SETTING = Map.of(
-        IndexMetadata.SETTING_NUMBER_OF_SHARDS,
-        1,
-        IndexMetadata.SETTING_AUTO_EXPAND_REPLICAS,
-        "0-all",
-        IndexMetadata.SETTING_INDEX_HIDDEN,
-        true
-    );
+    public static final Map<String, Object> TIF_JOB_INDEX_SETTING =
+            Map.of(
+                    IndexMetadata.SETTING_NUMBER_OF_SHARDS,
+                    1,
+                    IndexMetadata.SETTING_AUTO_EXPAND_REPLICAS,
+                    "0-all",
+                    IndexMetadata.SETTING_INDEX_HIDDEN,
+                    true);
 
     private CorrelationRuleIndices correlationRuleIndices;
 
@@ -251,84 +259,89 @@ public class SecurityAnalyticsPlugin extends Plugin
 
     @Override
     public Collection<SystemIndexDescriptor> getSystemIndexDescriptors(Settings settings) {
-        List<SystemIndexDescriptor> descriptors = List.of(
-            new SystemIndexDescriptor(CORRELATION_ALERT_INDEX, "System index used for Correlation Alerts")
-        );
+        List<SystemIndexDescriptor> descriptors =
+                List.of(
+                        new SystemIndexDescriptor(
+                                CORRELATION_ALERT_INDEX, "System index used for Correlation Alerts"));
         return descriptors;
     }
 
     @Override
     public Collection<Object> createComponents(
-        Client client,
-        ClusterService clusterService,
-        ThreadPool threadPool,
-        ResourceWatcherService resourceWatcherService,
-        ScriptService scriptService,
-        NamedXContentRegistry xContentRegistry,
-        Environment environment,
-        NodeEnvironment nodeEnvironment,
-        NamedWriteableRegistry namedWriteableRegistry,
-        IndexNameExpressionResolver indexNameExpressionResolver,
-        Supplier<RepositoriesService> repositoriesServiceSupplier
-    ) {
+            Client client,
+            ClusterService clusterService,
+            ThreadPool threadPool,
+            ResourceWatcherService resourceWatcherService,
+            ScriptService scriptService,
+            NamedXContentRegistry xContentRegistry,
+            Environment environment,
+            NodeEnvironment nodeEnvironment,
+            NamedWriteableRegistry namedWriteableRegistry,
+            IndexNameExpressionResolver indexNameExpressionResolver,
+            Supplier<RepositoriesService> repositoriesServiceSupplier) {
         this.client = client;
         this.threadPool = threadPool;
         this.builtinLogTypeLoader = new BuiltinLogTypeLoader();
-        this.logTypeService = new LogTypeService(client, clusterService, xContentRegistry, this.builtinLogTypeLoader);
+        this.logTypeService =
+                new LogTypeService(client, clusterService, xContentRegistry, this.builtinLogTypeLoader);
         this.detectorIndices = new DetectorIndices(client.admin(), clusterService, threadPool);
         this.ruleTopicIndices = new RuleTopicIndices(client, clusterService, this.logTypeService);
         this.correlationIndices = new CorrelationIndices(client, clusterService);
         this.customLogTypeIndices = new CustomLogTypeIndices(client.admin(), clusterService);
-        this.indexTemplateManager = new IndexTemplateManager(client, clusterService, indexNameExpressionResolver, xContentRegistry);
-        this.mapperService = new MapperService(
-            client,
-            clusterService,
-            indexNameExpressionResolver,
-            this.indexTemplateManager,
-            this.logTypeService
-        );
+        this.indexTemplateManager =
+                new IndexTemplateManager(
+                        client, clusterService, indexNameExpressionResolver, xContentRegistry);
+        this.mapperService =
+                new MapperService(
+                        client,
+                        clusterService,
+                        indexNameExpressionResolver,
+                        this.indexTemplateManager,
+                        this.logTypeService);
         this.ruleIndices = new RuleIndices(this.logTypeService, client, clusterService, threadPool);
         this.correlationRuleIndices = new CorrelationRuleIndices(client, clusterService);
-        CorrelationAlertService correlationAlertService = new CorrelationAlertService(client, xContentRegistry);
-        NotificationService notificationService = new NotificationService((NodeClient) client, scriptService);
-        WazuhEnrichedFindingService enrichedFindingService = new WazuhEnrichedFindingService(
-                client,
-                SecurityAnalyticsSettings.ENRICHED_FINDINGS_ENABLED.get(environment.settings()),
-                SecurityAnalyticsSettings.INDEX_TIMEOUT.get(environment.settings())
-        );
+        CorrelationAlertService correlationAlertService =
+                new CorrelationAlertService(client, xContentRegistry);
+        NotificationService notificationService =
+                new NotificationService((NodeClient) client, scriptService);
+        WazuhEnrichedFindingService enrichedFindingService =
+                new WazuhEnrichedFindingService(
+                        client,
+                        SecurityAnalyticsSettings.ENRICHED_FINDINGS_ENABLED.get(environment.settings()),
+                        SecurityAnalyticsSettings.INDEX_TIMEOUT.get(environment.settings()));
 
         // Initialize WCS field validator from cluster index mappings
         SecurityAnalyticsPlugin.initWCSFieldValidator(clusterService);
 
         return List.of(
-            this.detectorIndices,
-            this.correlationIndices,
-            this.correlationRuleIndices,
-            this.ruleTopicIndices,
-            this.customLogTypeIndices,
-            this.ruleIndices,
-            this.mapperService,
-            this.indexTemplateManager,
-            this.builtinLogTypeLoader,
-            correlationAlertService,
-            notificationService,
-            enrichedFindingService
-        );
+                this.detectorIndices,
+                this.correlationIndices,
+                this.correlationRuleIndices,
+                this.ruleTopicIndices,
+                this.customLogTypeIndices,
+                this.ruleIndices,
+                this.mapperService,
+                this.indexTemplateManager,
+                this.builtinLogTypeLoader,
+                correlationAlertService,
+                notificationService,
+                enrichedFindingService);
     }
 
     /**
-     * Initializes the WCS field validator by resolving fields from the first available
-     * {@code wazuh-events-*} index mapping. Registers a cluster state listener
-     * to perform this once the cluster state becomes available.
+     * Initializes the WCS field validator by resolving fields from the first available {@code
+     * wazuh-events-*} index mapping. Registers a cluster state listener to perform this once the
+     * cluster state becomes available.
      */
     private static void initWCSFieldValidator(ClusterService clusterService) {
         final String WCS_INDEX_PREFIX = ".ds-wazuh-events-";
 
-        clusterService.addListener(event -> {
-            if (!WCSFieldValidator.isInitialized()) {
-                tryInitWCSFromClusterState(event.state(), WCS_INDEX_PREFIX);
-            }
-        });
+        clusterService.addListener(
+                event -> {
+                    if (!WCSFieldValidator.isInitialized()) {
+                        tryInitWCSFromClusterState(event.state(), WCS_INDEX_PREFIX);
+                    }
+                });
     }
 
     private static void tryInitWCSFromClusterState(ClusterState state, String indexPrefix) {
@@ -351,58 +364,56 @@ public class SecurityAnalyticsPlugin extends Plugin
 
     @Override
     public List<RestHandler> getRestHandlers(
-        Settings settings,
-        RestController restController,
-        ClusterSettings clusterSettings,
-        IndexScopedSettings indexScopedSettings,
-        SettingsFilter settingsFilter,
-        IndexNameExpressionResolver indexNameExpressionResolver,
-        Supplier<DiscoveryNodes> nodesInCluster
-    ) {
+            Settings settings,
+            RestController restController,
+            ClusterSettings clusterSettings,
+            IndexScopedSettings indexScopedSettings,
+            SettingsFilter settingsFilter,
+            IndexNameExpressionResolver indexNameExpressionResolver,
+            Supplier<DiscoveryNodes> nodesInCluster) {
         return List.of(
-            new RestAcknowledgeAlertsAction(),
-            new RestUpdateIndexMappingsAction(),
-            new RestCreateIndexMappingsAction(),
-            new RestGetIndexMappingsAction(),
-            new RestIndexDetectorAction(),
-            new RestGetDetectorAction(),
-            new RestSearchDetectorAction(),
-            new RestDeleteDetectorAction(),
-            new RestGetFindingsAction(),
-            new RestGetMappingsViewAction(),
-            new RestGetAlertsAction(),
-            new RestIndexRuleAction(),
-            new RestSearchRuleAction(),
-            new RestDeleteRuleAction(),
-            new RestValidateRulesAction(),
-            new RestGetAllRuleCategoriesAction(),
-            new RestSearchCorrelationAction(),
-            new RestIndexCorrelationRuleAction(),
-            new RestDeleteCorrelationRuleAction(),
-            new RestListCorrelationAction(),
-            new RestSearchCorrelationRuleAction(),
-            new RestIndexCustomLogTypeAction(),
-            new RestSearchCustomLogTypeAction(),
-            new RestDeleteCustomLogTypeAction(),
-            new RestGetCorrelationsAlertsAction(),
-            new RestAcknowledgeCorrelationAlertsAction()
-        );
+                new RestAcknowledgeAlertsAction(),
+                new RestUpdateIndexMappingsAction(),
+                new RestCreateIndexMappingsAction(),
+                new RestGetIndexMappingsAction(),
+                new RestIndexDetectorAction(),
+                new RestGetDetectorAction(),
+                new RestSearchDetectorAction(),
+                new RestDeleteDetectorAction(),
+                new RestGetFindingsAction(),
+                new RestGetMappingsViewAction(),
+                new RestGetAlertsAction(),
+                // new RestIndexRuleAction(),
+                new RestSearchRuleAction(),
+                // new RestDeleteRuleAction(),
+                new RestValidateRulesAction(),
+                new RestGetAllRuleCategoriesAction(),
+                new RestSearchCorrelationAction(),
+                new RestIndexCorrelationRuleAction(),
+                new RestDeleteCorrelationRuleAction(),
+                new RestListCorrelationAction(),
+                new RestSearchCorrelationRuleAction(),
+                // new RestIndexCustomLogTypeAction(),
+                new RestSearchCustomLogTypeAction(),
+                // new RestDeleteCustomLogTypeAction(),
+                new RestGetCorrelationsAlertsAction(),
+                new RestAcknowledgeCorrelationAlertsAction());
     }
 
     @Override
     public List<NamedXContentRegistry.Entry> getNamedXContent() {
         return List.of(
-            Detector.XCONTENT_REGISTRY,
-            DetectorInput.XCONTENT_REGISTRY,
-            Rule.XCONTENT_REGISTRY,
-            CustomLogType.XCONTENT_REGISTRY,
-            ThreatIntelFeedData.XCONTENT_REGISTRY
-        );
+                Detector.XCONTENT_REGISTRY,
+                DetectorInput.XCONTENT_REGISTRY,
+                Rule.XCONTENT_REGISTRY,
+                CustomLogType.XCONTENT_REGISTRY,
+                ThreatIntelFeedData.XCONTENT_REGISTRY);
     }
 
     @Override
     public Map<String, Mapper.TypeParser> getMappers() {
-        return Collections.singletonMap(CorrelationVectorFieldMapper.CONTENT_TYPE, new CorrelationVectorFieldMapper.TypeParser());
+        return Collections.singletonMap(
+                CorrelationVectorFieldMapper.CONTENT_TYPE, new CorrelationVectorFieldMapper.TypeParser());
     }
 
     @Override
@@ -421,106 +432,137 @@ public class SecurityAnalyticsPlugin extends Plugin
     @Override
     public List<QuerySpec<?>> getQueries() {
         return Collections.singletonList(
-            new QuerySpec<>(CorrelationQueryBuilder.NAME, CorrelationQueryBuilder::new, CorrelationQueryBuilder::fromXContent)
-        );
+                new QuerySpec<>(
+                        CorrelationQueryBuilder.NAME,
+                        CorrelationQueryBuilder::new,
+                        CorrelationQueryBuilder::fromXContent));
     }
 
     @Override
     public List<Setting<?>> getSettings() {
         return List.of(
-            SecurityAnalyticsSettings.INDEX_TIMEOUT,
-            SecurityAnalyticsSettings.FILTER_BY_BACKEND_ROLES,
-            SecurityAnalyticsSettings.ALERT_HISTORY_ENABLED,
-            SecurityAnalyticsSettings.ALERT_HISTORY_ROLLOVER_PERIOD,
-            SecurityAnalyticsSettings.ALERT_HISTORY_INDEX_MAX_AGE,
-            SecurityAnalyticsSettings.ALERT_HISTORY_MAX_DOCS,
-            SecurityAnalyticsSettings.ALERT_HISTORY_RETENTION_PERIOD,
-            SecurityAnalyticsSettings.REQUEST_TIMEOUT,
-            SecurityAnalyticsSettings.MAX_ACTION_THROTTLE_VALUE,
-            SecurityAnalyticsSettings.FINDING_HISTORY_ENABLED,
-            SecurityAnalyticsSettings.FINDING_HISTORY_MAX_DOCS,
-            SecurityAnalyticsSettings.FINDING_HISTORY_INDEX_MAX_AGE,
-            SecurityAnalyticsSettings.FINDING_HISTORY_ROLLOVER_PERIOD,
-            SecurityAnalyticsSettings.FINDING_HISTORY_RETENTION_PERIOD,
-            SecurityAnalyticsSettings.CORRELATION_HISTORY_MAX_DOCS,
-            SecurityAnalyticsSettings.CORRELATION_HISTORY_INDEX_MAX_AGE,
-            SecurityAnalyticsSettings.CORRELATION_HISTORY_ROLLOVER_PERIOD,
-            SecurityAnalyticsSettings.CORRELATION_HISTORY_RETENTION_PERIOD,
-            SecurityAnalyticsSettings.IOC_FINDING_HISTORY_ENABLED,
-            SecurityAnalyticsSettings.IOC_FINDING_HISTORY_MAX_DOCS,
-            SecurityAnalyticsSettings.IOC_FINDING_HISTORY_INDEX_MAX_AGE,
-            SecurityAnalyticsSettings.IOC_FINDING_HISTORY_ROLLOVER_PERIOD,
-            SecurityAnalyticsSettings.IOC_FINDING_HISTORY_RETENTION_PERIOD,
-            SecurityAnalyticsSettings.IS_CORRELATION_INDEX_SETTING,
-            SecurityAnalyticsSettings.CORRELATION_TIME_WINDOW,
-            SecurityAnalyticsSettings.ENABLE_AUTO_CORRELATIONS,
-            SecurityAnalyticsSettings.DEFAULT_MAPPING_SCHEMA,
-            SecurityAnalyticsSettings.ENABLE_WORKFLOW_USAGE,
-            SecurityAnalyticsSettings.TIF_UPDATE_INTERVAL,
-            SecurityAnalyticsSettings.BATCH_SIZE,
-            SecurityAnalyticsSettings.THREAT_INTEL_TIMEOUT,
-            SecurityAnalyticsSettings.IOC_INDEX_RETENTION_PERIOD,
-            SecurityAnalyticsSettings.IOC_MAX_INDICES_PER_INDEX_PATTERN,
-            SecurityAnalyticsSettings.IOC_SCAN_MAX_TERMS_COUNT,
-            SecurityAnalyticsSettings.ENABLE_DETECTORS_WITH_DEDICATED_QUERY_INDICES,
-            SecurityAnalyticsSettings.ENRICHED_FINDINGS_ENABLED
-        );
+                SecurityAnalyticsSettings.INDEX_TIMEOUT,
+                SecurityAnalyticsSettings.FILTER_BY_BACKEND_ROLES,
+                SecurityAnalyticsSettings.ALERT_HISTORY_ENABLED,
+                SecurityAnalyticsSettings.ALERT_HISTORY_ROLLOVER_PERIOD,
+                SecurityAnalyticsSettings.ALERT_HISTORY_INDEX_MAX_AGE,
+                SecurityAnalyticsSettings.ALERT_HISTORY_MAX_DOCS,
+                SecurityAnalyticsSettings.ALERT_HISTORY_RETENTION_PERIOD,
+                SecurityAnalyticsSettings.REQUEST_TIMEOUT,
+                SecurityAnalyticsSettings.MAX_ACTION_THROTTLE_VALUE,
+                SecurityAnalyticsSettings.FINDING_HISTORY_ENABLED,
+                SecurityAnalyticsSettings.FINDING_HISTORY_MAX_DOCS,
+                SecurityAnalyticsSettings.FINDING_HISTORY_INDEX_MAX_AGE,
+                SecurityAnalyticsSettings.FINDING_HISTORY_ROLLOVER_PERIOD,
+                SecurityAnalyticsSettings.FINDING_HISTORY_RETENTION_PERIOD,
+                SecurityAnalyticsSettings.CORRELATION_HISTORY_MAX_DOCS,
+                SecurityAnalyticsSettings.CORRELATION_HISTORY_INDEX_MAX_AGE,
+                SecurityAnalyticsSettings.CORRELATION_HISTORY_ROLLOVER_PERIOD,
+                SecurityAnalyticsSettings.CORRELATION_HISTORY_RETENTION_PERIOD,
+                SecurityAnalyticsSettings.IOC_FINDING_HISTORY_ENABLED,
+                SecurityAnalyticsSettings.IOC_FINDING_HISTORY_MAX_DOCS,
+                SecurityAnalyticsSettings.IOC_FINDING_HISTORY_INDEX_MAX_AGE,
+                SecurityAnalyticsSettings.IOC_FINDING_HISTORY_ROLLOVER_PERIOD,
+                SecurityAnalyticsSettings.IOC_FINDING_HISTORY_RETENTION_PERIOD,
+                SecurityAnalyticsSettings.IS_CORRELATION_INDEX_SETTING,
+                SecurityAnalyticsSettings.CORRELATION_TIME_WINDOW,
+                SecurityAnalyticsSettings.ENABLE_AUTO_CORRELATIONS,
+                SecurityAnalyticsSettings.DEFAULT_MAPPING_SCHEMA,
+                SecurityAnalyticsSettings.ENABLE_WORKFLOW_USAGE,
+                SecurityAnalyticsSettings.TIF_UPDATE_INTERVAL,
+                SecurityAnalyticsSettings.BATCH_SIZE,
+                SecurityAnalyticsSettings.THREAT_INTEL_TIMEOUT,
+                SecurityAnalyticsSettings.IOC_INDEX_RETENTION_PERIOD,
+                SecurityAnalyticsSettings.IOC_MAX_INDICES_PER_INDEX_PATTERN,
+                SecurityAnalyticsSettings.IOC_SCAN_MAX_TERMS_COUNT,
+                SecurityAnalyticsSettings.ENABLE_DETECTORS_WITH_DEDICATED_QUERY_INDICES,
+                SecurityAnalyticsSettings.ENRICHED_FINDINGS_ENABLED);
     }
 
     @Override
     public List<ActionHandler<? extends ActionRequest, ? extends ActionResponse>> getActions() {
         return List.of(
-            new ActionPlugin.ActionHandler<>(WDeleteDetectorAction.INSTANCE, WTransportDeleteDetectorAction.class),
-            new ActionHandler<>(WDeleteRuleAction.INSTANCE, WTransportDeleteRuleAction.class),
-            new ActionHandler<>(WDeleteIntegrationAction.INSTANCE, WTransportDeleteIntegrationAction.class),
-            new ActionHandler<>(WIndexRuleAction.INSTANCE, WTransportIndexRuleAction.class),
-            new ActionHandler<>(WIndexIntegrationAction.INSTANCE, WTransportIndexIntegrationAction.class),
-            new ActionHandler<>(WIndexCustomRuleAction.INSTANCE, WTransportIndexCustomRuleAction.class),
-            new ActionHandler<>(WDeleteCustomRuleAction.INSTANCE, WTransportDeleteCustomRuleAction.class),
-            new ActionPlugin.ActionHandler<>(AckAlertsAction.INSTANCE, TransportAcknowledgeAlertsAction.class),
-            new ActionPlugin.ActionHandler<>(UpdateIndexMappingsAction.INSTANCE, TransportUpdateIndexMappingsAction.class),
-            new ActionPlugin.ActionHandler<>(CreateIndexMappingsAction.INSTANCE, TransportCreateIndexMappingsAction.class),
-            new ActionPlugin.ActionHandler<>(GetIndexMappingsAction.INSTANCE, TransportGetIndexMappingsAction.class),
-            new ActionPlugin.ActionHandler<>(IndexDetectorAction.INSTANCE, TransportIndexDetectorAction.class),
-            new ActionPlugin.ActionHandler<>(DeleteDetectorAction.INSTANCE, TransportDeleteDetectorAction.class),
-            new ActionPlugin.ActionHandler<>(GetMappingsViewAction.INSTANCE, TransportGetMappingsViewAction.class),
-            new ActionPlugin.ActionHandler<>(GetDetectorAction.INSTANCE, TransportGetDetectorAction.class),
-            new ActionPlugin.ActionHandler<>(SearchDetectorAction.INSTANCE, TransportSearchDetectorAction.class),
-            new ActionPlugin.ActionHandler<>(GetFindingsAction.INSTANCE, TransportGetFindingsAction.class),
-            new ActionPlugin.ActionHandler<>(GetAlertsAction.INSTANCE, TransportGetAlertsAction.class),
-            new ActionPlugin.ActionHandler<>(IndexRuleAction.INSTANCE, TransportIndexRuleAction.class),
-            new ActionPlugin.ActionHandler<>(SearchRuleAction.INSTANCE, TransportSearchRuleAction.class),
-            new ActionPlugin.ActionHandler<>(DeleteRuleAction.INSTANCE, TransportDeleteRuleAction.class),
-            new ActionPlugin.ActionHandler<>(ValidateRulesAction.INSTANCE, TransportValidateRulesAction.class),
-            new ActionPlugin.ActionHandler<>(GetAllRuleCategoriesAction.INSTANCE, TransportGetAllRuleCategoriesAction.class),
-            new ActionPlugin.ActionHandler<>(CorrelatedFindingAction.INSTANCE, TransportSearchCorrelationAction.class),
-            new ActionPlugin.ActionHandler<>(IndexCorrelationRuleAction.INSTANCE, TransportIndexCorrelationRuleAction.class),
-            new ActionPlugin.ActionHandler<>(DeleteCorrelationRuleAction.INSTANCE, TransportDeleteCorrelationRuleAction.class),
-            new ActionPlugin.ActionHandler<>(AlertingActions.SUBSCRIBE_FINDINGS_ACTION_TYPE, TransportCorrelateFindingAction.class),
-            new ActionPlugin.ActionHandler<>(ListCorrelationsAction.INSTANCE, TransportListCorrelationAction.class),
-            new ActionPlugin.ActionHandler<>(SearchCorrelationRuleAction.INSTANCE, TransportSearchCorrelationRuleAction.class),
-            new ActionHandler<>(IndexCustomLogTypeAction.INSTANCE, TransportIndexCustomLogTypeAction.class),
-            new ActionHandler<>(SearchCustomLogTypeAction.INSTANCE, TransportSearchCustomLogTypeAction.class),
-            new ActionHandler<>(DeleteCustomLogTypeAction.INSTANCE, TransportDeleteCustomLogTypeAction.class),
-            new ActionPlugin.ActionHandler<>(GetCorrelationAlertsAction.INSTANCE, TransportGetCorrelationAlertsAction.class),
-            new ActionPlugin.ActionHandler<>(AckCorrelationAlertsAction.INSTANCE, TransportAckCorrelationAlertsAction.class),
-            new ActionPlugin.ActionHandler<>(WIndexDetectorAction.INSTANCE, WTransportIndexDetectorAction.class)
-        );
+                new ActionPlugin.ActionHandler<>(
+                        WDeleteDetectorAction.INSTANCE, WTransportDeleteDetectorAction.class),
+                new ActionHandler<>(WDeleteRuleAction.INSTANCE, WTransportDeleteRuleAction.class),
+                new ActionHandler<>(
+                        WDeleteIntegrationAction.INSTANCE, WTransportDeleteIntegrationAction.class),
+                new ActionHandler<>(WIndexRuleAction.INSTANCE, WTransportIndexRuleAction.class),
+                new ActionHandler<>(
+                        WIndexIntegrationAction.INSTANCE, WTransportIndexIntegrationAction.class),
+                new ActionHandler<>(WIndexCustomRuleAction.INSTANCE, WTransportIndexCustomRuleAction.class),
+                new ActionHandler<>(
+                        WDeleteCustomRuleAction.INSTANCE, WTransportDeleteCustomRuleAction.class),
+                new ActionPlugin.ActionHandler<>(
+                        AckAlertsAction.INSTANCE, TransportAcknowledgeAlertsAction.class),
+                new ActionPlugin.ActionHandler<>(
+                        UpdateIndexMappingsAction.INSTANCE, TransportUpdateIndexMappingsAction.class),
+                new ActionPlugin.ActionHandler<>(
+                        CreateIndexMappingsAction.INSTANCE, TransportCreateIndexMappingsAction.class),
+                new ActionPlugin.ActionHandler<>(
+                        GetIndexMappingsAction.INSTANCE, TransportGetIndexMappingsAction.class),
+                new ActionPlugin.ActionHandler<>(
+                        IndexDetectorAction.INSTANCE, TransportIndexDetectorAction.class),
+                new ActionPlugin.ActionHandler<>(
+                        DeleteDetectorAction.INSTANCE, TransportDeleteDetectorAction.class),
+                new ActionPlugin.ActionHandler<>(
+                        GetMappingsViewAction.INSTANCE, TransportGetMappingsViewAction.class),
+                new ActionPlugin.ActionHandler<>(
+                        GetDetectorAction.INSTANCE, TransportGetDetectorAction.class),
+                new ActionPlugin.ActionHandler<>(
+                        SearchDetectorAction.INSTANCE, TransportSearchDetectorAction.class),
+                new ActionPlugin.ActionHandler<>(
+                        GetFindingsAction.INSTANCE, TransportGetFindingsAction.class),
+                new ActionPlugin.ActionHandler<>(GetAlertsAction.INSTANCE, TransportGetAlertsAction.class),
+                new ActionPlugin.ActionHandler<>(IndexRuleAction.INSTANCE, TransportIndexRuleAction.class),
+                new ActionPlugin.ActionHandler<>(
+                        SearchRuleAction.INSTANCE, TransportSearchRuleAction.class),
+                new ActionPlugin.ActionHandler<>(
+                        DeleteRuleAction.INSTANCE, TransportDeleteRuleAction.class),
+                new ActionPlugin.ActionHandler<>(
+                        ValidateRulesAction.INSTANCE, TransportValidateRulesAction.class),
+                new ActionPlugin.ActionHandler<>(
+                        GetAllRuleCategoriesAction.INSTANCE, TransportGetAllRuleCategoriesAction.class),
+                new ActionPlugin.ActionHandler<>(
+                        CorrelatedFindingAction.INSTANCE, TransportSearchCorrelationAction.class),
+                new ActionPlugin.ActionHandler<>(
+                        IndexCorrelationRuleAction.INSTANCE, TransportIndexCorrelationRuleAction.class),
+                new ActionPlugin.ActionHandler<>(
+                        DeleteCorrelationRuleAction.INSTANCE, TransportDeleteCorrelationRuleAction.class),
+                new ActionPlugin.ActionHandler<>(
+                        AlertingActions.SUBSCRIBE_FINDINGS_ACTION_TYPE, TransportCorrelateFindingAction.class),
+                new ActionPlugin.ActionHandler<>(
+                        ListCorrelationsAction.INSTANCE, TransportListCorrelationAction.class),
+                new ActionPlugin.ActionHandler<>(
+                        SearchCorrelationRuleAction.INSTANCE, TransportSearchCorrelationRuleAction.class),
+                new ActionHandler<>(
+                        IndexCustomLogTypeAction.INSTANCE, TransportIndexCustomLogTypeAction.class),
+                new ActionHandler<>(
+                        SearchCustomLogTypeAction.INSTANCE, TransportSearchCustomLogTypeAction.class),
+                new ActionHandler<>(
+                        DeleteCustomLogTypeAction.INSTANCE, TransportDeleteCustomLogTypeAction.class),
+                new ActionPlugin.ActionHandler<>(
+                        GetCorrelationAlertsAction.INSTANCE, TransportGetCorrelationAlertsAction.class),
+                new ActionPlugin.ActionHandler<>(
+                        AckCorrelationAlertsAction.INSTANCE, TransportAckCorrelationAlertsAction.class),
+                new ActionPlugin.ActionHandler<>(
+                        WIndexDetectorAction.INSTANCE, WTransportIndexDetectorAction.class));
     }
 
     @Override
     public void onNodeStarted(DiscoveryNode localNode) {
         // Trigger initialization of log types
-        this.logTypeService.ensureConfigIndexIsInitialized(new ActionListener<>() {
-            @Override
-            public void onResponse(Void unused) {
-                log.info("LogType config index successfully created and builtin log types loaded");
-            }
+        this.logTypeService.ensureConfigIndexIsInitialized(
+                new ActionListener<>() {
+                    @Override
+                    public void onResponse(Void unused) {
+                        log.info("LogType config index successfully created and builtin log types loaded");
+                    }
 
-            @Override
-            public void onFailure(Exception e) {
-                log.warn("Failed to initialize LogType config index and builtin log types");
-            }
-        });
+                    @Override
+                    public void onFailure(Exception e) {
+                        log.warn("Failed to initialize LogType config index and builtin log types");
+                    }
+                });
     }
 }
