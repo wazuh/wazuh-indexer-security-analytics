@@ -74,6 +74,8 @@ jobs:
       - name: Publish common-utils to Maven Local
         uses: wazuh/wazuh-indexer-common-utils/.github/actions/5_local_maven_publisher@main
         with:
+          version: ${{ needs.get-version.outputs.version }}
+          revision: ${{ inputs.revision }}
           reference: ${{ needs.branches.outputs.common_utils_ref }}
       - name: Cache Maven Local
         uses: actions/cache/save@v5
