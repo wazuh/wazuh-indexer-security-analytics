@@ -1,4 +1,4 @@
-run-name: Build Wazuh Indexer Security Analytics plugin | ${{ inputs.id}}
+run-name: Build Wazuh Indexer Security Analytics plugin | ${{ inputs.id }}
 name: (5.x) Build packages
 
 # This workflow runs when any of the following occur:
@@ -40,7 +40,49 @@ on:
 #   | https://docs.github.com/en/actions/learn-github-actions/expressions#example
 
 jobs:
+  branches:
+    runs-on: ubuntu-24.04
+    outputs:
+      common_utils_ref: ${{ steps.resolve.outputs.wazuh_indexer_common_utils_branch }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Resolve branches
+        id: resolve
+        uses: wazuh/wazuh-indexer/.github/actions/5_builderpackage_indexer_branch_resolver@main
+        with:
+          branch: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
+
+      - name: Display resolved branches
+        run: |
+          echo "Common Utils branch: ${{ steps.resolve.outputs.wazuh_indexer_common_utils_branch }}"
+
+  get-version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Get version
+        id: version
+        run: echo "version=$(jq -r .version<VERSION.json)" >> "$GITHUB_OUTPUT"
+
+  publish-common-utils:
+    runs-on: ubuntu-24.04
+    needs: [branches, get-version]
+    steps:
+      - name: Publish common-utils to Maven Local
+        uses: wazuh/wazuh-indexer-common-utils/.github/actions/5_local_maven_publisher@main
+        with:
+          reference: ${{ needs.branches.outputs.common_utils_ref }}
+      - name: Cache Maven Local
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.m2/repository
+          key: maven-common-utils-${{ github.ref_name }}
+
   build:
+    needs: [get-version, publish-common-utils]
     runs-on: ubuntu-24.04
     env:
       plugin_name: wazuh-indexer-security-analytics
@@ -54,16 +96,22 @@ jobs:
       - name: Setup Gradle # Used for caching
         uses: gradle/actions/setup-gradle@v6
 
+      - name: Restore Maven Local cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.m2/repository
+          key: maven-common-utils-${{ github.ref_name }}
+
       - name: Get version
         id: version
         run: echo "version=$(jq -r .version<VERSION.json)" >> "$GITHUB_OUTPUT"
 
-      - name: Publish SAP and commons library to mavenLocal
+      - name: Publish to Maven local
         uses: ./.github/actions/5_local_maven_publisher
         with:
           version: ${{ steps.version.outputs.version }}
-          revision: ${{ inputs.revision }}
-          reference: ${{ inputs.reference }}
+          revision: '0'
+          reference: ${{ github.ref }}
 
       - name: Build with Gradle
         run: ./gradlew build -Dversion=${{ steps.version.outputs.version }} -Drevision=${{ inputs.revision }} -x integTest
