@@ -105,7 +105,9 @@ public class WTransportIndexIntegrationAction
         // Custom integration / log type.
         if (!Objects.equals(integration.getSpace(), "Sigma")) {
             try {
-                String sapId = UUID.randomUUID().toString();
+                String integrationId = integration.getDocumentId();
+                String sapId = integrationId == null ? UUID.randomUUID().toString() : integrationId;
+
                 IndexCustomLogTypeRequest internalRequest =
                         new IndexCustomLogTypeRequest(
                                 sapId,
