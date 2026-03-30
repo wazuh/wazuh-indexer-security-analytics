@@ -308,7 +308,8 @@ public class SecurityAnalyticsPlugin extends Plugin
                 new WazuhEnrichedFindingService(
                         client,
                         SecurityAnalyticsSettings.ENRICHED_FINDINGS_ENABLED.get(environment.settings()),
-                        SecurityAnalyticsSettings.INDEX_TIMEOUT.get(environment.settings()));
+                        SecurityAnalyticsSettings.INDEX_TIMEOUT.get(environment.settings()),
+                        threadPool);
 
         // Initialize WCS field validator from cluster index mappings
         SecurityAnalyticsPlugin.initWCSFieldValidator(clusterService);
