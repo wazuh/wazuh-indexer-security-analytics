@@ -22,6 +22,11 @@ on:
         description: 'Optional identifier for the run'
         required: false
         type: string
+      set_as_main:
+        description: "Enable main branch mode: bump version values only, keep branch references pointing to main"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   bump:
@@ -79,6 +84,7 @@ jobs:
         run: |
           version=${{ env.VERSION }}
           stage=${{ env.STAGE }}
+          set-as-main=${{ inputs.set-as-main }}
 
           # Check if version and stage are provided
           if [[ -n "$version" && -n "$stage" ]]; then
@@ -91,6 +97,11 @@ jobs:
           else
             echo "Error: Version and stage must be provided. Got version=${version} stage=${stage}"
             exit 1
+          fi
+          
+          # Append --set_as_main flag when enabled (keep GitHub URLs referencing main)
+          if [[ "$set_as_main" == "true" ]]; then
+            script_params="${script_params} --set_as_main"
           fi
 
       - name: Create and switch to bump branch
@@ -105,11 +116,17 @@ jobs:
       - name: Commit and push changes
         run: |
           git add .
+          if git diff --cached --quiet; then
+           echo "No changes detected. Skipping commit/push and PR creation."
+           echo "has_changes=false" >> $GITHUB_OUTPUT
+           exit 0
+          fi
           git commit -m "feat: bump ${{ github.ref_name }}"
           git push origin ${{ steps.vars.outputs.branch_name }}
 
       - name: Create pull request
         id: create_pr
+        if: steps.commit_changes.outputs.has_changes == 'true'
         run: |
           gh auth setup-git
           PR_URL=$(gh pr create \
