@@ -26,6 +26,7 @@ import org.opensearch.action.get.MultiGetRequest;
 import org.opensearch.action.get.MultiGetResponse;
 import org.opensearch.action.index.IndexRequest;
 import org.opensearch.common.unit.TimeValue;
+import org.opensearch.common.util.concurrent.ThreadContext;
 import org.opensearch.common.xcontent.XContentType;
 import org.opensearch.commons.alerting.model.DocLevelQuery;
 import org.opensearch.commons.alerting.model.Finding;
@@ -45,6 +46,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -58,6 +60,9 @@ import java.util.stream.Collectors;
  * <p>Rule metadata is cached in memory to avoid repeated round-trips for the same rule across
  * findings. Index requests are batched into bulk requests every {@link #BULK_BATCH_SIZE} items,
  * with a periodic flush every {@link #FLUSH_INTERVAL} to drain any remainder.
+ *
+ * <p>Concurrent in-flight enrichment chains are bounded by {@link #MAX_IN_FLIGHT} to prevent
+ * transport-layer overload on resource-constrained nodes.
  */
 public class WazuhEnrichedFindingService implements Closeable {
 
@@ -65,6 +70,9 @@ public class WazuhEnrichedFindingService implements Closeable {
 
     /** Number of enriched findings accumulated before a bulk index request is fired. */
     private static final int BULK_BATCH_SIZE = 100;
+
+    /** Maximum number of concurrent async enrichment chains (MultiGet + build + buffer). */
+    private static final int MAX_IN_FLIGHT = 50;
 
     /** Interval at which leftover pending requests are flushed regardless of batch size. */
     private static final TimeValue FLUSH_INTERVAL = TimeValue.timeValueSeconds(5);
@@ -76,6 +84,7 @@ public class WazuhEnrichedFindingService implements Closeable {
                     .collect(Collectors.toUnmodifiableSet());
 
     private final Client client;
+    private final ThreadPool threadPool;
     private final TimeValue indexTimeout;
     private volatile boolean enabled;
 
@@ -85,6 +94,12 @@ public class WazuhEnrichedFindingService implements Closeable {
      */
     private final ConcurrentHashMap<String, Map<String, Object>> ruleMetadataCache =
             new ConcurrentHashMap<>();
+
+    /** Findings waiting to be enriched, processed when an in-flight slot becomes available. */
+    private final ConcurrentLinkedQueue<Finding> findingsQueue = new ConcurrentLinkedQueue<>();
+
+    /** Limits the number of concurrent async enrichment chains to avoid transport-layer overload. */
+    private final Semaphore inFlightPermits = new Semaphore(MAX_IN_FLIGHT);
 
     /**
      * Buffer of pending index requests, flushed as a bulk request every {@link #BULK_BATCH_SIZE}
@@ -99,11 +114,12 @@ public class WazuhEnrichedFindingService implements Closeable {
     public WazuhEnrichedFindingService(
             Client client, boolean enabled, TimeValue indexTimeout, ThreadPool threadPool) {
         this.client = client;
+        this.threadPool = threadPool;
         this.enabled = enabled;
         this.indexTimeout = indexTimeout;
         this.flushSchedule =
                 threadPool.scheduleWithFixedDelay(
-                        this::drainAndFlush, FLUSH_INTERVAL, ThreadPool.Names.GENERIC);
+                        this::periodicFlush, FLUSH_INTERVAL, ThreadPool.Names.GENERIC);
     }
 
     public void setEnabled(boolean enabled) {
@@ -130,8 +146,41 @@ public class WazuhEnrichedFindingService implements Closeable {
             return;
         }
 
+        this.findingsQueue.add(finding);
+        this.processQueue();
+    }
+
+    /**
+     * Drains the findings queue up to the number of available in-flight permits. Each finding starts
+     * an async enrichment chain that releases its permit on completion.
+     */
+    private void processQueue() {
+        while (this.inFlightPermits.tryAcquire()) {
+            Finding finding = this.findingsQueue.poll();
+            if (finding == null) {
+                this.inFlightPermits.release();
+                break;
+            }
+            this.doEnrich(finding);
+        }
+    }
+
+    /**
+     * Releases an in-flight permit and attempts to process more queued findings. Called at every
+     * terminal point of the async enrichment chain (success or failure).
+     */
+    private void enrichmentComplete() {
+        this.inFlightPermits.release();
+        this.processQueue();
+    }
+
+    /**
+     * Runs the async enrichment chain for a single finding. Must call {@link #enrichmentComplete()}
+     * at every terminal point.
+     */
+    private void doEnrich(Finding finding) {
         String sourceIndex = finding.getIndex();
-        String docId = relatedDocIds.getFirst();
+        String docId = finding.getRelatedDocIds().getFirst();
 
         this.fetchTriggeringEvent(
                 sourceIndex,
@@ -145,17 +194,20 @@ public class WazuhEnrichedFindingService implements Closeable {
                                         sourceIndex,
                                         docId,
                                         finding.getId());
+                                this.enrichmentComplete();
                                 return;
                             }
                             this.fetchRuleMetadataAndIndex(finding, category, eventSource);
                         },
-                        e ->
-                                log.warn(
-                                        "Failed to fetch triggering event {}/{} for finding {}, skipping enrichment",
-                                        sourceIndex,
-                                        docId,
-                                        finding.getId(),
-                                        e)));
+                        e -> {
+                            log.warn(
+                                    "Failed to fetch triggering event {}/{} for finding {}, skipping enrichment",
+                                    sourceIndex,
+                                    docId,
+                                    finding.getId(),
+                                    e);
+                            this.enrichmentComplete();
+                        }));
     }
 
     // ── Step 1: fetch triggering event ───────────────────────────────────────
@@ -286,6 +338,7 @@ public class WazuhEnrichedFindingService implements Closeable {
         }
 
         this.indexEnrichedFinding(category, doc);
+        this.enrichmentComplete();
     }
 
     @SuppressWarnings("unchecked")
@@ -343,9 +396,17 @@ public class WazuhEnrichedFindingService implements Closeable {
     }
 
     /**
-     * Drains all pending requests from the queue and fires a single bulk request. Safe to call
+     * Called by the periodic schedule to flush leftover index requests and process queued findings.
+     */
+    private void periodicFlush() {
+        this.drainAndFlush();
+        this.processQueue();
+    }
+
+    /**
+     * Drains all pending index requests from the queue and fires a single bulk request. Safe to call
      * concurrently: {@link ConcurrentLinkedQueue#poll()} guarantees each item is delivered to exactly
-     * one caller. Called by both the batch trigger and the periodic flush schedule.
+     * one caller.
      */
     private void drainAndFlush() {
         BulkRequest bulk = new BulkRequest().timeout(this.indexTimeout);
@@ -356,19 +417,21 @@ public class WazuhEnrichedFindingService implements Closeable {
         if (bulk.numberOfActions() == 0) {
             return;
         }
-        this.client.bulk(
-                bulk,
-                ActionListener.wrap(
-                        response -> {
-                            for (BulkItemResponse item : response.getItems()) {
-                                if (item.isFailed()) {
-                                    log.warn(
-                                            "Failed to bulk-index enriched finding {}: {}",
-                                            item.getId(),
-                                            item.getFailureMessage());
+        try (ThreadContext.StoredContext ignored = this.threadPool.getThreadContext().stashContext()) {
+            this.client.bulk(
+                    bulk,
+                    ActionListener.wrap(
+                            response -> {
+                                for (BulkItemResponse item : response.getItems()) {
+                                    if (item.isFailed()) {
+                                        log.warn(
+                                                "Failed to bulk-index enriched finding {}: {}",
+                                                item.getId(),
+                                                item.getFailureMessage());
+                                    }
                                 }
-                            }
-                        },
-                        e -> log.warn("Bulk indexing of enriched findings failed", e)));
+                            },
+                            e -> log.warn("Bulk indexing of enriched findings failed", e)));
+        }
     }
 }
