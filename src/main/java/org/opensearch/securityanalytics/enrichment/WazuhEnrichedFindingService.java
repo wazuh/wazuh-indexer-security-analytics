@@ -21,6 +21,7 @@ import org.apache.logging.log4j.Logger;
 import org.opensearch.action.DocWriteRequest;
 import org.opensearch.action.bulk.BulkItemResponse;
 import org.opensearch.action.bulk.BulkRequest;
+import org.opensearch.action.get.GetRequest;
 import org.opensearch.action.get.MultiGetItemResponse;
 import org.opensearch.action.get.MultiGetRequest;
 import org.opensearch.action.get.MultiGetResponse;
@@ -214,18 +215,14 @@ public class WazuhEnrichedFindingService implements Closeable {
 
     private void fetchTriggeringEvent(
             String index, String docId, ActionListener<Map<String, Object>> listener) {
-        MultiGetRequest mget = new MultiGetRequest();
-        mget.add(new MultiGetRequest.Item(index, docId));
-
-        this.client.multiGet(
-                mget,
+        this.client.get(
+                new GetRequest(index, docId),
                 ActionListener.wrap(
                         response -> {
-                            MultiGetItemResponse[] items = response.getResponses();
-                            if (items.length > 0 && !items[0].isFailed() && items[0].getResponse().isExists()) {
-                                listener.onResponse(items[0].getResponse().getSourceAsMap());
+                            if (response.isExists()) {
+                                listener.onResponse(response.getSourceAsMap());
                             } else {
-                                log.warn("Triggering event {}/{} not found or mget failed", index, docId);
+                                log.warn("Triggering event {}/{} not found", index, docId);
                                 listener.onResponse(Map.of());
                             }
                         },
