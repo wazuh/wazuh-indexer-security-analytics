@@ -103,7 +103,7 @@ public class WazuhEnrichedFindingService implements Closeable {
         this.indexTimeout = indexTimeout;
         this.flushSchedule =
                 threadPool.scheduleWithFixedDelay(
-                        this::drainAndFlush, FLUSH_INTERVAL, ThreadPool.Names.WRITE);
+                        this::drainAndFlush, FLUSH_INTERVAL, ThreadPool.Names.GENERIC);
     }
 
     public void setEnabled(boolean enabled) {
