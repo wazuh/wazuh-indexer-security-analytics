@@ -35,6 +35,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Rename commons library [(#28)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/28)
 - Allow creating custom and standard integrations [(#32)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/32)
 - Change SAP logic to use findings indices [(#76)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/76)
+- Optimize findings enrichment [(#93)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/93)
 
 ### Deprecated
 -
