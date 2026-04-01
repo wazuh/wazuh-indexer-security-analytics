@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Modify rule and log type creation logic to enable them to have a lifecycle support [(#69)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/69)
 - Implement spotless configuration from Wazuh Indexer Plugins repository [(#70)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/70)
 - Add logs to detect problems with detectors creation [(#83)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/83)
+- Create new Rule Testing action [(#96)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/96)
 
 ### Dependencies
 - Update to JDK 25 [(#49)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/49)
