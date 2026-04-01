@@ -136,6 +136,7 @@ jobs:
         run: |
           gh auth setup-git
           PR_URL=$(gh pr create \
+            --repo ${{ github.repository }} \
             --title "Bump ${{ github.ref_name }} branch" \
             --body "Issue: ${{ inputs.issue-link }}" \
             --base ${{ github.ref_name }} \
