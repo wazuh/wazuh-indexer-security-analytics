@@ -128,7 +128,7 @@ jobs:
         run: |
           git add .
           git commit -m "feat: bump ${{ github.ref_name }}"
-          git push origin ${{ steps.vars.outputs.branch_name }}
+          git push origin ${{ steps.vars.outputs.branch_name }} -f
 
       - name: Create pull request
         id: create_pr
