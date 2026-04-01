@@ -23,8 +23,12 @@ import org.opensearch.action.support.HandledTransportAction;
 import org.opensearch.common.inject.Inject;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.securityanalytics.rules.engine.EventMatcher;
+import org.opensearch.securityanalytics.rules.objects.SigmaRule;
 import org.opensearch.tasks.Task;
 import org.opensearch.transport.TransportService;
+
+import java.util.ArrayList;
+import java.util.List;
 
 import com.wazuh.securityanalytics.action.WEvaluateRulesAction;
 import com.wazuh.securityanalytics.action.WEvaluateRulesRequest;
@@ -41,23 +45,45 @@ public class WTransportEvaluateRulesAction
 
     private static final Logger log = LogManager.getLogger(WTransportEvaluateRulesAction.class);
 
+    private final EventMatcher eventMatcher;
+
     /**
      * Constructs a new WTransportEvaluateRulesAction.
      *
      * @param transportService the transport service
      * @param actionFilters the action filters
+     * @param eventMatcher the injected event matcher engine
      */
     @Inject
     public WTransportEvaluateRulesAction(
-            TransportService transportService, ActionFilters actionFilters) {
+            TransportService transportService, ActionFilters actionFilters, EventMatcher eventMatcher) {
         super(WEvaluateRulesAction.NAME, transportService, actionFilters, WEvaluateRulesRequest::new);
+        this.eventMatcher = eventMatcher;
     }
 
     @Override
     protected void doExecute(
             Task task, WEvaluateRulesRequest request, ActionListener<WEvaluateRulesResponse> listener) {
         try {
-            String resultJson = EventMatcher.evaluate(request.getEventJson(), request.getRulesBodies());
+            List<SigmaRule> parsedRules = new ArrayList<>();
+            for (String ruleBody : request.getRulesBodies()) {
+                try {
+                    parsedRules.add(SigmaRule.fromYaml(ruleBody, true));
+                } catch (Exception e) {
+                    log.warn("Failed to parse Sigma rule YAML: {}", e.getMessage());
+                }
+            }
+
+            if (parsedRules.isEmpty()) {
+                log.warn("No valid rules were parsed for this request. Skipping event evaluation.");
+                String emptyResult =
+                        "{\"status\":\"success\",\"rules_evaluated\":0,\"rules_matched\":0,\"matches\":[]}";
+                listener.onResponse(new WEvaluateRulesResponse(emptyResult));
+                return;
+            }
+
+            String resultJson = eventMatcher.evaluate(request.getEventJson(), parsedRules);
+
             listener.onResponse(new WEvaluateRulesResponse(resultJson));
         } catch (Exception e) {
             log.error("Failed to evaluate Sigma rules against event.", e);
