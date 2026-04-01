@@ -33,26 +33,43 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-/** Evaluates Sigma rules against normalized events. */
+/**
+ * Evaluates Sigma rules against normalized events.
+ *
+ * <p>Takes a JSON event and a list of pre-parsed {@link SigmaRule} objects, flattens the event into
+ * a dot-notation map, then evaluates each rule's detection conditions against the event fields.
+ * Results are returned as a JSON string summarizing which rules matched and why.
+ *
+ * <p>Compiled regex patterns for wildcard matching are cached in a thread-safe {@link
+ * ConcurrentHashMap} to avoid repeated compilation of the same expressions.
+ */
 public class EventMatcher {
 
     private static final Logger log = LogManager.getLogger(EventMatcher.class);
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /** Thread-safe cache of compiled regex patterns keyed by the original wildcard string. */
     private static final Map<String, Pattern> REGEX_CACHE = new ConcurrentHashMap<>();
 
     private static final String STATUS_SUCCESS = "success";
     private static final String STATUS_ERROR = "error";
     private static final String UNKNOWN_VALUE = "unknown";
 
+    /** Creates a new {@code EventMatcher} instance. */
     public EventMatcher() {}
 
     /**
      * Evaluates a list of pre-parsed Sigma rules against a single event.
      *
-     * @param eventJson the event as a JSON string
-     * @param rules list of pre-parsed Sigma rules
-     * @return a JSON string with evaluation results including matched rules, severity, and tags
+     * <p>The event JSON is flattened into dot-notation keys (e.g. {@code "process.name"}) before
+     * matching. Each rule's detection conditions are evaluated against the flat map, and any matching
+     * rules are collected into the result.
+     *
+     * @param eventJson the event as a JSON string (may contain nested objects)
+     * @param rules list of pre-parsed {@link SigmaRule} objects to evaluate
+     * @return a JSON string containing {@code status}, {@code rules_evaluated}, {@code
+     *     rules_matched}, and a {@code matches} array with details for each match
      */
     @SuppressWarnings("unchecked")
     public String evaluate(String eventJson, List<SigmaRule> rules) {
@@ -115,6 +132,13 @@ public class EventMatcher {
         }
     }
 
+    /**
+     * Builds a match result entry containing rule metadata and the conditions that triggered it.
+     *
+     * @param rule the matched {@link SigmaRule}
+     * @param matchedConditions human-readable descriptions of the conditions that matched
+     * @return an ordered map suitable for JSON serialization
+     */
     private Map<String, Object> buildMatchEntry(SigmaRule rule, List<String> matchedConditions) {
         Map<String, Object> match = new LinkedHashMap<>();
         match.put("rule_id", rule.getId() != null ? rule.getId().toString() : UNKNOWN_VALUE);
@@ -131,6 +155,15 @@ public class EventMatcher {
         return match;
     }
 
+    /**
+     * Flattens a nested map into dot-notation keys using an iterative (stack-based) approach.
+     *
+     * <p>For example, {@code {"process": {"name": "cmd.exe"}}} becomes {@code {"process.name":
+     * "cmd.exe"}}.
+     *
+     * @param source the nested source map
+     * @param target the flat target map to populate
+     */
     @SuppressWarnings("unchecked")
     private void flattenMapIterative(Map<String, Object> source, Map<String, Object> target) {
         Deque<Map.Entry<String, Object>> stack = new ArrayDeque<>();
@@ -156,6 +189,17 @@ public class EventMatcher {
         }
     }
 
+    /**
+     * Recursively evaluates a condition tree against the flattened event.
+     *
+     * <p>Handles field-equals-value expressions, keyword (value-only) expressions, and composite
+     * conditions ({@code AND}, {@code OR}, {@code NOT}).
+     *
+     * @param item the condition node to evaluate
+     * @param event the flattened event map (dot-notation keys)
+     * @param matchedConditions accumulator for human-readable descriptions of matched conditions
+     * @return {@code true} if the condition matches the event
+     */
     private boolean evaluateCondition(
             ConditionItem item, Map<String, Object> event, List<String> matchedConditions) {
 
@@ -199,6 +243,15 @@ public class EventMatcher {
         }
     }
 
+    /**
+     * Unwraps an {@link AnyOneOf} into a concrete {@link ConditionItem}.
+     *
+     * <p>The {@code AnyOneOf} may hold a generic {@link ConditionItem}, a {@link
+     * ConditionFieldEqualsValueExpression}, or a {@link ConditionValueExpression}.
+     *
+     * @param anyOneOf the wrapped condition variant
+     * @return the unwrapped condition item, or {@code null} if no variant is present
+     */
     private ConditionItem resolveConditionItem(
             AnyOneOf<ConditionItem, ConditionFieldEqualsValueExpression, ConditionValueExpression>
                     anyOneOf) {
@@ -208,6 +261,25 @@ public class EventMatcher {
         return null;
     }
 
+    /**
+     * Checks whether an event field value matches a Sigma detection value.
+     *
+     * <p>Supported Sigma types:
+     *
+     * <ul>
+     *   <li>{@link SigmaNull} — matches when the event value is {@code null}
+     *   <li>{@link SigmaBool} — matches boolean values (including string representations)
+     *   <li>{@link SigmaNumber} — numeric comparison using {@link BigDecimal} for precision
+     *   <li>{@link SigmaString} — case-insensitive string match; supports {@code *} and {@code ?}
+     *       wildcards
+     * </ul>
+     *
+     * <p>If the event value is a {@link List}, each element is tested individually.
+     *
+     * @param eventValue the value from the flattened event (may be {@code null})
+     * @param sigmaValue the expected value from the Sigma rule detection
+     * @return {@code true} if the event value satisfies the Sigma condition
+     */
     private boolean matchValue(Object eventValue, SigmaType sigmaValue) {
         if (sigmaValue instanceof SigmaNull) {
             return eventValue == null;
