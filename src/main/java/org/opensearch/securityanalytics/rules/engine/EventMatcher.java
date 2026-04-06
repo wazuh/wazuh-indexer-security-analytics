@@ -49,8 +49,8 @@ public class EventMatcher {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    /** Thread-safe cache of compiled regex patterns keyed by the original wildcard string. */
-    private static final Map<String, Pattern> REGEX_CACHE = new ConcurrentHashMap<>();
+    /** Cache of compiled regex patterns keyed by the original wildcard string. */
+    private final Map<String, Pattern> regexCache = new ConcurrentHashMap<>();
 
     private static final String STATUS_SUCCESS = "success";
     private static final String STATUS_ERROR = "error";
@@ -326,7 +326,7 @@ public class EventMatcher {
             try {
                 String cacheKey = stringValue.getOriginal();
                 Pattern pattern =
-                        REGEX_CACHE.computeIfAbsent(
+                        regexCache.computeIfAbsent(
                                 cacheKey,
                                 k -> {
                                     String regex =
