@@ -2175,11 +2175,9 @@ public class TransportIndexDetectorAction
                             if (hits.getHits().length == 0 && !ruleIds.isEmpty()) {
                                 onFailures(
                                         new OpenSearchStatusException(
-                                                "Detector cannot be created: no custom rules found for the provided"
-                                                        + " document IDs in Custom space. Ensure the rules have been"
-                                                        + " promoted to Custom space before creating a detector."
-                                                        + " Provided document IDs: "
-                                                        + ruleIds,
+                                                String.format(
+                                                        "Detector creation failed. No custom rules found for IDs: %s. Ensure these rules are promoted to the 'Custom' space first.",
+                                                        ruleIds),
                                                 RestStatus.BAD_REQUEST));
                                 return;
                             }
