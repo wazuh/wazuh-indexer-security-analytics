@@ -29,6 +29,8 @@ import java.util.regex.Pattern;
 
 import com.wazuh.securityanalytics.model.Integration;
 
+import static org.opensearch.action.ValidateActions.addValidationError;
+
 /**
  * Request for indexing a Wazuh integration (log type).
  *
@@ -104,16 +106,23 @@ public class WIndexIntegrationRequest extends ActionRequest {
      */
     @Override
     public ActionRequestValidationException validate() {
+        ActionRequestValidationException validationException = null;
+
         Matcher matcher = IS_VALID_NAME.matcher(this.integration.getName());
-        boolean find = matcher.matches();
-        if (!find) {
-            throw new ActionRequestValidationException();
+        if (!matcher.matches()) {
+            validationException =
+                    addValidationError(
+                            "integration name must match pattern [a-z0-9_-]{2,50}", validationException);
         }
+
         String category = this.integration.getCategory();
         if (!Integration.LOG_CATEGORIES.contains(category)) {
-            throw new ActionRequestValidationException();
+            validationException =
+                    addValidationError(
+                            "invalid integration category [" + category + "]", validationException);
         }
-        return null;
+
+        return validationException;
     }
 
     /**
