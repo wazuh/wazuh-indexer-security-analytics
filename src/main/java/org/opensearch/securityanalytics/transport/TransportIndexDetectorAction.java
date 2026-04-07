@@ -2140,13 +2140,6 @@ public class TransportIndexDetectorAction
             // Rules are identified by document.id (from the content manager) + space=Custom.
             // Querying by _id would fail because the IDs received here are document.id values,
             // not the internal _id of the custom rules index.
-            // TODO: Testing flat boolQuery vs nested — revert after testing
-            // QueryBuilder queryBuilder =
-            //         QueryBuilders.boolQuery()
-            //                 .filter(
-            //                         QueryBuilders.termsQuery("rule.document.id", ruleIds.toArray(new
-            // String[] {})))
-            //                 .filter(QueryBuilders.termQuery("rule.space", "Custom"));
             QueryBuilder queryBuilder =
                     QueryBuilders.nestedQuery(
                             "rule",
