@@ -2137,7 +2137,18 @@ public class TransportIndexDetectorAction
                             .map(DetectorRule::getId)
                             .collect(Collectors.toList());
 
-            QueryBuilder queryBuilder = QueryBuilders.termsQuery("_id", ruleIds.toArray(new String[] {}));
+            // Rules are identified by document.id (from the content manager) + space=Custom.
+            // Querying by _id would fail because the IDs received here are document.id values,
+            // not the internal _id of the custom rules index.
+            QueryBuilder queryBuilder =
+                    QueryBuilders.nestedQuery(
+                            "rule",
+                            QueryBuilders.boolQuery()
+                                    .filter(
+                                            QueryBuilders.termsQuery(
+                                                    "rule.document.id", ruleIds.toArray(new String[] {})))
+                                    .filter(QueryBuilders.termQuery("rule.space", "Custom")),
+                            ScoreMode.None);
             SearchRequest searchRequest =
                     new SearchRequest(Rule.CUSTOM_RULES_INDEX)
                             .source(
@@ -2147,7 +2158,7 @@ public class TransportIndexDetectorAction
                                             .query(queryBuilder)
                                             .size(10000))
                             .preference(Preference.PRIMARY_FIRST.type());
-            logger.debug("importing custom rules");
+            logger.debug("importing custom rules by document.id with space=Custom");
             client.search(
                     searchRequest,
                     new ActionListener<>() {
@@ -2160,6 +2171,16 @@ public class TransportIndexDetectorAction
                             }
                             logger.debug("custom rules fetch successful");
                             SearchHits hits = response.getHits();
+
+                            if (hits.getHits().length == 0 && !ruleIds.isEmpty()) {
+                                onFailures(
+                                        new OpenSearchStatusException(
+                                                String.format(
+                                                        "Detector creation failed. No custom rules found for IDs: %s. Ensure these rules are promoted to the 'Custom' space first.",
+                                                        ruleIds),
+                                                RestStatus.BAD_REQUEST));
+                                return;
+                            }
 
                             try {
                                 for (SearchHit hit : hits) {

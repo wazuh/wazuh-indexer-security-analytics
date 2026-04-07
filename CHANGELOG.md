@@ -49,6 +49,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Fix typo in revision variable [(#4)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/4)
 - Fix link-checker workflow [(#50)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/50)
 - Fix CodeQL autobuild failure using manual compilation [(#71)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/71)
+- Fix detector creation to query custom rules by `document.id`[(#97)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/97)
 
 ### Security
 -

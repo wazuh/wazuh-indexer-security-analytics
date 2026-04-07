@@ -220,7 +220,7 @@ public class WTransportIndexDetectorAction
 
                             if (ruleMap != null) {
                                 docId = (String) ruleMap.get("document.id");
-                                spaceSource = (String) ruleMap.get("source");
+                                spaceSource = (String) ruleMap.get("space");
                             }
 
                             if (docId == null) {
