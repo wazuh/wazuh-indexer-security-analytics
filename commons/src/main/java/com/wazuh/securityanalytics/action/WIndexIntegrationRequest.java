@@ -112,14 +112,14 @@ public class WIndexIntegrationRequest extends ActionRequest {
         if (!matcher.matches()) {
             validationException =
                     addValidationError(
-                            "integration name must match pattern [a-z0-9_-]{2,50}", validationException);
+                            "Invalid integration name [" + this.integration.getName() + "]", validationException);
         }
 
         String category = this.integration.getCategory();
         if (!Integration.LOG_CATEGORIES.contains(category)) {
             validationException =
                     addValidationError(
-                            "invalid integration category [" + category + "]", validationException);
+                            "Invalid integration category [" + category + "]", validationException);
         }
 
         return validationException;
