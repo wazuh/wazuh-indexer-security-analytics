@@ -421,7 +421,7 @@ public class WazuhEnrichedFindingService implements Closeable {
                     ActionListener.wrap(
                             response -> {
                                 if (response.hasFailures()) {
-                                    log.warn(
+                                    log.error(
                                             "Bulk indexing of enriched findings completed with failures: {}",
                                             response.buildFailureMessage());
                                 } else {
