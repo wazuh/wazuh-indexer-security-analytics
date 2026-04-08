@@ -19,7 +19,6 @@ package org.opensearch.securityanalytics.enrichment;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.action.DocWriteRequest;
-import org.opensearch.action.bulk.BulkItemResponse;
 import org.opensearch.action.bulk.BulkRequest;
 import org.opensearch.action.get.GetRequest;
 import org.opensearch.action.get.MultiGetItemResponse;
@@ -387,6 +386,7 @@ public class WazuhEnrichedFindingService implements Closeable {
                         .timeout(this.indexTimeout);
 
         this.pendingRequests.add(request);
+        log.debug("Added enriched finding to pending requests: {}", document);
         if (this.pendingCount.incrementAndGet() % BULK_BATCH_SIZE == 0) {
             this.drainAndFlush();
         }
@@ -415,17 +415,17 @@ public class WazuhEnrichedFindingService implements Closeable {
             return;
         }
         try (ThreadContext.StoredContext ignored = this.threadPool.getThreadContext().stashContext()) {
+            log.info("Flushing {} pending enriched findings", bulk.numberOfActions());
             this.client.bulk(
                     bulk,
                     ActionListener.wrap(
                             response -> {
-                                for (BulkItemResponse item : response.getItems()) {
-                                    if (item.isFailed()) {
-                                        log.warn(
-                                                "Failed to bulk-index enriched finding {}: {}",
-                                                item.getId(),
-                                                item.getFailureMessage());
-                                    }
+                                if (response.hasFailures()) {
+                                    log.error(
+                                            "Bulk indexing of enriched findings completed with failures: {}",
+                                            response.buildFailureMessage());
+                                } else {
+                                    log.info("Bulk indexing of enriched findings completed successfully");
                                 }
                             },
                             e -> log.warn("Bulk indexing of enriched findings failed", e)));
