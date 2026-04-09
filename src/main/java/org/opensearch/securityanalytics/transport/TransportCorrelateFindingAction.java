@@ -118,6 +118,46 @@ public class TransportCorrelateFindingAction
 
     private final WazuhEnrichedFindingService enrichedFindingService;
 
+    static Map<String, CustomLogType> buildLogTypesFromHits(
+            SearchHit[] hits, String monitorId, String findingId) {
+        Map<String, CustomLogType> logTypes = new HashMap<>();
+        for (SearchHit hit : hits) {
+            addLogTypeIfValid(logTypes, hit.getSourceAsMap(), hit.getId(), monitorId, findingId);
+        }
+        return logTypes;
+    }
+
+    static void addLogTypeIfValid(
+            Map<String, CustomLogType> logTypes,
+            Map<String, Object> sourceMap,
+            String hitId,
+            String monitorId,
+            String findingId) {
+        Object nameObj = sourceMap.get("name");
+        if (nameObj == null) {
+            log.warn(
+                    "Skipping malformed log type doc [{}] for monitor [{}] finding [{}]: missing field [name]. Available keys: {}",
+                    hitId,
+                    monitorId,
+                    findingId,
+                    sourceMap.keySet());
+            return;
+        }
+
+        String name = nameObj.toString();
+        try {
+            logTypes.put(name, new CustomLogType(sourceMap));
+        } catch (Exception e) {
+            log.warn(
+                    "Skipping malformed log type doc [{}] with name [{}] for monitor [{}] finding [{}]",
+                    hitId,
+                    name,
+                    monitorId,
+                    findingId,
+                    e);
+        }
+    }
+
     @Inject
     public TransportCorrelateFindingAction(
             TransportService transportService,
@@ -357,8 +397,7 @@ public class TransportCorrelateFindingAction
                                             enrichedFindingService.enrich(finding);
                                             joinEngine.onSearchDetectorResponse(detector, finding);
                                         } catch (Exception e) {
-                                            log.error(
-                                                    "Exception for request {}", searchRequest.toString(), e.getMessage());
+                                            log.error("Exception for request {}", searchRequest, e);
                                             onFailures(e);
                                         }
                                     } else {
@@ -637,13 +676,8 @@ public class TransportCorrelateFindingAction
                                                                                         }
 
                                                                                         SearchHit[] hits = searchResponse.getHits().getHits();
-                                                                                        Map<String, CustomLogType> logTypes = new HashMap<>();
-                                                                                        for (SearchHit hit : hits) {
-                                                                                            Map<String, Object> sourceMap = hit.getSourceAsMap();
-                                                                                            logTypes.put(
-                                                                                                    sourceMap.get("name").toString(),
-                                                                                                    new CustomLogType(sourceMap));
-                                                                                        }
+                                                                                        Map<String, CustomLogType> logTypes =
+                                                                                                buildLogTypes(hits);
 
                                                                                         if (correlatedFindings != null) {
                                                                                             if (correlatedFindings.isEmpty()) {
@@ -724,6 +758,10 @@ public class TransportCorrelateFindingAction
             return searchRequest;
         }
 
+        private Map<String, CustomLogType> buildLogTypes(SearchHit[] hits) {
+            return buildLogTypesFromHits(hits, request.getMonitorId(), request.getFinding().getId());
+        }
+
         private IndexRequest getCorrelationMetadataIndexRequest(String id, long newScoreTimestamp)
                 throws IOException {
             XContentBuilder scoreBuilder = XContentFactory.jsonBuilder().startObject();
@@ -756,11 +794,7 @@ public class TransportCorrelateFindingAction
                                 }
 
                                 SearchHit[] hits = response.getHits().getHits();
-                                Map<String, CustomLogType> logTypes = new HashMap<>();
-                                for (SearchHit hit : hits) {
-                                    Map<String, Object> sourceMap = hit.getSourceAsMap();
-                                    logTypes.put(sourceMap.get("name").toString(), new CustomLogType(sourceMap));
-                                }
+                                Map<String, CustomLogType> logTypes = buildLogTypes(hits);
 
                                 if (correlatedFindings != null) {
                                     if (correlatedFindings.isEmpty()) {
@@ -811,11 +845,10 @@ public class TransportCorrelateFindingAction
 
         public void onFailures(Exception t) {
             log.error(
-                    "Exception occurred while processing correlations for monitor id "
-                            + request.getMonitorId()
-                            + " and finding id "
-                            + request.getFinding().getId(),
-                    t.getMessage());
+                    "Exception occurred while processing correlations for monitor id {} and finding id {}",
+                    request.getMonitorId(),
+                    request.getFinding().getId(),
+                    t);
             if (counter.compareAndSet(false, true)) {
                 finishHim(t);
             }
