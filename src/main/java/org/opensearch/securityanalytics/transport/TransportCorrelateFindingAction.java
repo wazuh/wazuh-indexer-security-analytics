@@ -19,7 +19,9 @@ package org.opensearch.securityanalytics.transport;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.search.join.ScoreMode;
+import org.opensearch.ExceptionsHelper;
 import org.opensearch.OpenSearchStatusException;
+import org.opensearch.ResourceAlreadyExistsException;
 import org.opensearch.ResourceNotFoundException;
 import org.opensearch.action.ActionRequest;
 import org.opensearch.action.ActionRunnable;
@@ -228,7 +230,14 @@ public class TransportCorrelateFindingAction
                                                                                             RestStatus.INTERNAL_SERVER_ERROR));
                                                                         }
                                                                     },
-                                                                    correlateFindingAction::onFailures));
+                                                                    e -> {
+                                                                        if (ExceptionsHelper.unwrapCause(e)
+                                                                                instanceof ResourceAlreadyExistsException) {
+                                                                            correlateFindingAction.start();
+                                                                        } else {
+                                                                            correlateFindingAction.onFailures(e);
+                                                                        }
+                                                                    }));
                                                 } catch (Exception ex) {
                                                     correlateFindingAction.onFailures(ex);
                                                 }
@@ -247,7 +256,14 @@ public class TransportCorrelateFindingAction
                                                                                             RestStatus.INTERNAL_SERVER_ERROR));
                                                                         }
                                                                     },
-                                                                    correlateFindingAction::onFailures));
+                                                                    e -> {
+                                                                        if (ExceptionsHelper.unwrapCause(e)
+                                                                                instanceof ResourceAlreadyExistsException) {
+                                                                            IndexUtils.correlationAlertIndexUpdated();
+                                                                        } else {
+                                                                            correlateFindingAction.onFailures(e);
+                                                                        }
+                                                                    }));
                                                 } catch (Exception ex) {
                                                     correlateFindingAction.onFailures(ex);
                                                 }
@@ -259,7 +275,13 @@ public class TransportCorrelateFindingAction
                                                             RestStatus.INTERNAL_SERVER_ERROR));
                                         }
                                     },
-                                    correlateFindingAction::onFailures));
+                                    e -> {
+                                        if (ExceptionsHelper.unwrapCause(e) instanceof ResourceAlreadyExistsException) {
+                                            correlateFindingAction.start();
+                                        } else {
+                                            correlateFindingAction.onFailures(e);
+                                        }
+                                    }));
                 } catch (Exception ex) {
                     correlateFindingAction.onFailures(ex);
                 }
