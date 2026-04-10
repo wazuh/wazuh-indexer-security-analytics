@@ -24,6 +24,7 @@ import org.opensearch.OpenSearchStatusException;
 import org.opensearch.action.search.MultiSearchRequest;
 import org.opensearch.action.search.MultiSearchResponse;
 import org.opensearch.action.search.SearchRequest;
+import org.opensearch.action.support.IndicesOptions;
 import org.opensearch.cluster.routing.Preference;
 import org.opensearch.common.unit.TimeValue;
 import org.opensearch.common.xcontent.LoggingDeprecationHandler;
@@ -282,6 +283,7 @@ public class JoinEngine {
 
         SearchRequest searchRequest = new SearchRequest();
         searchRequest.indices(CorrelationRule.CORRELATION_RULE_INDEX);
+        searchRequest.indicesOptions(IndicesOptions.lenientExpandOpen());
         searchRequest.source(searchSourceBuilder);
         searchRequest.preference(Preference.PRIMARY_FIRST.type());
         searchRequest.setCancelAfterTimeInterval(TimeValue.timeValueSeconds(30L));

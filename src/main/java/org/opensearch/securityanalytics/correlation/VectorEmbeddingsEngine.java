@@ -91,8 +91,8 @@ public class VectorEmbeddingsEngine {
         SearchRequest searchRequest = getSearchMetadataIndexRequest(detectorType, finding, logTypes);
         String correlationId = getCorrelationId(logTypes, detectorType);
         if (correlationId == null) {
-            log.warn("Missing correlation_id for detector type [{}] and finding [{}]", detectorType, finding.getId());
-            onFailure(new OpenSearchStatusException("Missing correlation_id for detector type: " + detectorType, RestStatus.INTERNAL_SERVER_ERROR));
+            log.debug("Skipping correlation for detector type [{}] and finding [{}]: no correlation_id assigned", detectorType, finding.getId());
+            correlateFindingAction.onOperation();
             return;
         }
 
@@ -240,8 +240,8 @@ public class VectorEmbeddingsEngine {
 
         String correlationId = getCorrelationId(logTypes, detectorType);
         if (correlationId == null) {
-            log.warn("Missing correlation_id for detector type [{}] and finding [{}]", detectorType, finding.getId());
-            onFailure(new OpenSearchStatusException("Missing correlation_id for detector type: " + detectorType, RestStatus.INTERNAL_SERVER_ERROR));
+            log.debug("Skipping correlation for detector type [{}] and finding [{}]: no correlation_id assigned", detectorType, finding.getId());
+            correlateFindingAction.onOperation();
             return;
         }
 
