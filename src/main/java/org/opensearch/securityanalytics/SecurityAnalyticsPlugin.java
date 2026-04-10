@@ -152,6 +152,7 @@ import org.opensearch.securityanalytics.transport.WTransportDeleteCustomRuleActi
 import org.opensearch.securityanalytics.transport.WTransportDeleteDetectorAction;
 import org.opensearch.securityanalytics.transport.WTransportDeleteIntegrationAction;
 import org.opensearch.securityanalytics.transport.WTransportDeleteRuleAction;
+import org.opensearch.securityanalytics.transport.WTransportDeleteSpaceResourcesAction;
 import org.opensearch.securityanalytics.transport.WTransportIndexCustomRuleAction;
 import org.opensearch.securityanalytics.transport.WTransportIndexDetectorAction;
 import org.opensearch.securityanalytics.transport.WTransportIndexIntegrationAction;
@@ -178,6 +179,7 @@ import com.wazuh.securityanalytics.action.WDeleteCustomRuleAction;
 import com.wazuh.securityanalytics.action.WDeleteDetectorAction;
 import com.wazuh.securityanalytics.action.WDeleteIntegrationAction;
 import com.wazuh.securityanalytics.action.WDeleteRuleAction;
+import com.wazuh.securityanalytics.action.WDeleteSpaceResourcesAction;
 import com.wazuh.securityanalytics.action.WIndexCustomRuleAction;
 import com.wazuh.securityanalytics.action.WIndexDetectorAction;
 import com.wazuh.securityanalytics.action.WIndexIntegrationAction;
@@ -494,6 +496,8 @@ public class SecurityAnalyticsPlugin extends Plugin
                 new ActionHandler<>(WIndexCustomRuleAction.INSTANCE, WTransportIndexCustomRuleAction.class),
                 new ActionHandler<>(
                         WDeleteCustomRuleAction.INSTANCE, WTransportDeleteCustomRuleAction.class),
+                new ActionHandler<>(
+                        WDeleteSpaceResourcesAction.INSTANCE, WTransportDeleteSpaceResourcesAction.class),
                 new ActionPlugin.ActionHandler<>(
                         AckAlertsAction.INSTANCE, TransportAcknowledgeAlertsAction.class),
                 new ActionPlugin.ActionHandler<>(
