@@ -161,7 +161,15 @@ public class JoinEngine {
                             SearchHit[] logTypes = response.getHits().getHits();
                             List<String> logTypeNames = new ArrayList<>();
                             for (SearchHit logType : logTypes) {
-                                String logTypeName = logType.getSourceAsMap().get("name").toString();
+                                Object nameObj = logType.getSourceAsMap().get("name");
+                                if (nameObj == null) {
+                                    log.warn(
+                                            "[CORRELATIONS] Skipping log type doc [{}]: missing field [name]. Available keys: {}",
+                                            logType.getId(),
+                                            logType.getSourceAsMap().keySet());
+                                    continue;
+                                }
+                                String logTypeName = nameObj.toString();
                                 logTypeNames.add(logTypeName);
 
                                 RangeQueryBuilder rangeQueryBuilder =
@@ -312,7 +320,7 @@ public class JoinEngine {
                                 log.error(
                                         "[CORRELATIONS] Exception encountered while searching correlation rule index for finding id {}",
                                         finding.getId(),
-                                        e.getMessage());
+                                        e);
                                 this.getValidDocuments(
                                         detectorType, indices, List.of(), List.of(), autoCorrelations);
                             } catch (Exception ex) {

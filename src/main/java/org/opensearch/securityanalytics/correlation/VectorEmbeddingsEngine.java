@@ -57,10 +57,44 @@ public class VectorEmbeddingsEngine {
         this.correlateFindingAction = correlateFindingAction;
     }
 
+    /**
+     * Extracts a required field from a source map, throwing a clear error instead of an NPE
+     * if the field is missing.
+     *
+     * @throws OpenSearchStatusException if the field is not present in the map.
+     */
+    private static String requireField(Map<String, Object> source, String field) {
+        Object value = source.get(field);
+        if (value == null) {
+            throw new OpenSearchStatusException(
+                    String.format(Locale.ROOT, "Missing required field [%s] in document. Available keys: %s", field, source.keySet()),
+                    RestStatus.INTERNAL_SERVER_ERROR);
+        }
+        return value.toString();
+    }
+
+    /**
+     * Safely resolves the correlation_id for a given detector type from the log types map.
+     *
+     * @return the correlation ID string, or {@code null} if any intermediate value is missing.
+     */
+    private static String getCorrelationId(Map<String, CustomLogType> logTypes, String detectorType) {
+        CustomLogType customLogType = logTypes.get(detectorType);
+        if (customLogType == null || customLogType.getTags() == null) {
+            return null;
+        }
+        Object corrId = customLogType.getTags().get("correlation_id");
+        return corrId != null ? corrId.toString() : null;
+    }
+
     public void insertCorrelatedFindings(String detectorType, Finding finding, String logType, List<String> correlatedFindings, float timestampFeature, List<String> correlationRules, Map<String, CustomLogType> logTypes) {
         SearchRequest searchRequest = getSearchMetadataIndexRequest(detectorType, finding, logTypes);
-        Map<String, Object> tags = logTypes.get(detectorType).getTags();
-        String correlationId = tags.get("correlation_id").toString();
+        String correlationId = getCorrelationId(logTypes, detectorType);
+        if (correlationId == null) {
+            log.warn("Missing correlation_id for detector type [{}] and finding [{}]", detectorType, finding.getId());
+            onFailure(new OpenSearchStatusException("Missing correlation_id for detector type: " + detectorType, RestStatus.INTERNAL_SERVER_ERROR));
+            return;
+        }
 
         long findingTimestamp = finding.getTimestamp().toEpochMilli();
         client.search(searchRequest, ActionListener.wrap(response -> {
@@ -74,7 +108,7 @@ public class VectorEmbeddingsEngine {
             }
 
             Map<String, Object> hitSource = response.getHits().getHits()[0].getSourceAsMap();
-            long counter = Long.parseLong(hitSource.get("counter").toString());
+            long counter = Long.parseLong(requireField(hitSource, "counter"));
 
             MultiSearchRequest mSearchRequest = new MultiSearchRequest();
 
@@ -119,8 +153,8 @@ public class VectorEmbeddingsEngine {
                     for (int idx = 0; idx < totalHits; ++idx) {
                         SearchHit hit = item.getResponse().getHits().getHits()[idx];
                         Map<String, Object> sourceAsMap = hit.getSourceAsMap();
-                        long neighborCounter = Long.parseLong(sourceAsMap.get("counter").toString());
-                        String correlatedFinding = sourceAsMap.get("finding1").toString();
+                        long neighborCounter = Long.parseLong(requireField(sourceAsMap, "counter"));
+                        String correlatedFinding = requireField(sourceAsMap, "finding1");
 
                         try {
                             float[] corrVector = new float[3];
@@ -197,15 +231,21 @@ public class VectorEmbeddingsEngine {
     }
 
     public void insertOrphanFindings(String detectorType, Finding finding, float timestampFeature, Map<String, CustomLogType> logTypes) {
-        if (logTypes.get(detectorType) == null ) {
+        if (logTypes.get(detectorType) == null) {
             log.debug("Missing detector type {} in the log types index for finding id {}. Keys in the index: {}",
                     detectorType, finding.getId(), Arrays.toString(logTypes.keySet().toArray()));
             onFailure(new OpenSearchStatusException("insertOrphanFindings null log types for detector type: " + detectorType, RestStatus.INTERNAL_SERVER_ERROR));
+            return;
+        }
+
+        String correlationId = getCorrelationId(logTypes, detectorType);
+        if (correlationId == null) {
+            log.warn("Missing correlation_id for detector type [{}] and finding [{}]", detectorType, finding.getId());
+            onFailure(new OpenSearchStatusException("Missing correlation_id for detector type: " + detectorType, RestStatus.INTERNAL_SERVER_ERROR));
+            return;
         }
 
         SearchRequest searchRequest = getSearchMetadataIndexRequest(detectorType, finding, logTypes);
-        Map<String, Object> tags = logTypes.get(detectorType).getTags();
-        String correlationId = tags.get("correlation_id").toString();
         long findingTimestamp = finding.getTimestamp().toEpochMilli();
 
         client.search(searchRequest, ActionListener.wrap(response -> {
@@ -216,8 +256,8 @@ public class VectorEmbeddingsEngine {
             try {
                 Map<String, Object> hitSource = response.getHits().getHits()[0].getSourceAsMap();
                 String id = response.getHits().getHits()[0].getId();
-                long counter = Long.parseLong(hitSource.get("counter").toString());
-                long timestamp = Long.parseLong(hitSource.get("timestamp").toString());
+                long counter = Long.parseLong(requireField(hitSource, "counter"));
+                long timestamp = Long.parseLong(requireField(hitSource, "timestamp"));
                 if (counter == 0L) {
                     XContentBuilder builder = XContentFactory.jsonBuilder().startObject();
                     builder.field("root", true);
@@ -294,7 +334,7 @@ public class VectorEmbeddingsEngine {
                                     contentBuilder.field("counter", 50L);
                                     contentBuilder.field("finding1", finding.getId());
                                     contentBuilder.field("finding2", "");
-                                    contentBuilder.field("logType", Integer.valueOf(logTypes.get(detectorType).getTags().get("correlation_id").toString()).toString());
+                                    contentBuilder.field("logType", correlationId);
                                     contentBuilder.field("timestamp", findingTimestamp);
                                     contentBuilder.field("corr_vector", corrVector);
                                     contentBuilder.field("recordType", "finding");
@@ -346,7 +386,7 @@ public class VectorEmbeddingsEngine {
 
                             if (hit != null) {
                                 Map<String, Object> sourceAsMap = searchResponse.getHits().getHits()[0].getSourceAsMap();
-                                existCounter = Long.parseLong(sourceAsMap.get("counter").toString());
+                                existCounter = Long.parseLong(requireField(sourceAsMap, "counter"));
                             }
 
                             if (totalHits == 0L || existCounter != ((long) (2.0f * ((float) counter) - 50.0f) / 2.0f)) {
@@ -363,7 +403,7 @@ public class VectorEmbeddingsEngine {
                                     builder.field("counter", counter);
                                     builder.field("finding1", finding.getId());
                                     builder.field("finding2", "");
-                                    builder.field("logType", Integer.valueOf(logTypes.get(detectorType).getTags().get("correlation_id").toString()).toString());
+                                    builder.field("logType", correlationId);
                                     builder.field("timestamp", findingTimestamp);
                                     builder.field("corr_vector", corrVector);
                                     builder.field("recordType", "finding");
@@ -407,7 +447,7 @@ public class VectorEmbeddingsEngine {
                                                 xContentBuilder.field("counter", counter + 50L);
                                                 xContentBuilder.field("finding1", finding.getId());
                                                 xContentBuilder.field("finding2", "");
-                                                xContentBuilder.field("logType", Integer.valueOf(logTypes.get(detectorType).getTags().get("correlation_id").toString()).toString());
+                                                xContentBuilder.field("logType", correlationId);
                                                 xContentBuilder.field("timestamp", findingTimestamp);
                                                 xContentBuilder.field("corr_vector", corrVector);
                                                 xContentBuilder.field("recordType", "finding");
@@ -456,7 +496,6 @@ public class VectorEmbeddingsEngine {
             throw new OpenSearchStatusException("LogTypes Index is missing the detector type", RestStatus.INTERNAL_SERVER_ERROR);
         }
 
-        Map<String, Object> tags = logTypes.get(detectorType).getTags();
         MatchQueryBuilder queryBuilder = QueryBuilders.matchQuery(
                 "root", true
         );
