@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Implement spotless configuration from Wazuh Indexer Plugins repository [(#70)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/70)
 - Add logs to detect problems with detectors creation [(#83)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/83)
 - Add --set-as-main flag support to repository bumper [(#90)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/90)
+- Add Wazuh Alerting plugin to the build process [(#114)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/114)
 
 ### Dependencies
 - Update to JDK 25 [(#49)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/49)
