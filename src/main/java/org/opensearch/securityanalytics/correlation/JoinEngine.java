@@ -24,6 +24,7 @@ import org.opensearch.OpenSearchStatusException;
 import org.opensearch.action.search.MultiSearchRequest;
 import org.opensearch.action.search.MultiSearchResponse;
 import org.opensearch.action.search.SearchRequest;
+import org.opensearch.action.support.IndicesOptions;
 import org.opensearch.cluster.routing.Preference;
 import org.opensearch.common.unit.TimeValue;
 import org.opensearch.common.xcontent.LoggingDeprecationHandler;
@@ -161,7 +162,15 @@ public class JoinEngine {
                             SearchHit[] logTypes = response.getHits().getHits();
                             List<String> logTypeNames = new ArrayList<>();
                             for (SearchHit logType : logTypes) {
-                                String logTypeName = logType.getSourceAsMap().get("name").toString();
+                                Object nameObj = logType.getSourceAsMap().get("name");
+                                if (nameObj == null) {
+                                    log.warn(
+                                            "[CORRELATIONS] Skipping log type doc [{}]: missing field [name]. Available keys: {}",
+                                            logType.getId(),
+                                            logType.getSourceAsMap().keySet());
+                                    continue;
+                                }
+                                String logTypeName = nameObj.toString();
                                 logTypeNames.add(logTypeName);
 
                                 RangeQueryBuilder rangeQueryBuilder =
@@ -274,6 +283,7 @@ public class JoinEngine {
 
         SearchRequest searchRequest = new SearchRequest();
         searchRequest.indices(CorrelationRule.CORRELATION_RULE_INDEX);
+        searchRequest.indicesOptions(IndicesOptions.lenientExpandOpen());
         searchRequest.source(searchSourceBuilder);
         searchRequest.preference(Preference.PRIMARY_FIRST.type());
         searchRequest.setCancelAfterTimeInterval(TimeValue.timeValueSeconds(30L));
@@ -312,7 +322,7 @@ public class JoinEngine {
                                 log.error(
                                         "[CORRELATIONS] Exception encountered while searching correlation rule index for finding id {}",
                                         finding.getId(),
-                                        e.getMessage());
+                                        e);
                                 this.getValidDocuments(
                                         detectorType, indices, List.of(), List.of(), autoCorrelations);
                             } catch (Exception ex) {

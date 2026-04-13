@@ -1,16 +1,28 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.util;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.OpenSearchException;
-import org.opensearch.core.common.Strings;
 import org.opensearch.common.xcontent.XContentFactory;
-import org.opensearch.core.xcontent.XContentBuilder;
+import org.opensearch.core.common.Strings;
 import org.opensearch.core.rest.RestStatus;
+import org.opensearch.core.xcontent.XContentBuilder;
 import org.opensearch.securityanalytics.rules.exceptions.CompositeSigmaErrors;
 
 import java.io.IOException;
@@ -48,7 +60,7 @@ public class SecurityAnalyticsException extends OpenSearchException {
                 RestStatus status = RestStatus.BAD_REQUEST;
 
                 XContentBuilder builder = XContentFactory.jsonBuilder().startObject();
-                for (Exception e: ((CompositeSigmaErrors) ex).getErrors()) {
+                for (Exception e : ((CompositeSigmaErrors) ex).getErrors()) {
                     builder.field(e.getClass().getSimpleName(), e.getMessage());
                     log.error("[USER ERROR] Security Analytics error: {}", e.getMessage());
                 }
@@ -60,7 +72,7 @@ public class SecurityAnalyticsException extends OpenSearchException {
                 return SecurityAnalyticsException.wrap(e);
             }
         } else {
-            log.error("Security Analytics error: {}", ex.getMessage());
+            log.error("Security Analytics error [{}]: {}", ex.getClass().getName(), ex.getMessage(), ex);
 
             String friendlyMsg = "Unknown error";
             RestStatus status = RestStatus.INTERNAL_SERVER_ERROR;
@@ -94,14 +106,18 @@ public class SecurityAnalyticsException extends OpenSearchException {
             RestStatus status = RestStatus.BAD_REQUEST;
 
             XContentBuilder builder = XContentFactory.jsonBuilder().startObject();
-            for (Exception e: ex) {
+            for (Exception e : ex) {
                 builder.field(e.getClass().getSimpleName(), e.getMessage());
                 log.warn("[USER ERROR] Security Analytics error: {}", e.getMessage());
             }
             builder.endObject();
             String friendlyMsg = builder.toString();
 
-            return new SecurityAnalyticsException(friendlyMsg, status, new Exception(String.format(Locale.getDefault(), "%s: %s", ex.getClass().getName(), friendlyMsg)));
+            return new SecurityAnalyticsException(
+                    friendlyMsg,
+                    status,
+                    new Exception(
+                            String.format(Locale.getDefault(), "%s: %s", ex.getClass().getName(), friendlyMsg)));
         } catch (IOException e) {
             return SecurityAnalyticsException.wrap(e);
         }
