@@ -43,6 +43,8 @@ buildscript {
 //            sa_commons_version += "-SNAPSHOT"
         }
         common_utils_version = System.getProperty("common_utils.version", "${wazuh_version}.${revision}")
+        alerting_spi_build = System.getProperty("alerting_spi_build", "${wazuh_version}.${revision}")
+
         kotlin_version = '1.8.21'
 
         sa_commons_file_name = "security-analytics-commons-${sa_commons_version}.jar"
@@ -213,7 +215,7 @@ dependencies {
     compileOnly "org.opensearch:common-utils:${common_utils_version}@jar"
     compileOnly "org.opensearch.client:opensearch-rest-client:${opensearch_version}"
     compileOnly "org.jetbrains.kotlin:kotlin-stdlib:${kotlin_version}"
-    compileOnly "org.opensearch.alerting:alerting-spi:${alerting_spi_build}"
+    compileOnly "com.wazuh:wazuh-indexer-alerting-spi:${alerting_spi_build}@jar"
     implementation "org.apache.commons:commons-csv:1.10.0"
     implementation 'com.jayway.jsonpath:json-path:2.9.0'
     implementation 'net.minidev:json-smart:2.5.2'
