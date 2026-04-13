@@ -28,6 +28,8 @@ import org.opensearch.securityanalytics.rules.utils.AnyOneOf;
 import org.opensearch.securityanalytics.rules.utils.Either;
 
 import java.math.BigDecimal;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
@@ -205,7 +207,8 @@ public class EventMatcher {
 
         if (item instanceof ConditionFieldEqualsValueExpression fieldExpr) {
             if (matchValue(event.get(fieldExpr.getField()), fieldExpr.getValue())) {
-                matchedConditions.add(fieldExpr.getField() + " == '" + fieldExpr.getValue() + "'");
+                matchedConditions.add(
+                        fieldExpr.getField() + " matched '" + formatSigmaValue(fieldExpr.getValue()) + "'");
                 return true;
             }
             return false;
@@ -268,8 +271,12 @@ public class EventMatcher {
      *
      * <ul>
      *   <li>{@link SigmaNull} — matches when the event value is {@code null}
+     *   <li>{@link SigmaExpansion} — OR over multiple alternatives (windash, base64offset)
      *   <li>{@link SigmaBool} — matches boolean values (including string representations)
-     *   <li>{@link SigmaNumber} — numeric comparison using {@link BigDecimal} for precision
+     *   <li>{@link SigmaCompareExpression} — numeric comparisons (gt, gte, lt, lte)
+     *   <li>{@link SigmaNumber} — exact numeric equality using {@link BigDecimal} for precision
+     *   <li>{@link SigmaRegularExpression} — explicit regex matching (re modifier)
+     *   <li>{@link SigmaCIDRExpression} — CIDR subnet matching for IP addresses
      *   <li>{@link SigmaString} — case-insensitive string match; supports {@code *} and {@code ?}
      *       wildcards
      * </ul>
@@ -284,6 +291,12 @@ public class EventMatcher {
         if (sigmaValue instanceof SigmaNull) {
             return eventValue == null;
         }
+
+        // SigmaExpansion
+        if (sigmaValue instanceof SigmaExpansion expansion) {
+            return expansion.getValues().stream().anyMatch(alt -> matchValue(eventValue, alt));
+        }
+
         if (eventValue instanceof List<?> listValue) {
             return listValue.stream().anyMatch(element -> matchValue(element, sigmaValue));
         }
@@ -298,26 +311,56 @@ public class EventMatcher {
                     : String.valueOf(expected).equalsIgnoreCase(eventValue.toString());
         }
 
-        if (sigmaValue instanceof SigmaNumber numberValue) {
+        // Numeric comparisons
+        if (sigmaValue instanceof SigmaCompareExpression compareExpr) {
             try {
-                String sigmaNumStr;
-                if (numberValue.getNumOpt().isLeft()) {
-                    sigmaNumStr = numberValue.getNumOpt().getLeft().toString();
-                } else if (numberValue.getNumOpt().isRight()) {
-                    sigmaNumStr = numberValue.getNumOpt().get().toString();
-                } else {
-                    return false;
-                }
-
                 BigDecimal eventDec = new BigDecimal(eventValue.toString());
-                BigDecimal sigmaDec = new BigDecimal(sigmaNumStr);
+                BigDecimal sigmaDec = extractBigDecimal(compareExpr.getNumber());
+                if (sigmaDec == null) return false;
 
-                return eventDec.compareTo(sigmaDec) == 0;
+                int cmp = eventDec.compareTo(sigmaDec);
+                return switch (compareExpr.getOp()) {
+                    case SigmaCompareExpression.CompareOperators.LT -> cmp < 0;
+                    case SigmaCompareExpression.CompareOperators.LTE -> cmp <= 0;
+                    case SigmaCompareExpression.CompareOperators.GT -> cmp > 0;
+                    case SigmaCompareExpression.CompareOperators.GTE -> cmp >= 0;
+                    default -> false;
+                };
             } catch (NumberFormatException | NoSuchElementException e) {
                 return false;
             }
         }
 
+        // Exact numeric equality
+        if (sigmaValue instanceof SigmaNumber numberValue) {
+            try {
+                BigDecimal eventDec = new BigDecimal(eventValue.toString());
+                BigDecimal sigmaDec = extractBigDecimal(numberValue);
+                return sigmaDec != null && eventDec.compareTo(sigmaDec) == 0;
+            } catch (NumberFormatException | NoSuchElementException e) {
+                return false;
+            }
+        }
+
+        // Explicit regular expression
+        if (sigmaValue instanceof SigmaRegularExpression regexValue) {
+            try {
+                Pattern pattern =
+                        regexCache.computeIfAbsent(
+                                "re:" + regexValue.getRegexp(), k -> Pattern.compile(regexValue.getRegexp()));
+                return pattern.matcher(eventValue.toString()).find();
+            } catch (Exception e) {
+                log.warn("Failed to evaluate SigmaRegularExpression: {}", regexValue.getRegexp(), e);
+                return false;
+            }
+        }
+
+        // CIDR network matching
+        if (sigmaValue instanceof SigmaCIDRExpression cidrExpr) {
+            return matchCidr(eventValue.toString(), cidrExpr.getCidr());
+        }
+
+        // String matching with optional wildcards
         if (sigmaValue instanceof SigmaString stringValue) {
             if (!stringValue.containsWildcard()) {
                 return eventValue.toString().equalsIgnoreCase(stringValue.getOriginal());
@@ -354,5 +397,83 @@ public class EventMatcher {
         }
 
         return eventValue.toString().equalsIgnoreCase(sigmaValue.toString());
+    }
+
+    /**
+     * Formats a Sigma value for human-readable matched condition descriptions.
+     *
+     * @param value the Sigma type value
+     * @return a readable string representation
+     */
+    private String formatSigmaValue(SigmaType value) {
+        if (value instanceof SigmaCompareExpression cmp) {
+            return cmp.getOp() + " " + cmp.getNumber();
+        }
+        if (value instanceof SigmaCIDRExpression cidr) {
+            return "cidr:" + cidr.getCidr();
+        }
+        if (value instanceof SigmaRegularExpression re) {
+            return "re:" + re.getRegexp();
+        }
+        if (value instanceof SigmaExpansion exp) {
+            return "expansion(" + exp.getValues().size() + " alternatives)";
+        }
+        return value.toString();
+    }
+
+    /**
+     * Extracts a {@link BigDecimal} from a {@link SigmaNumber}'s internal Either representation.
+     *
+     * @param num the Sigma number value
+     * @return the numeric value as BigDecimal, or {@code null} if extraction fails
+     */
+    private BigDecimal extractBigDecimal(SigmaNumber num) {
+        String str;
+        if (num.getNumOpt().isLeft()) {
+            str = num.getNumOpt().getLeft().toString();
+        } else if (num.getNumOpt().isRight()) {
+            str = num.getNumOpt().get().toString();
+        } else {
+            return null;
+        }
+        return new BigDecimal(str);
+    }
+
+    /**
+     * Checks if an IP address falls within a CIDR subnet using bitwise comparison.
+     *
+     * <p>Supports both IPv4 and IPv6 addresses. Thread-safe with no shared mutable state.
+     *
+     * @param ipStr the event IP address as a string
+     * @param cidrStr the CIDR notation subnet (e.g. "192.168.1.0/24" or "2001:db8::/32")
+     * @return {@code true} if the IP is within the subnet
+     */
+    private boolean matchCidr(String ipStr, String cidrStr) {
+        try {
+            String[] parts = cidrStr.split("/");
+            if (parts.length != 2) return false;
+
+            byte[] subnetBytes = InetAddress.getByName(parts[0]).getAddress();
+            int prefixLen = Integer.parseInt(parts[1]);
+            byte[] ipBytes = InetAddress.getByName(ipStr.trim()).getAddress();
+
+            // IPv4 vs IPv6 length mismatch
+            if (ipBytes.length != subnetBytes.length) return false;
+
+            int fullBytes = prefixLen / 8;
+            int remainingBits = prefixLen % 8;
+
+            for (int i = 0; i < fullBytes; i++) {
+                if (ipBytes[i] != subnetBytes[i]) return false;
+            }
+            if (remainingBits > 0 && fullBytes < ipBytes.length) {
+                int mask = 0xFF << (8 - remainingBits);
+                if ((ipBytes[fullBytes] & mask) != (subnetBytes[fullBytes] & mask)) return false;
+            }
+            return true;
+        } catch (UnknownHostException | NumberFormatException | ArrayIndexOutOfBoundsException e) {
+            log.warn("Failed CIDR match for IP '{}' against '{}'", ipStr, cidrStr, e);
+            return false;
+        }
     }
 }
