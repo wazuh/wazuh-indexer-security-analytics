@@ -19,12 +19,14 @@ package org.opensearch.securityanalytics.enrichment;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.action.DocWriteRequest;
+import org.opensearch.action.bulk.BulkRequest;
+import org.opensearch.action.get.GetRequest;
 import org.opensearch.action.get.MultiGetItemResponse;
 import org.opensearch.action.get.MultiGetRequest;
 import org.opensearch.action.get.MultiGetResponse;
 import org.opensearch.action.index.IndexRequest;
-import org.opensearch.action.index.IndexResponse;
 import org.opensearch.common.unit.TimeValue;
+import org.opensearch.common.util.concurrent.ThreadContext;
 import org.opensearch.common.xcontent.XContentType;
 import org.opensearch.commons.alerting.model.DocLevelQuery;
 import org.opensearch.commons.alerting.model.Finding;
@@ -32,13 +34,20 @@ import org.opensearch.core.action.ActionListener;
 import org.opensearch.securityanalytics.config.monitors.DetectorMonitorConfig;
 import org.opensearch.securityanalytics.model.LOG_CATEGORY;
 import org.opensearch.securityanalytics.model.Rule;
+import org.opensearch.threadpool.Scheduler;
+import org.opensearch.threadpool.ThreadPool;
 import org.opensearch.transport.client.Client;
 
+import java.io.Closeable;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 /**
@@ -47,10 +56,26 @@ import java.util.stream.Collectors;
  *
  * <p>Enrichment is fire-and-forget: failures are logged at WARN level and never propagate to the
  * caller. The existing {@code .opensearch-sap-{category}-findings-*} write path is unaffected.
+ *
+ * <p>Rule metadata is cached in memory to avoid repeated round-trips for the same rule across
+ * findings. Index requests are batched into bulk requests every {@link #BULK_BATCH_SIZE} items,
+ * with a periodic flush every {@link #FLUSH_INTERVAL} to drain any remainder.
+ *
+ * <p>Concurrent in-flight enrichment chains are bounded by {@link #MAX_IN_FLIGHT} to prevent
+ * transport-layer overload on resource-constrained nodes.
  */
-public class WazuhEnrichedFindingService {
+public class WazuhEnrichedFindingService implements Closeable {
 
     private static final Logger log = LogManager.getLogger(WazuhEnrichedFindingService.class);
+
+    /** Number of enriched findings accumulated before a bulk index request is fired. */
+    private static final int BULK_BATCH_SIZE = 100;
+
+    /** Maximum number of concurrent async enrichment chains (MultiGet + build + buffer). */
+    private static final int MAX_IN_FLIGHT = 50;
+
+    /** Interval at which leftover pending requests are flushed regardless of batch size. */
+    private static final TimeValue FLUSH_INTERVAL = TimeValue.timeValueSeconds(5);
 
     /** Valid base categories derived from {@link LOG_CATEGORY}. */
     private static final Set<String> VALID_CATEGORIES =
@@ -59,17 +84,51 @@ public class WazuhEnrichedFindingService {
                     .collect(Collectors.toUnmodifiableSet());
 
     private final Client client;
+    private final ThreadPool threadPool;
     private final TimeValue indexTimeout;
     private volatile boolean enabled;
 
-    public WazuhEnrichedFindingService(Client client, boolean enabled, TimeValue indexTimeout) {
+    /**
+     * Cache of rule metadata keyed by rule ID. Avoids repeated MultiGet RPCs for the same rule across
+     * many findings produced by the same detector run.
+     */
+    private final ConcurrentHashMap<String, Map<String, Object>> ruleMetadataCache =
+            new ConcurrentHashMap<>();
+
+    /** Findings waiting to be enriched, processed when an in-flight slot becomes available. */
+    private final ConcurrentLinkedQueue<Finding> findingsQueue = new ConcurrentLinkedQueue<>();
+
+    /** Limits the number of concurrent async enrichment chains to avoid transport-layer overload. */
+    private final Semaphore inFlightPermits = new Semaphore(MAX_IN_FLIGHT);
+
+    /**
+     * Buffer of pending index requests, flushed as a bulk request every {@link #BULK_BATCH_SIZE}
+     * items.
+     */
+    private final ConcurrentLinkedQueue<IndexRequest> pendingRequests = new ConcurrentLinkedQueue<>();
+
+    private final AtomicInteger pendingCount = new AtomicInteger(0);
+
+    private final Scheduler.Cancellable flushSchedule;
+
+    public WazuhEnrichedFindingService(
+            Client client, boolean enabled, TimeValue indexTimeout, ThreadPool threadPool) {
         this.client = client;
+        this.threadPool = threadPool;
         this.enabled = enabled;
         this.indexTimeout = indexTimeout;
+        this.flushSchedule =
+                threadPool.scheduleWithFixedDelay(
+                        this::periodicFlush, FLUSH_INTERVAL, ThreadPool.Names.GENERIC);
     }
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+    }
+
+    @Override
+    public void close() {
+        this.flushSchedule.cancel();
     }
 
     /**
@@ -87,8 +146,41 @@ public class WazuhEnrichedFindingService {
             return;
         }
 
+        this.findingsQueue.add(finding);
+        this.processQueue();
+    }
+
+    /**
+     * Drains the findings queue up to the number of available in-flight permits. Each finding starts
+     * an async enrichment chain that releases its permit on completion.
+     */
+    private void processQueue() {
+        while (this.inFlightPermits.tryAcquire()) {
+            Finding finding = this.findingsQueue.poll();
+            if (finding == null) {
+                this.inFlightPermits.release();
+                break;
+            }
+            this.doEnrich(finding);
+        }
+    }
+
+    /**
+     * Releases an in-flight permit and attempts to process more queued findings. Called at every
+     * terminal point of the async enrichment chain (success or failure).
+     */
+    private void enrichmentComplete() {
+        this.inFlightPermits.release();
+        this.processQueue();
+    }
+
+    /**
+     * Runs the async enrichment chain for a single finding. Must call {@link #enrichmentComplete()}
+     * at every terminal point.
+     */
+    private void doEnrich(Finding finding) {
         String sourceIndex = finding.getIndex();
-        String docId = relatedDocIds.getFirst();
+        String docId = finding.getRelatedDocIds().getFirst();
 
         this.fetchTriggeringEvent(
                 sourceIndex,
@@ -102,35 +194,34 @@ public class WazuhEnrichedFindingService {
                                         sourceIndex,
                                         docId,
                                         finding.getId());
+                                this.enrichmentComplete();
                                 return;
                             }
                             this.fetchRuleMetadataAndIndex(finding, category, eventSource);
                         },
-                        e ->
-                                log.warn(
-                                        "Failed to fetch triggering event {}/{} for finding {}, skipping enrichment",
-                                        sourceIndex,
-                                        docId,
-                                        finding.getId(),
-                                        e)));
+                        e -> {
+                            log.warn(
+                                    "Failed to fetch triggering event {}/{} for finding {}, skipping enrichment",
+                                    sourceIndex,
+                                    docId,
+                                    finding.getId(),
+                                    e);
+                            this.enrichmentComplete();
+                        }));
     }
 
     // ── Step 1: fetch triggering event ───────────────────────────────────────
 
     private void fetchTriggeringEvent(
             String index, String docId, ActionListener<Map<String, Object>> listener) {
-        MultiGetRequest mget = new MultiGetRequest();
-        mget.add(new MultiGetRequest.Item(index, docId));
-
-        this.client.multiGet(
-                mget,
+        this.client.get(
+                new GetRequest(index, docId),
                 ActionListener.wrap(
                         response -> {
-                            MultiGetItemResponse[] items = response.getResponses();
-                            if (items.length > 0 && !items[0].isFailed() && items[0].getResponse().isExists()) {
-                                listener.onResponse(items[0].getResponse().getSourceAsMap());
+                            if (response.isExists()) {
+                                listener.onResponse(response.getSourceAsMap());
                             } else {
-                                log.warn("Triggering event {}/{} not found or mget failed", index, docId);
+                                log.warn("Triggering event {}/{} not found", index, docId);
                                 listener.onResponse(Map.of());
                             }
                         },
@@ -162,7 +253,7 @@ public class WazuhEnrichedFindingService {
         return VALID_CATEGORIES.contains(category) ? category : null;
     }
 
-    // ── Step 2: fetch rule metadata, then build and index ────────────────────
+    // ── Step 2: fetch rule metadata (with cache), then build and index ────────
 
     private void fetchRuleMetadataAndIndex(
             Finding finding, String category, Map<String, Object> eventSource) {
@@ -175,6 +266,12 @@ public class WazuhEnrichedFindingService {
         DocLevelQuery primaryQuery = queries.getFirst();
         String ruleId = primaryQuery.getId();
 
+        Map<String, Object> cached = this.ruleMetadataCache.get(ruleId);
+        if (cached != null) {
+            this.buildAndIndex(finding, category, eventSource, primaryQuery, cached);
+            return;
+        }
+
         MultiGetRequest mget = new MultiGetRequest();
         mget.add(new MultiGetRequest.Item(Rule.PRE_PACKAGED_RULES_INDEX, ruleId));
         mget.add(new MultiGetRequest.Item(Rule.CUSTOM_RULES_INDEX, ruleId));
@@ -184,6 +281,7 @@ public class WazuhEnrichedFindingService {
                 ActionListener.wrap(
                         response -> {
                             Map<String, Object> ruleMetadata = this.extractFirstHit(response);
+                            this.ruleMetadataCache.put(ruleId, ruleMetadata);
                             this.buildAndIndex(finding, category, eventSource, primaryQuery, ruleMetadata);
                         },
                         e -> {
@@ -236,6 +334,7 @@ public class WazuhEnrichedFindingService {
         }
 
         this.indexEnrichedFinding(category, doc);
+        this.enrichmentComplete();
     }
 
     @SuppressWarnings("unchecked")
@@ -276,29 +375,60 @@ public class WazuhEnrichedFindingService {
         return rule;
     }
 
-    // ── Step 4: index to wazuh-findings-v5-{category}-* ───────────────────────
+    // ── Step 4: buffer and bulk-index to wazuh-findings-v5-{category}-* ──────
 
     private void indexEnrichedFinding(String category, Map<String, Object> document) {
         String alias = DetectorMonitorConfig.getWazuhFindingsIndex(category);
-
         IndexRequest request =
                 new IndexRequest(alias)
                         .source(document, XContentType.JSON)
                         .opType(DocWriteRequest.OpType.CREATE)
                         .timeout(this.indexTimeout);
 
-        this.client.index(
-                request,
-                new ActionListener<>() {
-                    @Override
-                    public void onResponse(IndexResponse response) {
-                        log.debug("Indexed enriched finding to {}/{}", alias, response.getId());
-                    }
+        this.pendingRequests.add(request);
+        log.debug("Added enriched finding to pending requests: {}", document);
+        if (this.pendingCount.incrementAndGet() % BULK_BATCH_SIZE == 0) {
+            this.drainAndFlush();
+        }
+    }
 
-                    @Override
-                    public void onFailure(Exception e) {
-                        log.warn("Failed to index enriched finding to {}", alias, e);
-                    }
-                });
+    /**
+     * Called by the periodic schedule to flush leftover index requests and process queued findings.
+     */
+    private void periodicFlush() {
+        this.drainAndFlush();
+        this.processQueue();
+    }
+
+    /**
+     * Drains all pending index requests from the queue and fires a single bulk request. Safe to call
+     * concurrently: {@link ConcurrentLinkedQueue#poll()} guarantees each item is delivered to exactly
+     * one caller.
+     */
+    private void drainAndFlush() {
+        BulkRequest bulk = new BulkRequest().timeout(this.indexTimeout);
+        IndexRequest req;
+        while ((req = this.pendingRequests.poll()) != null) {
+            bulk.add(req);
+        }
+        if (bulk.numberOfActions() == 0) {
+            return;
+        }
+        try (ThreadContext.StoredContext ignored = this.threadPool.getThreadContext().stashContext()) {
+            log.info("Flushing {} pending enriched findings", bulk.numberOfActions());
+            this.client.bulk(
+                    bulk,
+                    ActionListener.wrap(
+                            response -> {
+                                if (response.hasFailures()) {
+                                    log.error(
+                                            "Bulk indexing of enriched findings completed with failures: {}",
+                                            response.buildFailureMessage());
+                                } else {
+                                    log.info("Bulk indexing of enriched findings completed successfully");
+                                }
+                            },
+                            e -> log.warn("Bulk indexing of enriched findings failed", e)));
+        }
     }
 }

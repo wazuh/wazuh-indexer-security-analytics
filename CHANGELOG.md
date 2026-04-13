@@ -37,6 +37,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Rename commons library [(#28)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/28)
 - Allow creating custom and standard integrations [(#32)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/32)
 - Change SAP logic to use findings indices [(#76)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/76)
+- Optimize findings enrichment [(#93)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/93)
 
 ### Deprecated
 -
@@ -49,6 +50,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Fix typo in revision variable [(#4)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/4)
 - Fix link-checker workflow [(#50)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/50)
 - Fix CodeQL autobuild failure using manual compilation [(#71)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/71)
+- Fix detector creation to query custom rules by `document.id`[(#97)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/97)
+- Fix race condition on findings correlation [(#106)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/106)
 
 ### Security
 -

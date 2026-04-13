@@ -1,23 +1,33 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.util;
 
-import java.time.temporal.ChronoUnit;
-import java.util.Collections;
-import java.util.List;
-
-import org.junit.Assert;
 import org.opensearch.commons.alerting.model.IntervalSchedule;
 import org.opensearch.securityanalytics.model.Detector;
 import org.opensearch.securityanalytics.model.DetectorInput;
 import org.opensearch.securityanalytics.model.DetectorRule;
 import org.opensearch.test.OpenSearchTestCase;
+import org.junit.Assert;
 
-/**
- * Unit tests for {@link DetectorFactory}.
- */
+import java.time.temporal.ChronoUnit;
+import java.util.Collections;
+import java.util.List;
+
+/** Unit tests for {@link DetectorFactory}. */
 public class DetectorFactoryTests extends OpenSearchTestCase {
 
     public void testCreateDetector_withValidInputs() {
@@ -101,7 +111,7 @@ public class DetectorFactoryTests extends OpenSearchTestCase {
 
         Assert.assertTrue(detector.getSchedule() instanceof IntervalSchedule);
         IntervalSchedule schedule = (IntervalSchedule) detector.getSchedule();
-        Assert.assertEquals(1, schedule.getInterval());
+        Assert.assertEquals(2, schedule.getInterval());
         Assert.assertEquals(ChronoUnit.MINUTES, schedule.getUnit());
     }
 

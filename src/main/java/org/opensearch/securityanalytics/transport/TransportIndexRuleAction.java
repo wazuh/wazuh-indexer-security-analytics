@@ -437,10 +437,79 @@ public class TransportIndexRuleAction
         private void updateRule(
                 Rule rule, Map<String, String> ruleFieldMappings, List<Detector> detectors)
                 throws IOException {
-            String docId =
-                    rule.getId() != null && !rule.getId().equals(NO_ID)
-                            ? rule.getId()
-                            : this.request.getRuleId();
+            String documentId = this.request.getDocumentId();
+            String space = this.request.getSpace();
+
+            // When documentId and space are set (content-manager PUT), the rule's internal ID
+            // is a freshly generated UUID that doesn't match any existing _id. We need to
+            // look up the real _id by querying document.id + space first.
+            if (documentId != null && space != null) {
+                this.resolveAndUpdateRule(rule, ruleFieldMappings, detectors, documentId, space);
+            } else {
+                String docId =
+                        rule.getId() != null && !rule.getId().equals(NO_ID)
+                                ? rule.getId()
+                                : this.request.getRuleId();
+                this.doUpdateRule(docId, rule, ruleFieldMappings, detectors);
+            }
+        }
+
+        /**
+         * Resolves the real _id for a rule identified by document.id + space, then delegates to
+         * doUpdateRule.
+         */
+        private void resolveAndUpdateRule(
+                Rule rule,
+                Map<String, String> ruleFieldMappings,
+                List<Detector> detectors,
+                String documentId,
+                String space) {
+            QueryBuilder query =
+                    QueryBuilders.nestedQuery(
+                            "rule",
+                            QueryBuilders.boolQuery()
+                                    .filter(QueryBuilders.termQuery("rule.document.id", documentId))
+                                    .filter(QueryBuilders.termQuery("rule.space", space)),
+                            ScoreMode.None);
+            SearchRequest searchRequest =
+                    new SearchRequest(Rule.CUSTOM_RULES_INDEX)
+                            .source(new SearchSourceBuilder().query(query).size(1))
+                            .preference(Preference.PRIMARY_FIRST.type());
+
+            TransportIndexRuleAction.this.client.search(
+                    searchRequest,
+                    new ActionListener<>() {
+                        @Override
+                        public void onResponse(SearchResponse response) {
+                            String resolvedId;
+                            if (response.getHits().getHits().length > 0) {
+                                resolvedId = response.getHits().getHits()[0].getId();
+                            } else {
+                                // Fallback: no existing doc found, use rule ID
+                                resolvedId =
+                                        rule.getId() != null && !rule.getId().equals(NO_ID)
+                                                ? rule.getId()
+                                                : AsyncIndexRulesAction.this.request.getRuleId();
+                            }
+                            rule.setId(resolvedId);
+                            try {
+                                AsyncIndexRulesAction.this.doUpdateRule(
+                                        resolvedId, rule, ruleFieldMappings, detectors);
+                            } catch (IOException e) {
+                                AsyncIndexRulesAction.this.onFailures(e);
+                            }
+                        }
+
+                        @Override
+                        public void onFailure(Exception e) {
+                            AsyncIndexRulesAction.this.onFailures(e);
+                        }
+                    });
+        }
+
+        private void doUpdateRule(
+                String docId, Rule rule, Map<String, String> ruleFieldMappings, List<Detector> detectors)
+                throws IOException {
             IndexRequest indexRequest =
                     new IndexRequest(Rule.CUSTOM_RULES_INDEX)
                             .setRefreshPolicy(this.request.getRefreshPolicy())
