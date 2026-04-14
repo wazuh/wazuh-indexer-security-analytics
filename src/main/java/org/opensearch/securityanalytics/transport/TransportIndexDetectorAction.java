@@ -143,6 +143,7 @@ public class TransportIndexDetectorAction
         implements SecureTransportAction {
 
     public static final String PLUGIN_OWNER_FIELD = "security_analytics";
+    private static final int MAX_RULES_PER_DETECTOR = 100;
     private static final Logger log = LogManager.getLogger(TransportIndexDetectorAction.class);
     public static final String TIMESTAMP_FIELD_ALIAS = "timestamp";
     public static final String CHAINED_FINDINGS_MONITOR_STRING = "chained_findings_monitor";
@@ -250,7 +251,33 @@ public class TransportIndexDetectorAction
             return;
         }
 
+        String ruleCountError = validateRuleCount(request.getDetector());
+        if (ruleCountError != null) {
+            listener.onFailure(
+                    SecurityAnalyticsException.wrap(
+                            new OpenSearchStatusException(ruleCountError, RestStatus.BAD_REQUEST)));
+            return;
+        }
+
         checkIndicesAndExecute(task, request, listener, user);
+    }
+
+    /**
+     * Returns an error message if any detector input exceeds the maximum allowed rule count, or
+     * {@code null} if all inputs are within the limit.
+     */
+    static String validateRuleCount(Detector detector) {
+        for (DetectorInput input : detector.getInputs()) {
+            int ruleCount = Math.max(input.getCustomRules().size(), input.getPrePackagedRules().size());
+            if (ruleCount > MAX_RULES_PER_DETECTOR) {
+                return String.format(
+                        Locale.getDefault(),
+                        "Detector cannot have more than %d rules, but found %d",
+                        MAX_RULES_PER_DETECTOR,
+                        ruleCount);
+            }
+        }
+        return null;
     }
 
     private void checkIndicesAndExecute(
