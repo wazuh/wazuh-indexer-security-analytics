@@ -16,6 +16,8 @@
  */
 package org.opensearch.securityanalytics.rules.objects;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.opensearch.cluster.metadata.IndexMetadata;
 import org.opensearch.cluster.metadata.MappingMetadata;
 import org.opensearch.securityanalytics.rules.exceptions.SigmaError;
@@ -26,7 +28,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 /**
@@ -42,7 +43,7 @@ import java.util.stream.Collectors;
  */
 public class WCSFieldValidator {
 
-    private static final Logger log = Logger.getLogger(WCSFieldValidator.class.getName());
+    private static final Logger log = LogManager.getLogger(WCSFieldValidator.class);
 
     /** WCS fields resolved from the index mapping. */
     private static final AtomicReference<Set<String>> wcsFields =
@@ -56,13 +57,13 @@ public class WCSFieldValidator {
      */
     public static void initFromIndexMetadata(IndexMetadata indexMetadata) {
         if (indexMetadata == null) {
-            log.warning("Cannot initialize WCS fields: null index metadata");
+            log.warn("Cannot initialize WCS fields: null index metadata");
             return;
         }
 
         MappingMetadata mapping = indexMetadata.mapping();
         if (mapping == null) {
-            log.warning("Cannot initialize WCS fields: no mapping in index metadata");
+            log.warn("Cannot initialize WCS fields: no mapping in index metadata");
             return;
         }
 
@@ -94,7 +95,7 @@ public class WCSFieldValidator {
 
         wcsFields.set(Collections.unmodifiableSet(fields));
 
-        log.info("WCS field validator initialized with " + fields.size() + " fields");
+        log.debug("WCS field validator initialized with {} fields", fields.size());
     }
 
     /**
