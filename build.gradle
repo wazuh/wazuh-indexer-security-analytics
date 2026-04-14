@@ -124,7 +124,7 @@ opensearchplugin {
     name 'wazuh-indexer-security-analytics'
     description 'Wazuh Indexer Security Analytics plugin'
     classname 'org.opensearch.securityanalytics.SecurityAnalyticsPlugin'
-    extendedPlugins = ['opensearch-alerting']
+    extendedPlugins = ['wazuh-indexer-alerting']
 }
 
 javaRestTest {
