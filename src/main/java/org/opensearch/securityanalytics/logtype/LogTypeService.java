@@ -23,14 +23,18 @@ import org.opensearch.ExceptionsHelper;
 import org.opensearch.OpenSearchStatusException;
 import org.opensearch.ResourceAlreadyExistsException;
 import org.opensearch.action.DocWriteRequest;
+import org.opensearch.action.admin.cluster.health.ClusterHealthRequest;
+import org.opensearch.action.admin.cluster.health.ClusterHealthResponse;
 import org.opensearch.action.admin.indices.create.CreateIndexRequest;
 import org.opensearch.action.admin.indices.create.CreateIndexResponse;
 import org.opensearch.action.bulk.BulkRequest;
 import org.opensearch.action.index.IndexRequest;
 import org.opensearch.action.search.SearchRequest;
 import org.opensearch.action.search.SearchResponse;
+import org.opensearch.action.support.ActiveShardCount;
 import org.opensearch.action.support.WriteRequest;
 import org.opensearch.cluster.ClusterState;
+import org.opensearch.cluster.health.ClusterHealthStatus;
 import org.opensearch.cluster.metadata.IndexMetadata;
 import org.opensearch.cluster.metadata.MappingMetadata;
 import org.opensearch.cluster.routing.Preference;
@@ -100,7 +104,7 @@ public class LogTypeService {
 
     private final NamedXContentRegistry xContentRegistry;
 
-    private BuiltinLogTypeLoader builtinLogTypeLoader;
+    private final BuiltinLogTypeLoader builtinLogTypeLoader;
 
     private String defaultSchemaField;
 
@@ -122,11 +126,11 @@ public class LogTypeService {
                 .getClusterSettings()
                 .addSettingsUpdateConsumer(
                         DEFAULT_MAPPING_SCHEMA, newDefaultSchema -> this.defaultSchemaField = newDefaultSchema);
-        setLogTypeMappingVersion();
+        this.setLogTypeMappingVersion();
     }
 
     public void getAllLogTypes(ActionListener<List<String>> listener) {
-        ensureConfigIndexIsInitialized(
+        this.ensureConfigIndexIsInitialized(
                 ActionListener.wrap(
                         e -> {
                             String field = WAZUH_INTEGRATIONS;
@@ -142,7 +146,7 @@ public class LogTypeService {
                                                             .field(field)
                                                             .size(MAX_LOG_TYPE_COUNT)));
                             searchRequest.preference(Preference.PRIMARY_FIRST.type());
-                            client.search(
+                            this.client.search(
                                     searchRequest,
                                     ActionListener.delegateFailure(
                                             listener,
@@ -159,7 +163,7 @@ public class LogTypeService {
     }
 
     public void getAllLogTypesMetadata(ActionListener<List<String>> listener) {
-        ensureConfigIndexIsInitialized(
+        this.ensureConfigIndexIsInitialized(
                 ActionListener.wrap(
                         e -> {
                             BoolQueryBuilder queryBuilder =
@@ -172,7 +176,7 @@ public class LogTypeService {
                             searchRequest.indices(LogTypeService.LOG_TYPE_INDEX);
                             searchRequest.source(searchSourceBuilder);
                             searchRequest.preference("_primary");
-                            client.search(
+                            this.client.search(
                                     searchRequest,
                                     ActionListener.delegateFailure(
                                             listener,
@@ -191,7 +195,7 @@ public class LogTypeService {
     }
 
     public void doesLogTypeExist(String logType, ActionListener<Boolean> listener) {
-        ensureConfigIndexIsInitialized(
+        this.ensureConfigIndexIsInitialized(
                 ActionListener.wrap(
                         e -> {
                             BoolQueryBuilder queryBuilder =
@@ -204,7 +208,7 @@ public class LogTypeService {
                             searchRequest.indices(LogTypeService.LOG_TYPE_INDEX);
                             searchRequest.source(searchSourceBuilder);
                             searchRequest.preference("_primary");
-                            client.search(
+                            this.client.search(
                                     searchRequest,
                                     ActionListener.delegateFailure(
                                             listener,
@@ -217,7 +221,7 @@ public class LogTypeService {
     }
 
     public void searchLogTypes(SearchRequest request, ActionListener<SearchResponse> listener) {
-        ensureConfigIndexIsInitialized(
+        this.ensureConfigIndexIsInitialized(
                 ActionListener.wrap(
                         e -> {
                             BoolQueryBuilder queryBuilder =
@@ -234,7 +238,7 @@ public class LogTypeService {
                             searchRequest.indices(LogTypeService.LOG_TYPE_INDEX);
                             searchRequest.source(searchSourceBuilder);
                             searchRequest.preference("_primary");
-                            client.search(
+                            this.client.search(
                                     searchRequest,
                                     ActionListener.delegateFailure(
                                             listener,
@@ -250,7 +254,7 @@ public class LogTypeService {
         if (fieldMappingDocs.isEmpty()) {
             listener.onResponse(null);
         }
-        getAllFieldMappings(
+        this.getAllFieldMappings(
                 ActionListener.wrap(
                         existingFieldMappings -> {
                             List<FieldMappingDoc> mergedFieldMappings = new ArrayList<>();
@@ -258,7 +262,8 @@ public class LogTypeService {
                             // environments.
                             // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
                             if (this.isLoadBuiltinLogTypesEnabled()) {
-                                mergedFieldMappings = mergeFieldMappings(existingFieldMappings, fieldMappingDocs);
+                                mergedFieldMappings =
+                                        this.mergeFieldMappings(existingFieldMappings, fieldMappingDocs);
                             }
                             BulkRequest bulkRequest = new BulkRequest();
                             bulkRequest.setRefreshPolicy(WriteRequest.RefreshPolicy.IMMEDIATE);
@@ -271,7 +276,7 @@ public class LogTypeService {
                                                 try {
                                                     indexRequest.id(
                                                             fieldMappingDoc.getId() == null
-                                                                    ? generateFieldMappingDocId(fieldMappingDoc)
+                                                                    ? this.generateFieldMappingDocId(fieldMappingDoc)
                                                                     : fieldMappingDoc.getId());
                                                     indexRequest.source(
                                                             fieldMappingDoc.toXContent(XContentFactory.jsonBuilder(), null));
@@ -288,7 +293,7 @@ public class LogTypeService {
                             // environments.
                             // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
                             if (this.isLoadBuiltinLogTypesEnabled()) {
-                                client.bulk(
+                                this.client.bulk(
                                         bulkRequest,
                                         ActionListener.delegateFailure(
                                                 listener,
@@ -335,7 +340,7 @@ public class LogTypeService {
         searchRequest.indices(LogTypeService.LOG_TYPE_INDEX);
         searchRequest.source(searchSourceBuilder);
 
-        client.search(
+        this.client.search(
                 searchRequest,
                 new ActionListener<>() {
                     @Override
@@ -353,8 +358,9 @@ public class LogTypeService {
                                 // Disabled pre-packaged log types loading for production builds, enabled only on
                                 // test environments.
                                 // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
-                                if (isLoadBuiltinLogTypesEnabled()) {
-                                    customLogTypes = builtinLogTypeLoader.loadBuiltinLogTypesMetadata();
+                                if (LogTypeService.this.isLoadBuiltinLogTypesEnabled()) {
+                                    customLogTypes =
+                                            LogTypeService.this.builtinLogTypeLoader.loadBuiltinLogTypesMetadata();
                                 }
                                 BulkRequest bulkRequest = new BulkRequest();
 
@@ -370,7 +376,7 @@ public class LogTypeService {
                                 if (bulkRequest.numberOfActions() > 0) {
                                     bulkRequest.setRefreshPolicy(WriteRequest.RefreshPolicy.IMMEDIATE);
                                     logger.info("Indexing [{}] customLogTypes", bulkRequest.numberOfActions());
-                                    client.bulk(
+                                    LogTypeService.this.client.bulk(
                                             bulkRequest,
                                             ActionListener.delegateFailure(
                                                     listener,
@@ -406,18 +412,18 @@ public class LogTypeService {
 
     private String generateFieldMappingDocId(FieldMappingDoc fieldMappingDoc) {
         String generatedId = fieldMappingDoc.getRawField() + "|";
-        if (fieldMappingDoc.getSchemaFields().containsKey(defaultSchemaField)) {
-            generatedId = generatedId + fieldMappingDoc.getSchemaFields().get(defaultSchemaField);
+        if (fieldMappingDoc.getSchemaFields().containsKey(this.defaultSchemaField)) {
+            generatedId = generatedId + fieldMappingDoc.getSchemaFields().get(this.defaultSchemaField);
         }
         return generatedId;
     }
 
     public void indexFieldMappings(
             List<FieldMappingDoc> fieldMappingDocs, ActionListener<Void> listener) {
-        ensureConfigIndexIsInitialized(
+        this.ensureConfigIndexIsInitialized(
                 ActionListener.wrap(
                         e -> {
-                            doIndexFieldMappings(fieldMappingDocs, listener);
+                            this.doIndexFieldMappings(fieldMappingDocs, listener);
                         },
                         listener::onFailure));
     }
@@ -429,11 +435,9 @@ public class LogTypeService {
      */
     public void indexFieldMappingsForWazuh(
             List<FieldMappingDoc> fieldMappingDocs, ActionListener<Void> listener) {
-        ensureConfigIndexIsInitialized(
+        this.ensureConfigIndexIsInitialized(
                 ActionListener.wrap(
-                        e -> {
-                            doIndexFieldMappingsUnconditionally(fieldMappingDocs, listener);
-                        },
+                        e -> this.doIndexFieldMappingsUnconditionally(fieldMappingDocs, listener),
                         listener::onFailure));
     }
 
@@ -444,12 +448,12 @@ public class LogTypeService {
             return;
         }
 
-        getAllFieldMappings(
+        this.getAllFieldMappings(
                 ActionListener.wrap(
                         existingFieldMappings -> {
                             // Always merge field mappings
                             List<FieldMappingDoc> mergedFieldMappings =
-                                    mergeFieldMappings(existingFieldMappings, fieldMappingDocs);
+                                    this.mergeFieldMappings(existingFieldMappings, fieldMappingDocs);
 
                             BulkRequest bulkRequest = new BulkRequest();
                             mergedFieldMappings.stream()
@@ -460,7 +464,7 @@ public class LogTypeService {
                                                 try {
                                                     indexRequest.id(
                                                             fieldMappingDoc.getId() == null
-                                                                    ? generateFieldMappingDocId(fieldMappingDoc)
+                                                                    ? this.generateFieldMappingDocId(fieldMappingDoc)
                                                                     : fieldMappingDoc.getId());
                                                     indexRequest.source(
                                                             fieldMappingDoc.toXContent(XContentFactory.jsonBuilder(), null));
@@ -480,7 +484,7 @@ public class LogTypeService {
                             }
 
                             // Always execute the bulk request
-                            client.bulk(
+                            this.client.bulk(
                                     bulkRequest,
                                     ActionListener.delegateFailure(
                                             listener,
@@ -510,13 +514,13 @@ public class LogTypeService {
                     Optional<FieldMappingDoc> foundFieldMappingDoc = Optional.empty();
                     for (FieldMappingDoc existingFieldMapping : existingFieldMappings) {
                         if (existingFieldMapping.getRawField().equals(newFieldMapping.getRawField())) {
-                            if ((existingFieldMapping.get(defaultSchemaField) != null
-                                            && newFieldMapping.get(defaultSchemaField) != null
+                            if ((existingFieldMapping.get(this.defaultSchemaField) != null
+                                            && newFieldMapping.get(this.defaultSchemaField) != null
                                             && existingFieldMapping
-                                                    .get(defaultSchemaField)
-                                                    .equals(newFieldMapping.get(defaultSchemaField)))
-                                    || (existingFieldMapping.get(defaultSchemaField) == null
-                                            && newFieldMapping.get(defaultSchemaField) == null)) {
+                                                    .get(this.defaultSchemaField)
+                                                    .equals(newFieldMapping.get(this.defaultSchemaField)))
+                                    || (existingFieldMapping.get(this.defaultSchemaField) == null
+                                            && newFieldMapping.get(this.defaultSchemaField) == null)) {
                                 foundFieldMappingDoc = Optional.of(existingFieldMapping);
                             }
                             // Grabs the right side of the ID with "|" as the delimiter if present representing
@@ -558,7 +562,7 @@ public class LogTypeService {
                         .query(QueryBuilders.boolQuery().mustNot(QueryBuilders.existsQuery("space")))
                         .size(10000));
         searchRequest.preference(Preference.PRIMARY_FIRST.type());
-        client.search(
+        this.client.search(
                 searchRequest,
                 ActionListener.delegateFailure(
                         listener,
@@ -566,7 +570,7 @@ public class LogTypeService {
                             List<FieldMappingDoc> fieldMappingDocs = new ArrayList<>();
                             for (SearchHit hit : searchResponse.getHits().getHits()) {
                                 try {
-                                    fieldMappingDocs.add(FieldMappingDoc.parse(hit, xContentRegistry));
+                                    fieldMappingDocs.add(FieldMappingDoc.parse(hit, this.xContentRegistry));
                                 } catch (IOException e) {
                                     logger.error("Failed parsing FieldMapping document", e);
                                     delegatedListener.onFailure(e);
@@ -579,8 +583,8 @@ public class LogTypeService {
 
     public void getFieldMappingsByLogType(
             String logType, ActionListener<List<FieldMappingDoc>> listener) {
-        ensureConfigIndexIsInitialized(
-                ActionListener.wrap(() -> getFieldMappingsByLogTypes(List.of(logType), listener)));
+        this.ensureConfigIndexIsInitialized(
+                ActionListener.wrap(() -> this.getFieldMappingsByLogTypes(List.of(logType), listener)));
     }
 
     public void getFieldMappingsByLogTypes(
@@ -591,7 +595,7 @@ public class LogTypeService {
                         .query(QueryBuilders.termsQuery(LOG_TYPES, logTypes.toArray(new String[0])))
                         .size(10000));
         searchRequest.preference(Preference.PRIMARY_FIRST.type());
-        client.search(
+        this.client.search(
                 searchRequest,
                 ActionListener.delegateFailure(
                         listener,
@@ -599,7 +603,7 @@ public class LogTypeService {
                             List<FieldMappingDoc> fieldMappingDocs = new ArrayList<>();
                             for (SearchHit hit : searchResponse.getHits().getHits()) {
                                 try {
-                                    fieldMappingDocs.add(FieldMappingDoc.parse(hit, xContentRegistry));
+                                    fieldMappingDocs.add(FieldMappingDoc.parse(hit, this.xContentRegistry));
                                 } catch (IOException e) {
                                     logger.error("Failed parsing FieldMapping document", e);
                                     delegatedListener.onFailure(e);
@@ -617,9 +621,9 @@ public class LogTypeService {
      */
     public void ensureConfigIndexIsInitialized(ActionListener<Void> listener) {
 
-        ClusterState state = clusterService.state();
+        ClusterState state = this.clusterService.state();
 
-        if (state.routingTable().hasIndex(LOG_TYPE_INDEX) == false) {
+        if (!state.routingTable().hasIndex(LOG_TYPE_INDEX)) {
             isConfigIndexInitialized = false;
             Settings indexSettings =
                     Settings.builder()
@@ -631,12 +635,12 @@ public class LogTypeService {
                             .build();
 
             CreateIndexRequest createIndexRequest = new CreateIndexRequest();
-            createIndexRequest.settings(logTypeIndexSettings());
+            createIndexRequest.settings(this.logTypeIndexSettings());
             createIndexRequest.index(LOG_TYPE_INDEX);
-            createIndexRequest.mapping(logTypeIndexMapping());
+            createIndexRequest.mapping(this.logTypeIndexMapping());
             createIndexRequest.settings(indexSettings);
             createIndexRequest.cause("auto(sap-logtype api)");
-            client
+            this.client
                     .admin()
                     .indices()
                     .create(
@@ -644,67 +648,95 @@ public class LogTypeService {
                             new ActionListener<>() {
                                 @Override
                                 public void onResponse(CreateIndexResponse result) {
-                                    loadBuiltinLogTypes(
-                                            ActionListener.delegateFailure(
-                                                    listener,
-                                                    (delegatedListener, unused) -> {
-                                                        isConfigIndexInitialized = true;
-                                                        doIndexLogTypeMetadata(listener);
-                                                    }));
+                                    LogTypeService.this.waitForIndexShardsAndLoad(listener);
                                 }
 
                                 @Override
                                 public void onFailure(Exception e) {
                                     isConfigIndexInitialized = false;
                                     if (ExceptionsHelper.unwrapCause(e) instanceof ResourceAlreadyExistsException) {
-                                        loadBuiltinLogTypes(
-                                                ActionListener.delegateFailure(
-                                                        listener,
-                                                        (delegatedListener, unused) -> {
-                                                            isConfigIndexInitialized = true;
-                                                            doIndexLogTypeMetadata(listener);
-                                                        }));
+                                        LogTypeService.this.waitForIndexShardsAndLoad(listener);
                                     } else {
-                                        logger.error("Failed creating LOG_TYPE_INDEX", e);
+                                        logger.error("Failed creating {}: {}", LOG_TYPE_INDEX, e.getMessage());
                                         listener.onFailure(e);
                                     }
                                 }
                             });
         } else {
             IndexMetadata metadata = state.getMetadata().index(LOG_TYPE_INDEX);
-            if (getConfigIndexMappingVersion(metadata) < logTypeMappingVersion) {
+            if (this.getConfigIndexMappingVersion(metadata) < this.logTypeMappingVersion) {
                 // The index already exists but doesn't have our mapping
-                client
+                this.client
                         .admin()
                         .indices()
                         .preparePutMapping(LOG_TYPE_INDEX)
-                        .setSource(logTypeIndexMapping(), XContentType.JSON)
+                        .setSource(this.logTypeIndexMapping(), XContentType.JSON)
                         .execute(
                                 ActionListener.delegateFailure(
                                         listener,
                                         (l, r) -> {
-                                            loadBuiltinLogTypes(
+                                            this.loadBuiltinLogTypes(
                                                     ActionListener.delegateFailure(
                                                             listener,
                                                             (delegatedListener, unused) -> {
                                                                 isConfigIndexInitialized = true;
-                                                                doIndexLogTypeMetadata(listener);
+                                                                this.doIndexLogTypeMetadata(listener);
                                                             }));
                                         }));
             } else {
                 if (isConfigIndexInitialized) {
-                    doIndexLogTypeMetadata(listener);
+                    this.doIndexLogTypeMetadata(listener);
                     return;
                 }
-                loadBuiltinLogTypes(
+                this.loadBuiltinLogTypes(
                         ActionListener.delegateFailure(
                                 listener,
                                 (delegatedListener, unused) -> {
                                     isConfigIndexInitialized = true;
-                                    doIndexLogTypeMetadata(listener);
+                                    this.doIndexLogTypeMetadata(listener);
                                 }));
             }
         }
+    }
+
+    /**
+     * Waits for at least one active shard on LOG_TYPE_INDEX before loading built-in log types. This
+     * prevents "all shards failed" errors that occur when index creation is acknowledged but the
+     * primary shard is not yet assigned/started.
+     */
+    private void waitForIndexShardsAndLoad(ActionListener<Void> listener) {
+        ClusterHealthRequest healthRequest =
+                new ClusterHealthRequest(LOG_TYPE_INDEX).waitForActiveShards(ActiveShardCount.ONE);
+        this.client
+                .admin()
+                .cluster()
+                .health(
+                        healthRequest,
+                        new ActionListener<>() {
+                            @Override
+                            public void onResponse(ClusterHealthResponse response) {
+                                if (response.getStatus() == ClusterHealthStatus.RED) {
+                                    logger.warn("{} health is RED after waiting for shards", LOG_TYPE_INDEX);
+                                }
+                                LogTypeService.this.loadBuiltinLogTypes(
+                                        ActionListener.delegateFailure(
+                                                listener,
+                                                (delegatedListener, unused) -> {
+                                                    isConfigIndexInitialized = true;
+                                                    LogTypeService.this.doIndexLogTypeMetadata(listener);
+                                                }));
+                            }
+
+                            @Override
+                            public void onFailure(Exception e) {
+                                isConfigIndexInitialized = false;
+                                logger.error(
+                                        "Failed waiting for {} shards to become active: {}",
+                                        LOG_TYPE_INDEX,
+                                        e.getMessage());
+                                listener.onFailure(e);
+                            }
+                        });
     }
 
     public void loadBuiltinLogTypes(ActionListener<Void> listener) {
@@ -715,7 +747,7 @@ public class LogTypeService {
         // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
         if (this.isLoadBuiltinLogTypesEnabled()) {
             logger.info("default_rules.enabled is true, loading pre-packaged log types from disk.");
-            logTypes = builtinLogTypeLoader.getAllLogTypes();
+            logTypes = this.builtinLogTypeLoader.getAllLogTypes();
             if (logTypes == null || logTypes.isEmpty()) {
                 logger.error("Failed loading builtin log types from disk!");
                 listener.onFailure(
@@ -724,12 +756,12 @@ public class LogTypeService {
                 return;
             }
         }
-        List<FieldMappingDoc> fieldMappingDocs = createFieldMappingDocs(logTypes);
+        List<FieldMappingDoc> fieldMappingDocs = this.createFieldMappingDocs(logTypes);
         logger.info(
                 "Indexing [{}] fieldMappingDocs from logTypes: {}",
                 fieldMappingDocs.size(),
                 logTypes.size());
-        doIndexFieldMappings(fieldMappingDocs, listener);
+        this.doIndexFieldMappings(fieldMappingDocs, listener);
     }
 
     /** Loops through all builtin LogTypes and creates collection of FieldMappingDocs */
@@ -777,7 +809,7 @@ public class LogTypeService {
 
     public String logTypeIndexMapping() {
         try (InputStream is =
-                getClass().getClassLoader().getResourceAsStream(LOG_TYPE_INDEX_MAPPING_FILE)) {
+                this.getClass().getClassLoader().getResourceAsStream(LOG_TYPE_INDEX_MAPPING_FILE)) {
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             Streams.copy(is, out);
             return out.toString(StandardCharsets.UTF_8);
@@ -803,21 +835,21 @@ public class LogTypeService {
         }
         @SuppressWarnings("unchecked")
         Map<String, Object> meta = (Map<String, Object>) mappingMetadata.sourceAsMap().get("_meta");
-        if (meta == null || meta.containsKey(LOG_TYPE_MAPPING_VERSION_META_FIELD) == false) {
+        if (meta == null || !meta.containsKey(LOG_TYPE_MAPPING_VERSION_META_FIELD)) {
             return 1; // The mapping was created before meta field was introduced
         }
         return (int) meta.get(LOG_TYPE_MAPPING_VERSION_META_FIELD);
     }
 
     public List<LogType> getAllBuiltinLogTypes() {
-        return builtinLogTypeLoader.getAllLogTypes();
+        return this.builtinLogTypeLoader.getAllLogTypes();
     }
 
     public void getRuleFieldMappings(ActionListener<Map<String, Map<String, String>>> listener) {
-        ensureConfigIndexIsInitialized(
+        this.ensureConfigIndexIsInitialized(
                 ActionListener.wrap(
                         () ->
-                                getAllFieldMappings(
+                                this.getAllFieldMappings(
                                         ActionListener.delegateFailure(
                                                 listener,
                                                 (delegatedListener, fieldMappingDocs) -> {
@@ -832,7 +864,7 @@ public class LogTypeService {
                                                                                 : new HashMap<>();
                                                                 mappingsByLogTypes.put(
                                                                         fieldMappingDoc.getRawField(),
-                                                                        fieldMappingDoc.getSchemaFields().get(defaultSchemaField));
+                                                                        fieldMappingDoc.getSchemaFields().get(this.defaultSchemaField));
                                                                 mappings.put(logType, mappingsByLogTypes);
                                                             }
                                                         }
@@ -848,8 +880,8 @@ public class LogTypeService {
      */
     public void getRuleFieldMappings(String logType, ActionListener<Map<String, String>> listener) {
 
-        if (builtinLogTypeLoader.logTypeExists(logType)) {
-            LogType lt = builtinLogTypeLoader.getLogTypeByName(logType);
+        if (this.builtinLogTypeLoader.logTypeExists(logType)) {
+            LogType lt = this.builtinLogTypeLoader.getLogTypeByName(logType);
             if (lt.getMappings() == null) {
                 listener.onResponse(Map.of());
             } else {
@@ -860,7 +892,7 @@ public class LogTypeService {
             return;
         }
 
-        getFieldMappingsByLogType(
+        this.getFieldMappingsByLogType(
                 logType,
                 ActionListener.delegateFailure(
                         listener,
@@ -869,15 +901,14 @@ public class LogTypeService {
                             fieldMappingDocs.forEach(
                                     e -> {
                                         ruleFieldMappings.put(
-                                                e.getRawField(), e.getSchemaFields().get(defaultSchemaField));
+                                                e.getRawField(), e.getSchemaFields().get(this.defaultSchemaField));
                                     });
                             delegatedListener.onResponse(ruleFieldMappings);
                         }));
-        return;
     }
 
     public List<LogType.IocFields> getIocFieldsList(String logType) {
-        LogType logTypeByName = builtinLogTypeLoader.getLogTypeByName(logType);
+        LogType logTypeByName = this.builtinLogTypeLoader.getLogTypeByName(logType);
         if (logTypeByName == null) return Collections.emptyList();
         return logTypeByName.getIocFieldsList();
     }
@@ -885,8 +916,8 @@ public class LogTypeService {
     public void getRuleFieldMappingsAllSchemas(
             String logType, ActionListener<List<LogType.Mapping>> listener) {
 
-        if (builtinLogTypeLoader.logTypeExists(logType)) {
-            LogType lt = builtinLogTypeLoader.getLogTypeByName(logType);
+        if (this.builtinLogTypeLoader.logTypeExists(logType)) {
+            LogType lt = this.builtinLogTypeLoader.getLogTypeByName(logType);
             if (lt.getMappings() == null) {
                 listener.onResponse(List.of());
             } else {
@@ -895,7 +926,7 @@ public class LogTypeService {
             return;
         }
 
-        getFieldMappingsByLogType(
+        this.getFieldMappingsByLogType(
                 logType,
                 ActionListener.delegateFailure(
                         listener,
@@ -912,13 +943,12 @@ public class LogTypeService {
                                     });
                             delegatedListener.onResponse(ruleFieldMappings);
                         }));
-        return;
     }
 
     /** Provides required fields for a log type in order for all rules to work */
     public void getRequiredFields(String logType, ActionListener<List<LogType.Mapping>> listener) {
 
-        getFieldMappingsByLogType(
+        this.getFieldMappingsByLogType(
                 logType,
                 ActionListener.delegateFailure(
                         listener,
@@ -929,7 +959,7 @@ public class LogTypeService {
                                         LogType.Mapping requiredField =
                                                 new LogType.Mapping(
                                                         e.getRawField(),
-                                                        e.getSchemaFields().get(defaultSchemaField),
+                                                        e.getSchemaFields().get(this.defaultSchemaField),
                                                         e.getSchemaFields().get("ocsf"),
                                                         e.getSchemaFields().get("ocsf11"));
                                         requiredFields.add(requiredField);
@@ -940,10 +970,10 @@ public class LogTypeService {
 
     /** Provides required fields for all log types in a form of map */
     public void getRequiredFieldsForAllLogTypes(ActionListener<Map<String, Set<String>>> listener) {
-        ensureConfigIndexIsInitialized(
+        this.ensureConfigIndexIsInitialized(
                 ActionListener.wrap(
                         () ->
-                                getAllFieldMappings(
+                                this.getAllFieldMappings(
                                         ActionListener.delegateFailure(
                                                 listener,
                                                 (delegatedListener, fieldMappingDocs) -> {
@@ -958,7 +988,8 @@ public class LogTypeService {
                                                                                         requiredFieldsMap.put(logType, new HashSet<>());
                                                                                     }
                                                                                 });
-                                                                String requiredField = e.getSchemaFields().get(defaultSchemaField);
+                                                                String requiredField =
+                                                                        e.getSchemaFields().get(this.defaultSchemaField);
                                                                 if (requiredField == null) {
                                                                     requiredField = e.getRawField(); // Always fallback to rawField if
                                                                     // defaultSchema one is missing
@@ -983,11 +1014,11 @@ public class LogTypeService {
      */
     public Map<String, String> getRuleFieldMappingsForBuiltinLogType(String builtinLogType) {
 
-        if (!builtinLogTypeLoader.logTypeExists(builtinLogType)) {
+        if (!this.builtinLogTypeLoader.logTypeExists(builtinLogType)) {
             return null;
         }
 
-        LogType lt = builtinLogTypeLoader.getLogTypeByName(builtinLogType);
+        LogType lt = this.builtinLogTypeLoader.getLogTypeByName(builtinLogType);
         if (lt.getMappings() == null) {
             return Map.of();
         } else {
@@ -997,12 +1028,12 @@ public class LogTypeService {
     }
 
     public String getDefaultSchemaField() {
-        return defaultSchemaField;
+        return this.defaultSchemaField;
     }
 
     public void setLogTypeMappingVersion() {
         Map<String, Object> logTypeConfigAsMap =
-                XContentHelper.convertToMap(JsonXContent.jsonXContent, logTypeIndexMapping(), false);
+                XContentHelper.convertToMap(JsonXContent.jsonXContent, this.logTypeIndexMapping(), false);
         this.logTypeMappingVersion =
                 (int) ((Map) logTypeConfigAsMap.get("_meta")).get("schema_version");
     }
