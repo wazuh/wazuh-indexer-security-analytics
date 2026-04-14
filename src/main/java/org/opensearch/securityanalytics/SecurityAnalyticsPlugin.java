@@ -566,7 +566,8 @@ public class SecurityAnalyticsPlugin extends Plugin
 
                     @Override
                     public void onFailure(Exception e) {
-                        log.warn("Failed to initialize LogType config index and builtin log types", e);
+                        log.warn(
+                                "Failed to initialize LogType config index and builtin log types", e.getMessage());
                     }
                 });
     }

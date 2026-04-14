@@ -95,7 +95,7 @@ public class WCSFieldValidator {
 
         wcsFields.set(Collections.unmodifiableSet(fields));
 
-        log.info("WCS field validator initialized with {} fields", fields.size());
+        log.debug("WCS field validator initialized with {} fields", fields.size());
     }
 
     /**
