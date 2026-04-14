@@ -367,14 +367,102 @@ public class EventMatcherTests extends OpenSearchTestCase {
 
         Assert.assertEquals(1, matches.size());
         Map<String, Object> match = matches.get(0);
-        Assert.assertEquals("12345678-1234-1234-1234-123456789abc", match.get("rule_id"));
-        Assert.assertEquals("Structure Test", match.get("rule_name"));
-        Assert.assertEquals("critical", match.get("severity"));
+        Map<String, Object> ruleInfo = (Map<String, Object>) match.get("rule");
+        Assert.assertNotNull(ruleInfo);
+        Assert.assertEquals("12345678-1234-1234-1234-123456789abc", ruleInfo.get("id"));
+        Assert.assertEquals("Structure Test", ruleInfo.get("title"));
+        Assert.assertEquals("critical", ruleInfo.get("level"));
         Assert.assertNotNull(match.get("matched_conditions"));
-        Assert.assertNotNull(match.get("tags"));
 
-        List<String> tags = (List<String>) match.get("tags");
+        List<String> tags = (List<String>) ruleInfo.get("tags");
+        Assert.assertNotNull(tags);
         Assert.assertTrue(tags.contains("attack.execution"));
         Assert.assertTrue(tags.contains("attack.t1059"));
+    }
+
+    // ---- Startswith / Endswith modifiers ----
+
+    public void testStartswithMatch() throws Exception {
+        String yaml =
+                ruleYaml(
+                        "Startswith Test",
+                        "    selection:\n        process.thread.name|startswith: Compaction");
+        SigmaRule rule = parseRule(yaml);
+        String event = "{\"process\": {\"thread\": {\"name\": \"CompactionExecutor-3\"}}}";
+
+        String result = matcher.evaluate(event, List.of(rule));
+        Map<String, Object> parsed = MAPPER.readValue(result, Map.class);
+        Assert.assertEquals("success", parsed.get("status"));
+        Assert.assertEquals(1, parsed.get("rules_matched"));
+    }
+
+    public void testEndswithMatch() throws Exception {
+        String yaml =
+                ruleYaml("Endswith Test", "    selection:\n        process.thread.name|endswith: \"3\"");
+        SigmaRule rule = parseRule(yaml);
+        String event = "{\"process\": {\"thread\": {\"name\": \"CompactionExecutor-3\"}}}";
+
+        String result = matcher.evaluate(event, List.of(rule));
+        Map<String, Object> parsed = MAPPER.readValue(result, Map.class);
+        Assert.assertEquals("success", parsed.get("status"));
+        Assert.assertEquals(1, parsed.get("rules_matched"));
+    }
+
+    /** Test startswith with JSON input (as stored in Content Manager index). */
+    public void testStartswithFromJson() throws Exception {
+        // This is the format that comes from the .cti-rules index document field
+        // spotless:off
+        String ruleJson = """
+            {
+              "id": "12345678-1234-1234-1234-123456789abc",
+              "logsource": {"product": "hola-12345"},
+              "metadata": {
+                "title": "TEST: Startswith from JSON",
+                "description": "test",
+                "references": [],
+                "author": "Wazuh"
+              },
+              "tags": ["attack.execution"],
+              "falsepositives": ["Testing"],
+              "level": "high",
+              "status": "test",
+              "detection": {
+                "condition": "selection",
+                "selection": {
+                  "process.thread.name|startswith": "Compaction"
+                }
+              }
+            }
+            """;
+        // spotless:on
+        SigmaRule rule = SigmaRule.fromYaml(ruleJson, true);
+        Assert.assertNotNull("Detection should be parsed", rule.getDetection());
+        Assert.assertFalse(
+                "Should have no parse errors preventing detection",
+                rule.getDetection().getParsedCondition().isEmpty());
+
+        // Use the actual normalized event structure from the engine output
+        // spotless:off
+        String event = """
+            {
+              "wazuh": {
+                "integration": {"category": "other", "decoders": ["decoder/cassandra-default/0"], "name": "hola-12345"},
+                "protocol": {"queue": 1, "location": "/var/log/cassandra/system.log"},
+                "space": {"name": "test"}
+              },
+              "process": {"command_line": "/query tables", "thread": {"name": "CompactionExecutor-3"}},
+              "event": {"severity": 1, "kind": "event", "category": ["database"], "original": "INFO  [CompactionExecutor-3] 2025-11-30 14:23:45 CassandraDaemon.java:250 - Some message - 100 - 1", "duration": 100, "type": ["info"]},
+              "log": {"level": "INFO", "origin": {"file": {"name": "CassandraDaemon.java", "line": 250}}},
+              "source": {"ip": "10.42.3.15"},
+              "message": "Some message"
+            }
+            """;
+        // spotless:on
+        String result = matcher.evaluate(event, List.of(rule));
+        System.out.println("FULL RESULT: " + result);
+        Map<String, Object> parsed = MAPPER.readValue(result, Map.class);
+        Assert.assertEquals("success", parsed.get("status"));
+        Assert.assertEquals(1, ((Number) parsed.get("rules_evaluated")).intValue());
+        Assert.assertEquals(1, ((Number) parsed.get("rules_matched")).intValue());
     }
 }

@@ -142,18 +142,21 @@ public class EventMatcher {
      * @return an ordered map suitable for JSON serialization
      */
     private Map<String, Object> buildMatchEntry(SigmaRule rule, List<String> matchedConditions) {
-        Map<String, Object> match = new LinkedHashMap<>();
-        match.put("rule_id", rule.getId() != null ? rule.getId().toString() : UNKNOWN_VALUE);
-        match.put("rule_name", rule.getTitle() != null ? rule.getTitle() : UNKNOWN_VALUE);
-        match.put("severity", rule.getLevel() != null ? rule.getLevel().toString() : UNKNOWN_VALUE);
-        match.put("matched_conditions", matchedConditions);
-        match.put(
+        Map<String, Object> ruleInfo = new LinkedHashMap<>();
+        ruleInfo.put("id", rule.getId() != null ? rule.getId().toString() : UNKNOWN_VALUE);
+        ruleInfo.put("title", rule.getTitle() != null ? rule.getTitle() : UNKNOWN_VALUE);
+        ruleInfo.put("level", rule.getLevel() != null ? rule.getLevel().toString() : UNKNOWN_VALUE);
+        ruleInfo.put(
                 "tags",
                 rule.getTags() == null
                         ? Collections.emptyList()
                         : rule.getTags().stream()
                                 .map(tag -> tag.getNamespace() + "." + tag.getName())
                                 .collect(Collectors.toList()));
+
+        Map<String, Object> match = new LinkedHashMap<>();
+        match.put("rule", ruleInfo);
+        match.put("matched_conditions", matchedConditions);
         return match;
     }
 
