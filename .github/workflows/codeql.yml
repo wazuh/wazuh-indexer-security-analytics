@@ -17,6 +17,65 @@ on:
   workflow_dispatch:
 
 jobs:
+  branches:
+    runs-on: ubuntu-24.04
+    outputs:
+      common_utils_plugin_ref: ${{ steps.branches.outputs.wazuh_indexer_common_utils_branch }}
+      common_utils_sha: ${{ steps.common-utils-sha.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Resolve branches
+        id: branches
+        uses: wazuh/wazuh-indexer/.github/actions/5_builderpackage_indexer_branch_resolver@main
+        with:
+          branch: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
+      - name: Get common-utils latest commit
+        id: common-utils-sha
+        run: |
+          SHA=$(git ls-remote https://github.com/wazuh/wazuh-indexer-common-utils.git "${{ steps.branches.outputs.wazuh_indexer_common_utils_branch }}" | cut -f1)
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+
+  get-version:
+    runs-on: ubuntu-24.04
+    needs: branches
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+          sparse-checkout: |
+            VERSION.json
+      - name: Get version
+        id: version
+        run: echo "version=$(jq -r .version<VERSION.json)" >> "$GITHUB_OUTPUT"
+
+  publish-common-utils:
+    runs-on: ubuntu-24.04
+    needs: [ branches, get-version ]
+    steps:
+      - name: Restore Maven Local Cache
+        id: cache-common-utils
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.m2/repository
+          key: m2-common-utils-${{ github.ref_name }}-${{ needs.branches.outputs.common_utils_plugin_ref }}-${{ needs.branches.outputs.common_utils_sha }}-${{ needs.get-version.outputs.version }}
+          restore-keys: |
+            m2-common-utils-${{ github.ref_name }}-${{ needs.branches.outputs.common_utils_plugin_ref }}-${{ needs.branches.outputs.common_utils_sha }}-
+      - name: Publish to Maven Local
+        if: steps.cache-common-utils.outputs.cache-hit != 'true'
+        uses: wazuh/wazuh-indexer-common-utils/.github/actions/5_local_maven_publisher@main
+        with:
+          version: ${{ needs.get-version.outputs.version }}
+          revision: 0
+          reference: ${{ needs.branches.outputs.common_utils_plugin_ref }}
+      - name: Cache Maven Local
+        if: steps.cache-common-utils.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.m2/repository
+          key: m2-common-utils-${{ github.ref_name }}-${{ needs.branches.outputs.common_utils_plugin_ref }}-${{ needs.branches.outputs.common_utils_sha }}-${{ needs.get-version.outputs.version }}
+
   analyze:
     name: Analyze
     # Runner size impacts CodeQL analysis time. To learn more, please see:
@@ -24,8 +83,9 @@ jobs:
     #   - https://gh.io/supported-runners-and-hardware-resources
     #   - https://gh.io/using-larger-runners
     # Consider using larger runners for possible analysis time improvements.
-    runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-24.04' }}
-    timeout-minutes: ${{ (matrix.language == 'swift' && 120) || 360 }}
+    needs: [ branches, get-version, publish-common-utils ]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
     permissions:
       actions: read
       contents: read
@@ -50,6 +110,14 @@ jobs:
           distribution: temurin
           java-version: 25
 
+      - name: Restore Maven Local Cache (common-utils)
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.m2/repository
+          key: m2-common-utils-${{ github.ref_name }}-${{ needs.branches.outputs.common_utils_plugin_ref }}-${{ needs.branches.outputs.common_utils_sha }}-${{ needs.get-version.outputs.version }}
+          restore-keys: |
+            m2-common-utils-${{ github.ref_name }}-${{ needs.branches.outputs.common_utils_plugin_ref }}-${{ needs.branches.outputs.common_utils_sha }}-
+
       # Initializes the CodeQL tools for scanning.
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
@@ -65,19 +133,15 @@ jobs:
       - name: Setup Gradle # Used for caching
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Get version
-        id: version
-        run: echo "version=$(jq -r .version<VERSION.json)" >> "$GITHUB_OUTPUT"
-
       - name: Publish SAP and commons library to mavenLocal
         uses: ./.github/actions/5_local_maven_publisher
         with:
-          version: ${{ steps.version.outputs.version }}
+          version: ${{ needs.get-version.outputs.version }}
           revision: '0'
           reference: ${{ github.ref }}
 
       - name: Build with Gradle
-        run: ./gradlew build -Dversion=${{ steps.version.outputs.version }} -Drevision=0 -x integTest
+        run: ./gradlew build -Dversion=${{ needs.get-version.outputs.version }} -Drevision=0 -x integTest
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
