@@ -56,4 +56,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Security
 -
 
-[Unreleased 5.0.x]: https://github.com/wazuh/wazuh-indexer-security-analytics/compare/main...main
+[Unreleased 5.0.x]: https://github.com/wazuh/wazuh-indexer-security-analytics/compare/1435464d84e284d514817616c3b957228f1c5518...main
