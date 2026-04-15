@@ -231,7 +231,7 @@ dependencies {
     implementation group: 'com.wazuh', name: 'wazuh-indexer-security-analytics-commons', version: "${version}"
 
     // Needed for integ tests
-    zipArchive group: 'org.opensearch.plugin', name:'alerting', version: "${opensearch_build}"
+    zipArchive group: 'com.wazuh', name: 'wazuh-indexer-alerting', version: "${version}"
     zipArchive group: 'org.opensearch.plugin', name:'opensearch-notifications-core', version: "${opensearch_build}"
     zipArchive group: 'org.opensearch.plugin', name:'notifications', version: "${opensearch_build}"
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
