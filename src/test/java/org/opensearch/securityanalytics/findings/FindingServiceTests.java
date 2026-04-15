@@ -1,22 +1,27 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-
 package org.opensearch.securityanalytics.findings;
 
-
-import java.time.Instant;
-import java.time.ZoneId;
-import java.util.Collections;
-import java.util.List;
-
-import org.opensearch.core.action.ActionListener;
 import org.opensearch.commons.alerting.model.CronSchedule;
 import org.opensearch.commons.alerting.model.DocLevelQuery;
 import org.opensearch.commons.alerting.model.Finding;
 import org.opensearch.commons.alerting.model.FindingDocument;
 import org.opensearch.commons.alerting.model.Table;
+import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.rest.RestStatus;
 import org.opensearch.securityanalytics.action.FindingDto;
 import org.opensearch.securityanalytics.action.GetDetectorAction;
@@ -29,6 +34,10 @@ import org.opensearch.test.OpenSearchTestCase;
 import org.opensearch.transport.client.Client;
 import org.opensearch.transport.client.node.NodeClient;
 
+import java.time.Instant;
+import java.time.ZoneId;
+import java.util.Collections;
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -36,7 +45,6 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.when;
 
 public class FindingServiceTests extends OpenSearchTestCase {
 
@@ -46,120 +54,147 @@ public class FindingServiceTests extends OpenSearchTestCase {
         NodeClient nodeClient = mock(NodeClient.class);
         findingsService.setIndicesAdminClient(client);
         // Create fake GetDetectorResponse
-        Detector detector = new Detector(
-                "detector_id123",
-                0L,
-                "test-monitor",
-                true,
-                new CronSchedule("31 * * * *", ZoneId.of("Asia/Kolkata"), Instant.ofEpochSecond(1538164858L)),
-                Instant.now(),
-                Instant.now(),
-                "others_application",
-                null,
-                List.of(),
-                List.of(),
-                List.of("monitor_id1", "monitor_id2"),
-                DetectorMonitorConfig.getRuleIndex("others_application"),
-                null,
-                DetectorMonitorConfig.getAlertsIndex("others_application"),
-                null,
-                null,
-                DetectorMonitorConfig.getFindingsIndex("others_application"),
-                Collections.emptyMap(),
-                Collections.emptyList(),
-                false
-        );
-        GetDetectorResponse getDetectorResponse = new GetDetectorResponse("detector_id123", 1L, RestStatus.OK, detector);
+        Detector detector =
+                new Detector(
+                        "detector_id123",
+                        0L,
+                        "test-monitor",
+                        true,
+                        new CronSchedule(
+                                "31 * * * *", ZoneId.of("Asia/Kolkata"), Instant.ofEpochSecond(1538164858L)),
+                        Instant.now(),
+                        Instant.now(),
+                        "others_application",
+                        null,
+                        List.of(),
+                        List.of(),
+                        List.of("monitor_id1", "monitor_id2"),
+                        DetectorMonitorConfig.getRuleIndex("others_application"),
+                        null,
+                        DetectorMonitorConfig.getAlertsIndex("others_application"),
+                        null,
+                        null,
+                        DetectorMonitorConfig.getFindingsIndex("others_application"),
+                        Collections.emptyMap(),
+                        Collections.emptyList(),
+                        false,
+                        null);
+        GetDetectorResponse getDetectorResponse =
+                new GetDetectorResponse("detector_id123", 1L, RestStatus.OK, detector);
 
-        // Setup getDetector interceptor and return fake GetDetectorResponse by calling listener.onResponse
-        doAnswer(invocation -> {
-            ActionListener l = invocation.getArgument(2);
-            l.onResponse(getDetectorResponse);
-            return null;
-        }).when(nodeClient).execute(eq(GetDetectorAction.INSTANCE), any(GetDetectorRequest.class), any(ActionListener.class));
+        // Setup getDetector interceptor and return fake GetDetectorResponse by calling
+        // listener.onResponse
+        doAnswer(
+                        invocation -> {
+                            ActionListener l = invocation.getArgument(2);
+                            l.onResponse(getDetectorResponse);
+                            return null;
+                        })
+                .when(nodeClient)
+                .execute(
+                        eq(GetDetectorAction.INSTANCE),
+                        any(GetDetectorRequest.class),
+                        any(ActionListener.class));
 
         // Alerting GetFindingsResponse mock #1
-        Finding finding1 = new Finding(
-                "1",
-                List.of("doc1", "doc2", "doc3"),
-                List.of("doc1", "doc2", "doc3"),
-                "monitor_id1",
-                "monitor_name1",
-                "test_index1",
-                List.of(new DocLevelQuery("1", "myQuery", Collections.emptyList(), "fieldA:valABC", List.of())),
-                Instant.now(),
-                "1234"
-        );
-        FindingDocument findingDocument1 = new FindingDocument("test_index1", "doc1", true, "document 1 payload");
-        FindingDocument findingDocument2 = new FindingDocument("test_index1", "doc2", true, "document 2 payload");
-        FindingDocument findingDocument3 = new FindingDocument("test_index1", "doc3", true, "document 3 payload");
+        Finding finding1 =
+                new Finding(
+                        "1",
+                        List.of("doc1", "doc2", "doc3"),
+                        List.of("doc1", "doc2", "doc3"),
+                        "monitor_id1",
+                        "monitor_name1",
+                        "test_index1",
+                        List.of(
+                                new DocLevelQuery(
+                                        "1", "myQuery", Collections.emptyList(), "fieldA:valABC", List.of())),
+                        Instant.now(),
+                        "1234");
+        FindingDocument findingDocument1 =
+                new FindingDocument("test_index1", "doc1", true, "document 1 payload");
+        FindingDocument findingDocument2 =
+                new FindingDocument("test_index1", "doc2", true, "document 2 payload");
+        FindingDocument findingDocument3 =
+                new FindingDocument("test_index1", "doc3", true, "document 3 payload");
 
         // Alerting GetFindingsResponse mock #2
-        Finding finding2 = new Finding(
-                "1",
-                List.of("doc21", "doc22"),
-                List.of("doc21", "doc22"),
-                "monitor_id2",
-                "monitor_name2",
-                "test_index2",
-                List.of(new DocLevelQuery("1", "myQuery", Collections.emptyList(), "fieldA:valABC", List.of())),
-                Instant.now(),
-                "1234"
-        );
-        FindingDocument findingDocument21 = new FindingDocument("test_index2", "doc21", true, "document 21 payload");
-        FindingDocument findingDocument22 = new FindingDocument("test_index2", "doc22", true, "document 22 payload");
+        Finding finding2 =
+                new Finding(
+                        "1",
+                        List.of("doc21", "doc22"),
+                        List.of("doc21", "doc22"),
+                        "monitor_id2",
+                        "monitor_name2",
+                        "test_index2",
+                        List.of(
+                                new DocLevelQuery(
+                                        "1", "myQuery", Collections.emptyList(), "fieldA:valABC", List.of())),
+                        Instant.now(),
+                        "1234");
+        FindingDocument findingDocument21 =
+                new FindingDocument("test_index2", "doc21", true, "document 21 payload");
+        FindingDocument findingDocument22 =
+                new FindingDocument("test_index2", "doc22", true, "document 22 payload");
 
         GetFindingsResponse getFindingsResponse =
                 new GetFindingsResponse(
                         2,
                         List.of(
-                            new FindingDto(
-                                detector.getId(),
-                                finding1.getId(),
-                                finding1.getRelatedDocIds(),
-                                finding1.getIndex(),
-                                finding1.getDocLevelQueries(),
-                                finding1.getTimestamp(),
-                                List.of(findingDocument1, findingDocument2, findingDocument3)
-                            ),
-                            new FindingDto(
-                                    detector.getId(),
-                                    finding2.getId(),
-                                    finding2.getRelatedDocIds(),
-                                    finding2.getIndex(),
-                                    finding2.getDocLevelQueries(),
-                                    finding2.getTimestamp(),
-                                    List.of(findingDocument1, findingDocument2, findingDocument3)
-                            )
-                        )
-                );
-        doAnswer(invocation -> {
-            ActionListener l = invocation.getArgument(4);
-            l.onResponse(getFindingsResponse);
-            return null;
-        }).when(findingsService).getFindingsByMonitorIds(any(), any(), anyString(), any(Table.class), anyString(), anyString(), any(), any(), any(), any(ActionListener.class));
+                                new FindingDto(
+                                        detector.getId(),
+                                        finding1.getId(),
+                                        finding1.getRelatedDocIds(),
+                                        finding1.getIndex(),
+                                        finding1.getDocLevelQueries(),
+                                        finding1.getTimestamp(),
+                                        List.of(findingDocument1, findingDocument2, findingDocument3)),
+                                new FindingDto(
+                                        detector.getId(),
+                                        finding2.getId(),
+                                        finding2.getRelatedDocIds(),
+                                        finding2.getIndex(),
+                                        finding2.getDocLevelQueries(),
+                                        finding2.getTimestamp(),
+                                        List.of(findingDocument1, findingDocument2, findingDocument3))));
+        doAnswer(
+                        invocation -> {
+                            ActionListener l = invocation.getArgument(4);
+                            l.onResponse(getFindingsResponse);
+                            return null;
+                        })
+                .when(findingsService)
+                .getFindingsByMonitorIds(
+                        any(),
+                        any(),
+                        anyString(),
+                        any(Table.class),
+                        anyString(),
+                        anyString(),
+                        any(),
+                        any(),
+                        any(),
+                        any(ActionListener.class));
 
         // Call getFindingsByDetectorId
-        Table table = new Table(
-            "asc",
-            "id",
-            null,
-            100,
-            0,
-            null
-        );
-        findingsService.getFindingsByDetectorId("detector_id123", table, null, null, null, null, null, new ActionListener<>() {
-            @Override
-            public void onResponse(GetFindingsResponse getFindingsResponse) {
-                assertEquals(2, (int)getFindingsResponse.getTotalFindings());
-                assertEquals(2, getFindingsResponse.getFindings().size());
-            }
+        Table table = new Table("asc", "id", null, 100, 0, null);
+        findingsService.getFindingsByDetectorId(
+                "detector_id123",
+                table,
+                null,
+                null,
+                null,
+                null,
+                null,
+                new ActionListener<>() {
+                    @Override
+                    public void onResponse(GetFindingsResponse getFindingsResponse) {
+                        assertEquals(2, (int) getFindingsResponse.getTotalFindings());
+                        assertEquals(2, getFindingsResponse.getFindings().size());
+                    }
 
-            @Override
-            public void onFailure(Exception e) {
-
-            }
-        });
+                    @Override
+                    public void onFailure(Exception e) {}
+                });
     }
 
     public void testGetFindings_getFindingsByMonitorIdFailure() {
@@ -170,64 +205,88 @@ public class FindingServiceTests extends OpenSearchTestCase {
         // Mocking a NodeClient instance
         NodeClient nodeClient = mock(NodeClient.class);
         // Create fake GetDetectorResponse
-        Detector detector = new Detector(
-                "detector_id123",
-                0L,
-                "test-monitor",
-                true,
-                new CronSchedule("31 * * * *", ZoneId.of("Asia/Kolkata"), Instant.ofEpochSecond(1538164858L)),
-                Instant.now(),
-                Instant.now(),
-                "others_application",
-                null,
-                List.of(),
-                List.of(),
-                List.of("monitor_id1", "monitor_id2"),
-                DetectorMonitorConfig.getRuleIndex("others_application"),
-                null,
-                DetectorMonitorConfig.getAlertsIndex("others_application"),
-                null,
-                null,
-                DetectorMonitorConfig.getFindingsIndex("others_application"),
-                Collections.emptyMap(),
-                Collections.emptyList(),
-                false
-        );
-        GetDetectorResponse getDetectorResponse = new GetDetectorResponse("detector_id123", 1L, RestStatus.OK, detector);
+        Detector detector =
+                new Detector(
+                        "detector_id123",
+                        0L,
+                        "test-monitor",
+                        true,
+                        new CronSchedule(
+                                "31 * * * *", ZoneId.of("Asia/Kolkata"), Instant.ofEpochSecond(1538164858L)),
+                        Instant.now(),
+                        Instant.now(),
+                        "others_application",
+                        null,
+                        List.of(),
+                        List.of(),
+                        List.of("monitor_id1", "monitor_id2"),
+                        DetectorMonitorConfig.getRuleIndex("others_application"),
+                        null,
+                        DetectorMonitorConfig.getAlertsIndex("others_application"),
+                        null,
+                        null,
+                        DetectorMonitorConfig.getFindingsIndex("others_application"),
+                        Collections.emptyMap(),
+                        Collections.emptyList(),
+                        false,
+                        null);
+        GetDetectorResponse getDetectorResponse =
+                new GetDetectorResponse("detector_id123", 1L, RestStatus.OK, detector);
 
-        // Setup getDetector interceptor and return fake GetDetectorResponse by calling listener.onResponse
-        doAnswer(invocation -> {
-            ActionListener l = invocation.getArgument(2);
-            l.onResponse(getDetectorResponse);
-            return null;
-        }).when(nodeClient).execute(eq(GetDetectorAction.INSTANCE), any(GetDetectorRequest.class), any(ActionListener.class));
+        // Setup getDetector interceptor and return fake GetDetectorResponse by calling
+        // listener.onResponse
+        doAnswer(
+                        invocation -> {
+                            ActionListener l = invocation.getArgument(2);
+                            l.onResponse(getDetectorResponse);
+                            return null;
+                        })
+                .when(nodeClient)
+                .execute(
+                        eq(GetDetectorAction.INSTANCE),
+                        any(GetDetectorRequest.class),
+                        any(ActionListener.class));
 
-        doAnswer(invocation -> {
-            ActionListener l = invocation.getArgument(4);
-            l.onFailure(new IllegalArgumentException("Error getting findings"));
-            return null;
-        }).when(findingsService).getFindingsByMonitorIds(any(), any(), anyString(), any(Table.class), anyString(), anyString(), any(), any(), any(), any(ActionListener.class));
+        doAnswer(
+                        invocation -> {
+                            ActionListener l = invocation.getArgument(4);
+                            l.onFailure(new IllegalArgumentException("Error getting findings"));
+                            return null;
+                        })
+                .when(findingsService)
+                .getFindingsByMonitorIds(
+                        any(),
+                        any(),
+                        anyString(),
+                        any(Table.class),
+                        anyString(),
+                        anyString(),
+                        any(),
+                        any(),
+                        any(),
+                        any(ActionListener.class));
 
         // Call getFindingsByDetectorId
-        Table table = new Table(
-                "asc",
-                "id",
+        Table table = new Table("asc", "id", null, 100, 0, null);
+        findingsService.getFindingsByDetectorId(
+                "detector_id123",
+                table,
                 null,
-                100,
-                0,
-                null
-        );
-        findingsService.getFindingsByDetectorId("detector_id123", table, null, null, null, null, null, new ActionListener<>() {
-            @Override
-            public void onResponse(GetFindingsResponse getFindingsResponse) {
-                fail("this test should've failed");
-            }
+                null,
+                null,
+                null,
+                null,
+                new ActionListener<>() {
+                    @Override
+                    public void onResponse(GetFindingsResponse getFindingsResponse) {
+                        fail("this test should've failed");
+                    }
 
-            @Override
-            public void onFailure(Exception e) {
-                assertTrue(e.getMessage().contains("Error getting findings"));
-            }
-        });
+                    @Override
+                    public void onFailure(Exception e) {
+                        assertTrue(e.getMessage().contains("Error getting findings"));
+                    }
+                });
     }
 
     public void testGetFindings_getDetectorFailure() {
@@ -237,31 +296,38 @@ public class FindingServiceTests extends OpenSearchTestCase {
         findingsService.setIndicesAdminClient(client);
 
         // Setup getDetector interceptor and return fake expcetion by calling onFailure
-        doAnswer(invocation -> {
-            ActionListener l = invocation.getArgument(2);
-            l.onFailure(new IllegalArgumentException("GetDetector failed"));
-            return null;
-        }).when(client).execute(eq(GetDetectorAction.INSTANCE), any(GetDetectorRequest.class), any(ActionListener.class));
+        doAnswer(
+                        invocation -> {
+                            ActionListener l = invocation.getArgument(2);
+                            l.onFailure(new IllegalArgumentException("GetDetector failed"));
+                            return null;
+                        })
+                .when(client)
+                .execute(
+                        eq(GetDetectorAction.INSTANCE),
+                        any(GetDetectorRequest.class),
+                        any(ActionListener.class));
 
         // Call getFindingsByDetectorId
-        Table table = new Table(
-                "asc",
-                "id",
+        Table table = new Table("asc", "id", null, 100, 0, null);
+        findingsService.getFindingsByDetectorId(
+                "detector_id123",
+                table,
                 null,
-                100,
-                0,
-                null
-        );
-        findingsService.getFindingsByDetectorId("detector_id123", table, null, null, null, null, null, new ActionListener<>() {
-            @Override
-            public void onResponse(GetFindingsResponse getFindingsResponse) {
-                fail("this test should've failed");
-            }
+                null,
+                null,
+                null,
+                null,
+                new ActionListener<>() {
+                    @Override
+                    public void onResponse(GetFindingsResponse getFindingsResponse) {
+                        fail("this test should've failed");
+                    }
 
-            @Override
-            public void onFailure(Exception e) {
-                assertTrue(e.getMessage().contains("GetDetector failed"));
-            }
-        });
+                    @Override
+                    public void onFailure(Exception e) {
+                        assertTrue(e.getMessage().contains("GetDetector failed"));
+                    }
+                });
     }
 }
