@@ -1,6 +1,18 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.model;
 
@@ -13,11 +25,9 @@ import org.opensearch.core.xcontent.XContentParser;
 import org.opensearch.core.xcontent.XContentParserUtils;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.UUID;
+import java.util.Objects;
 
 public class DetectorRule implements Writeable, ToXContentObject {
 
@@ -39,9 +49,7 @@ public class DetectorRule implements Writeable, ToXContentObject {
     }
 
     public Map<String, Object> asTemplateArg() {
-        return Map.of(
-                RULE_ID_FIELD, id
-        );
+        return Map.of(RULE_ID_FIELD, id);
     }
 
     @Override
@@ -51,16 +59,15 @@ public class DetectorRule implements Writeable, ToXContentObject {
 
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
-        builder.startObject()
-                .field(RULE_ID_FIELD, id)
-                .endObject();
+        builder.startObject().field(RULE_ID_FIELD, id).endObject();
         return builder;
     }
 
     public static DetectorRule parse(XContentParser xcp) throws IOException {
         String id = null;
 
-        XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
+        XContentParserUtils.ensureExpectedToken(
+                XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
         while (xcp.nextToken() != XContentParser.Token.END_OBJECT) {
             String fieldName = xcp.currentName();
             xcp.nextToken();
@@ -80,5 +87,18 @@ public class DetectorRule implements Writeable, ToXContentObject {
 
     public String getId() {
         return id;
+    }
+
+    @Override
+    public boolean equals(Object object) {
+        if (this == object) return true;
+        if (object == null || getClass() != object.getClass()) return false;
+        DetectorRule that = (DetectorRule) object;
+        return Objects.equals(id, that.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(id);
     }
 }

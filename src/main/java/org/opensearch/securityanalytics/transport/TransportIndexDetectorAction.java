@@ -147,6 +147,12 @@ public class TransportIndexDetectorAction
     public static final String TIMESTAMP_FIELD_ALIAS = "timestamp";
     public static final String CHAINED_FINDINGS_MONITOR_STRING = "chained_findings_monitor";
 
+    /**
+     * Thread context header used by internal Wazuh plugin callers (e.g. Content Manager) to bypass
+     * standard-detector modification restrictions.
+     */
+    public static final String WAZUH_INTERNAL_CALLER_HEADER = "_wazuh_internal_caller";
+
     private final Client client;
 
     private final NamedXContentRegistry xContentRegistry;
@@ -250,7 +256,110 @@ public class TransportIndexDetectorAction
             return;
         }
 
-        checkIndicesAndExecute(task, request, listener, user);
+        boolean isInternalCaller = isInternalCaller();
+
+        // For non-internal callers, force source to Custom
+        if (!isInternalCaller) {
+            request.getDetector().setSource(Detector.DEFAULT_SOURCE);
+        }
+
+        if (request.getMethod() == RestRequest.Method.PUT && !isInternalCaller) {
+            // On update, check if the existing detector is a standard detector.
+            // If so, only the enabled field can be changed by users.
+            validateStandardDetectorUpdate(
+                    request, listener, () -> checkIndicesAndExecute(task, request, listener, user));
+        } else {
+            checkIndicesAndExecute(task, request, listener, user);
+        }
+    }
+
+    /**
+     * Returns true if the current request originates from Content Manager plugin (Used the transport
+     * action) as indicated by a thread context header.
+     */
+    private boolean isInternalCaller() {
+        String caller = this.threadPool.getThreadContext().getHeader(WAZUH_INTERNAL_CALLER_HEADER);
+        return "content-manager".equals(caller);
+    }
+
+    /**
+     * Returns true if the only difference between the existing and incoming detector is the {@code
+     * enabled} field (and its derived {@code enabledTime}/{@code lastUpdateTime}). Any change to
+     * name, inputs/rules, triggers, or threat intel is considered a modification and will be rejected
+     * for standard detectors.
+     */
+    private static boolean isOnlyEnabledChange(Detector existing, Detector incoming) {
+        return Objects.equals(existing.getName(), incoming.getName())
+                && Objects.equals(existing.getDetectorType(), incoming.getDetectorType())
+                && Objects.equals(existing.getThreatIntelEnabled(), incoming.getThreatIntelEnabled())
+                && Objects.equals(existing.getInputs(), incoming.getInputs())
+                && Objects.equals(existing.getTriggers(), incoming.getTriggers());
+    }
+
+    /**
+     * Validates that a user update to a standard (Sigma) detector only changes the enabled field. If
+     * the detector is not standard, or the update is valid, the provided continuation is run.
+     */
+    private void validateStandardDetectorUpdate(
+            IndexDetectorRequest request,
+            ActionListener<IndexDetectorResponse> listener,
+            Runnable onValid) {
+        String detectorId = request.getDetectorId();
+        GetRequest getRequest = new GetRequest(Detector.DETECTORS_INDEX, detectorId);
+        client.get(
+                getRequest,
+                new ActionListener<>() {
+                    @Override
+                    public void onResponse(GetResponse response) {
+                        if (!response.isExists()) {
+                            onValid.run();
+                            return;
+                        }
+                        try {
+                            XContentParser xcp =
+                                    XContentHelper.createParser(
+                                            xContentRegistry,
+                                            LoggingDeprecationHandler.INSTANCE,
+                                            response.getSourceAsBytesRef(),
+                                            XContentType.JSON);
+                            Detector existingDetector = Detector.docParse(xcp, detectorId, response.getVersion());
+
+                            if (existingDetector.isStandardDetector()) {
+                                // For standard detectors, users can only toggle enabled.
+                                // Reject if any other user-visible field was changed.
+                                Detector incoming = request.getDetector();
+                                if (!isOnlyEnabledChange(existingDetector, incoming)) {
+                                    listener.onFailure(
+                                            new OpenSearchStatusException(
+                                                    "Standard detectors cannot be modified by users. "
+                                                            + "Only enabling or disabling is allowed.",
+                                                    RestStatus.BAD_REQUEST));
+                                    return;
+                                }
+                                // Apply only the enabled toggle on top of the existing
+                                // detector to prevent any silent field mutations.
+                                boolean newEnabled = incoming.getEnabled();
+                                existingDetector.setEnabled(newEnabled);
+                                existingDetector.setEnabledTime(newEnabled ? Instant.now() : null);
+                                existingDetector.setLastUpdateTime(Instant.now());
+                                request.setDetector(existingDetector);
+                                onValid.run();
+                                return;
+                            }
+                            // Not a standard detector allow the update
+                            // Preserve the source from the existing detector
+                            request.getDetector().setSource(existingDetector.getSource());
+                            onValid.run();
+                        } catch (IOException e) {
+                            listener.onFailure(e);
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(Exception e) {
+                        listener.onFailure(e);
+                    }
+                });
     }
 
     private void checkIndicesAndExecute(

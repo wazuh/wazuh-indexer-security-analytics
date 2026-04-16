@@ -33,6 +33,8 @@ import com.wazuh.securityanalytics.action.WDeleteDetectorAction;
 import com.wazuh.securityanalytics.action.WDeleteDetectorRequest;
 import com.wazuh.securityanalytics.action.WDeleteDetectorResponse;
 
+import static org.opensearch.securityanalytics.transport.TransportDeleteDetectorAction.WAZUH_INTERNAL_CALLER_HEADER;
+
 public class WTransportDeleteDetectorAction
         extends HandledTransportAction<WDeleteDetectorRequest, WDeleteDetectorResponse>
         implements SecureTransportAction {
@@ -51,6 +53,17 @@ public class WTransportDeleteDetectorAction
             Task task, WDeleteDetectorRequest request, ActionListener<WDeleteDetectorResponse> listener) {
         DeleteDetectorRequest internalRequest =
                 new DeleteDetectorRequest(request.getDetectorId(), request.getRefreshPolicy());
+
+        // Mark this request as coming from the Content Manager so that
+        // TransportDeleteDetectorAction allows deletion of standard detectors.
+        if (this.client.threadPool().getThreadContext().getHeader(WAZUH_INTERNAL_CALLER_HEADER)
+                == null) {
+            this.client
+                    .threadPool()
+                    .getThreadContext()
+                    .putHeader(WAZUH_INTERNAL_CALLER_HEADER, "content-manager");
+        }
+
         this.client.execute(
                 DeleteDetectorAction.INSTANCE,
                 internalRequest,
