@@ -1,17 +1,29 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.action;
 
-import org.junit.Assert;
 import org.opensearch.common.io.stream.BytesStreamOutput;
-import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.commons.alerting.model.CronSchedule;
+import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.rest.RestStatus;
 import org.opensearch.securityanalytics.config.monitors.DetectorMonitorConfig;
 import org.opensearch.securityanalytics.model.Detector;
 import org.opensearch.test.OpenSearchTestCase;
+import org.junit.Assert;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -27,32 +39,34 @@ public class IndexDetectorResponseTests extends OpenSearchTestCase {
         String cronExpression = "31 * * * *";
         Instant testInstance = Instant.ofEpochSecond(1538164858L);
 
-        CronSchedule cronSchedule = new CronSchedule(cronExpression, ZoneId.of("Asia/Kolkata"), testInstance);
+        CronSchedule cronSchedule =
+                new CronSchedule(cronExpression, ZoneId.of("Asia/Kolkata"), testInstance);
 
         String detectorType = "linux";
-        Detector detector = new Detector(
-                "123",
-                0L,
-                "test-monitor",
-                true,
-                cronSchedule,
-                Instant.now(),
-                Instant.now(),
-                detectorType,
-                randomUser(),
-                List.of(),
-                List.of(),
-                List.of("1", "2", "3"),
-                DetectorMonitorConfig.getRuleIndex("others_application"),
-                null,
-                DetectorMonitorConfig.getAlertsIndex("others_application"),
-                null,
-                null,
-                DetectorMonitorConfig.getFindingsIndex("others_application"),
-                Collections.emptyMap(),
-                Collections.emptyList(),
-                false
-        );
+        Detector detector =
+                new Detector(
+                        "123",
+                        0L,
+                        "test-monitor",
+                        true,
+                        cronSchedule,
+                        Instant.now(),
+                        Instant.now(),
+                        detectorType,
+                        randomUser(),
+                        List.of(),
+                        List.of(),
+                        List.of("1", "2", "3"),
+                        DetectorMonitorConfig.getRuleIndex("others_application"),
+                        null,
+                        DetectorMonitorConfig.getAlertsIndex("others_application"),
+                        null,
+                        null,
+                        DetectorMonitorConfig.getFindingsIndex("others_application"),
+                        Collections.emptyMap(),
+                        Collections.emptyList(),
+                        false,
+                        null);
         IndexDetectorResponse response = new IndexDetectorResponse("1234", 1L, RestStatus.OK, detector);
         Assert.assertNotNull(response);
 
@@ -66,7 +80,7 @@ public class IndexDetectorResponseTests extends OpenSearchTestCase {
         Assert.assertEquals(1L, newResponse.getVersion().longValue());
         Assert.assertEquals(RestStatus.OK, newResponse.getStatus());
         Assert.assertNotNull(newResponse.getDetector());
-        Assert.assertEquals(newResponse.getDetector().getMonitorIds().size(),3);
+        Assert.assertEquals(newResponse.getDetector().getMonitorIds().size(), 3);
         Assert.assertTrue(newResponse.getDetector().getMonitorIds().contains("1"));
         Assert.assertTrue(newResponse.getDetector().getMonitorIds().contains("2"));
         Assert.assertTrue(newResponse.getDetector().getMonitorIds().contains("3"));
