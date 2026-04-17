@@ -147,6 +147,19 @@ public class TransportIndexDetectorAction
     public static final String TIMESTAMP_FIELD_ALIAS = "timestamp";
     public static final String CHAINED_FINDINGS_MONITOR_STRING = "chained_findings_monitor";
 
+    static String validateSingleRuleSpace(Detector detector) {
+        if (detector.getInputs().isEmpty()) {
+            return null;
+        }
+        DetectorInput input = detector.getInputs().get(0);
+        List<DetectorRule> prePackaged = input.getPrePackagedRules();
+        List<DetectorRule> custom = input.getCustomRules();
+        if (prePackaged != null && !prePackaged.isEmpty() && custom != null && !custom.isEmpty()) {
+            return "Detector cannot have both prepackaged and custom rules. Use only one type.";
+        }
+        return null;
+    }
+
     private final Client client;
 
     private final NamedXContentRegistry xContentRegistry;
@@ -1645,6 +1658,11 @@ public class TransportIndexDetectorAction
 
             if (!detector.getInputs().isEmpty()) {
                 try {
+                    String spaceError = validateSingleRuleSpace(detector);
+                    if (spaceError != null) {
+                        onFailures(new OpenSearchStatusException(spaceError, RestStatus.BAD_REQUEST));
+                        return;
+                    }
                     log.debug("init rule index template");
                     ruleTopicIndices.initRuleTopicIndexTemplate(
                             new ActionListener<>() {
@@ -1785,6 +1803,11 @@ public class TransportIndexDetectorAction
 
             if (!detector.getInputs().isEmpty()) {
                 try {
+                    String spaceError = validateSingleRuleSpace(detector);
+                    if (spaceError != null) {
+                        onFailures(new OpenSearchStatusException(spaceError, RestStatus.BAD_REQUEST));
+                        return;
+                    }
                     ruleTopicIndices.initRuleTopicIndexTemplate(
                             new ActionListener<>() {
                                 @Override
@@ -1967,6 +1990,12 @@ public class TransportIndexDetectorAction
             final String ruleTopic = detector.getDetectorType();
             final DetectorInput detectorInput = detector.getInputs().get(0);
             final String logIndex = detectorInput.getIndices().get(0);
+
+            String spaceError = validateSingleRuleSpace(detector);
+            if (spaceError != null) {
+                onFailures(new OpenSearchStatusException(spaceError, RestStatus.BAD_REQUEST));
+                return;
+            }
 
             List<String> ruleIds =
                     detectorInput.getPrePackagedRules().stream()

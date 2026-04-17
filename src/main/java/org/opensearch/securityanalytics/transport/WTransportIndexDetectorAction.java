@@ -42,6 +42,7 @@ import org.opensearch.transport.TransportService;
 import org.opensearch.transport.client.Client;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -210,6 +211,7 @@ public class WTransportIndexDetectorAction
                     public void onResponse(SearchResponse response) {
                         List<String> invalidSpaceRules = new ArrayList<>();
                         Set<String> foundRuleIds = new HashSet<>();
+                        Map<String, String> ruleWorldMap = new HashMap<>();
 
                         for (var hit : response.getHits().getHits()) {
                             Map<String, Object> sourceMap = hit.getSourceAsMap();
@@ -232,6 +234,8 @@ public class WTransportIndexDetectorAction
                             if ("draft".equalsIgnoreCase(spaceSource) || "test".equalsIgnoreCase(spaceSource)) {
                                 invalidSpaceRules.add(docId);
                             }
+
+                            ruleWorldMap.put(docId, classifyRuleWorld(spaceSource));
                         }
 
                         List<String> missingRules = new ArrayList<>();
@@ -253,6 +257,14 @@ public class WTransportIndexDetectorAction
                                             request.getLogTypeName(), invalidSpaceRules);
                             log.warn(errorMsg);
                             listener.onFailure(new OpenSearchStatusException(errorMsg, RestStatus.BAD_REQUEST));
+                            return;
+                        }
+
+                        String worldError =
+                                validateRuleWorlds(ruleWorldMap, validRulesToKeep, request.getLogTypeName());
+                        if (worldError != null) {
+                            log.warn(worldError);
+                            listener.onFailure(new OpenSearchStatusException(worldError, RestStatus.BAD_REQUEST));
                             return;
                         }
 
@@ -331,5 +343,42 @@ public class WTransportIndexDetectorAction
                         listener.onFailure(e);
                     }
                 });
+    }
+
+    /**
+     * Classifies a rule's space into a "world": either "Standard" (Sigma/CTI upstream) or "User"
+     * (Draft, Test, Custom — user-managed content).
+     *
+     * @param space the rule's space value (may be null)
+     * @return "Standard" if space is null or "Sigma", otherwise "User"
+     */
+    static String classifyRuleWorld(String space) {
+        return (space == null || "Sigma".equalsIgnoreCase(space)) ? "Standard" : "User";
+    }
+
+    /**
+     * Validates that all rules in the given list belong to the same world.
+     *
+     * @param ruleWorldMap mapping from rule document.id to its world ("Standard" or "User")
+     * @param ruleIds the list of rule IDs to validate
+     * @param logTypeName the log type name, used in the error message
+     * @return an error message if rules span multiple worlds, or null if valid
+     */
+    static String validateRuleWorlds(
+            Map<String, String> ruleWorldMap, List<String> ruleIds, String logTypeName) {
+        Set<String> detectedWorlds = new HashSet<>();
+        for (String ruleId : ruleIds) {
+            String world = ruleWorldMap.get(ruleId);
+            if (world != null) {
+                detectedWorlds.add(world);
+            }
+        }
+        if (detectedWorlds.size() > 1) {
+            return String.format(
+                    "Cannot create [%s] detector. Rules must belong to a single space type "
+                            + "(standard or custom), but found both.",
+                    logTypeName);
+        }
+        return null;
     }
 }
