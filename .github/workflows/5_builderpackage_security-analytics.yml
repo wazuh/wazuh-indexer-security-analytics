@@ -105,8 +105,13 @@ jobs:
 
   publish-alerting:
     runs-on: ubuntu-24.04
-    needs: [ branches, get-version ]
+    needs: [ branches, get-version, publish-common-utils ]
     steps:
+      - name: Restore Maven Local cache (common-utils)
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.m2/repository
+          key: maven-common-utils-${{ github.ref_name }}
       - name: Publish alerting to Maven Local
         uses: wazuh/wazuh-indexer-alerting/.github/actions/5_local_maven_publisher@main
         with:
