@@ -43,6 +43,8 @@ buildscript {
 //            sa_commons_version += "-SNAPSHOT"
         }
         common_utils_version = System.getProperty("common_utils.version", "${wazuh_version}.${revision}")
+        alerting_spi_build = System.getProperty("alerting_spi_build", "${wazuh_version}.${revision}")
+
         kotlin_version = '1.8.21'
 
         sa_commons_file_name = "security-analytics-commons-${sa_commons_version}.jar"
@@ -122,7 +124,7 @@ opensearchplugin {
     name 'wazuh-indexer-security-analytics'
     description 'Wazuh Indexer Security Analytics plugin'
     classname 'org.opensearch.securityanalytics.SecurityAnalyticsPlugin'
-    extendedPlugins = ['opensearch-alerting']
+    extendedPlugins = ['wazuh-indexer-alerting']
 }
 
 javaRestTest {
@@ -210,10 +212,10 @@ dependencies {
     implementation group: 'org.apache.commons', name: 'commons-lang3', version: "${versions.commonslang}"
     compileOnly "org.antlr:antlr4-runtime:4.10.1"
     compileOnly "com.cronutils:cron-utils:9.1.7"
-    compileOnly "org.opensearch:common-utils:${common_utils_version}@jar"
+    compileOnly "com.wazuh:wazuh-indexer-common-utils:${common_utils_version}@jar"
     compileOnly "org.opensearch.client:opensearch-rest-client:${opensearch_version}"
     compileOnly "org.jetbrains.kotlin:kotlin-stdlib:${kotlin_version}"
-    compileOnly "org.opensearch.alerting:alerting-spi:${alerting_spi_build}"
+    compileOnly "com.wazuh:wazuh-indexer-alerting-spi:${alerting_spi_build}@jar"
     implementation "org.apache.commons:commons-csv:1.10.0"
     implementation 'com.jayway.jsonpath:json-path:2.9.0'
     implementation 'net.minidev:json-smart:2.5.2'
@@ -229,7 +231,7 @@ dependencies {
     implementation group: 'com.wazuh', name: 'wazuh-indexer-security-analytics-commons', version: "${version}"
 
     // Needed for integ tests
-    zipArchive group: 'org.opensearch.plugin', name:'alerting', version: "${opensearch_build}"
+    zipArchive group: 'com.wazuh', name: 'wazuh-indexer-alerting', version: "${version}"
     zipArchive group: 'org.opensearch.plugin', name:'opensearch-notifications-core', version: "${opensearch_build}"
     zipArchive group: 'org.opensearch.plugin', name:'notifications', version: "${opensearch_build}"
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'

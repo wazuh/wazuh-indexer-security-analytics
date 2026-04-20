@@ -44,6 +44,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       common_utils_ref: ${{ steps.resolve.outputs.wazuh_indexer_common_utils_branch }}
+      alerting_ref: ${{ steps.resolve.outputs.wazuh_indexer_alerting_branch }}
     steps:
       - uses: actions/checkout@v6
 
@@ -53,9 +54,28 @@ jobs:
         with:
           branch: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
 
+      - name: Validate resolved branches
+        run: |
+          common_utils_ref="${{ steps.resolve.outputs.wazuh_indexer_common_utils_branch }}"
+          alerting_ref="${{ steps.resolve.outputs.wazuh_indexer_alerting_branch }}"
+
+          echo "Resolved common_utils_ref: $common_utils_ref"
+          echo "Resolved alerting_ref: $alerting_ref"
+
+          if [ -z "$common_utils_ref" ]; then
+            echo "Resolver output wazuh_indexer_common_utils_branch is empty"
+            exit 1
+          fi
+
+          if [ -z "$alerting_ref" ]; then
+            echo "Resolver output wazuh_indexer_alerting_branch is empty"
+            exit 1
+          fi
+
       - name: Display resolved branches
         run: |
           echo "Common Utils branch: ${{ steps.resolve.outputs.wazuh_indexer_common_utils_branch }}"
+          echo "Alerting branch: ${{ steps.resolve.outputs.wazuh_indexer_alerting_branch }}"
 
   get-version:
     runs-on: ubuntu-24.04
@@ -83,8 +103,29 @@ jobs:
           path: ~/.m2/repository
           key: maven-common-utils-${{ github.ref_name }}
 
+  publish-alerting:
+    runs-on: ubuntu-24.04
+    needs: [ branches, get-version, publish-common-utils ]
+    steps:
+      - name: Restore Maven Local cache (common-utils)
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.m2/repository
+          key: maven-common-utils-${{ github.ref_name }}
+      - name: Publish alerting to Maven Local
+        uses: wazuh/wazuh-indexer-alerting/.github/actions/5_local_maven_publisher@main
+        with:
+          version: ${{ needs.get-version.outputs.version }}
+          revision: ${{ inputs.revision }}
+          reference: ${{ needs.branches.outputs.alerting_ref }}
+      - name: Cache Maven Local
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.m2/repository
+          key: maven-alerting-${{ github.ref_name }}
+
   build:
-    needs: [get-version, publish-common-utils]
+    needs: [get-version, publish-common-utils, publish-alerting]
     runs-on: ubuntu-24.04
     env:
       plugin_name: wazuh-indexer-security-analytics
@@ -103,6 +144,12 @@ jobs:
         with:
           path: ~/.m2/repository
           key: maven-common-utils-${{ github.ref_name }}
+
+      - name: Restore Maven Local cache (alerting)
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.m2/repository
+          key: maven-alerting-${{ github.ref_name }}
 
       - name: Get version
         id: version

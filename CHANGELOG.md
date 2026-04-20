@@ -19,7 +19,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Modify rule and log type creation logic to enable them to have a lifecycle support [(#69)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/69)
 - Implement spotless configuration from Wazuh Indexer Plugins repository [(#70)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/70)
 - Add logs to detect problems with detectors creation [(#83)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/83)
+- Create new Rule Testing action [(#96)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/96)
 - Add --set-as-main flag support to repository bumper [(#90)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/90)
+- Add Wazuh Alerting plugin to the build process [(#114)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/114)
 
 ### Dependencies
 - Update to JDK 25 [(#49)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/49)
@@ -37,6 +39,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Allow creating custom and standard integrations [(#32)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/32)
 - Change SAP logic to use findings indices [(#76)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/76)
 - Optimize findings enrichment [(#93)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/93)
+- Limit number of rules per detector [(#111)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/111)
+- Disable standard threat detectors modification [(#121)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/121)
 
 ### Deprecated
 -
@@ -56,4 +60,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Security
 -
 
-[Unreleased 5.0.x]: https://github.com/wazuh/wazuh-indexer-security-analytics/compare/main...main
+[Unreleased 5.0.x]: https://github.com/wazuh/wazuh-indexer-security-analytics/compare/1435464d84e284d514817616c3b957228f1c5518...main

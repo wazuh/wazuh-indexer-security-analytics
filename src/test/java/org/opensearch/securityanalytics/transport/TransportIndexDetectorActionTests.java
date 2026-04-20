@@ -23,10 +23,71 @@ import org.opensearch.test.OpenSearchTestCase;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static org.opensearch.securityanalytics.TestHelpers.randomDetectorWithInputs;
 
 public class TransportIndexDetectorActionTests extends OpenSearchTestCase {
+
+    public void testValidateRuleCount_withinLimit_returnsNull() {
+        List<DetectorRule> rules = List.of(new DetectorRule("rule-1"), new DetectorRule("rule-2"));
+        DetectorInput input =
+                new DetectorInput("test", List.of("index-1"), Collections.emptyList(), rules);
+        Detector detector = randomDetectorWithInputs(List.of(input));
+
+        assertNull(TransportIndexDetectorAction.validateRuleCount(detector));
+    }
+
+    public void testValidateRuleCount_atLimit_returnsNull() {
+        List<DetectorRule> rules =
+                IntStream.rangeClosed(1, 100)
+                        .mapToObj(i -> new DetectorRule("rule-" + i))
+                        .collect(Collectors.toList());
+        DetectorInput input =
+                new DetectorInput("test", List.of("index-1"), Collections.emptyList(), rules);
+        Detector detector = randomDetectorWithInputs(List.of(input));
+
+        assertNull(TransportIndexDetectorAction.validateRuleCount(detector));
+    }
+
+    public void testValidateRuleCount_exceedsLimit_returnsError() {
+        List<DetectorRule> rules =
+                IntStream.rangeClosed(1, 101)
+                        .mapToObj(i -> new DetectorRule("rule-" + i))
+                        .collect(Collectors.toList());
+        DetectorInput input =
+                new DetectorInput("test", List.of("index-1"), Collections.emptyList(), rules);
+        Detector detector = randomDetectorWithInputs(List.of(input));
+
+        String error = TransportIndexDetectorAction.validateRuleCount(detector);
+        assertNotNull(error);
+        assertTrue(error.contains("more than 100 rules"));
+        assertTrue(error.contains("101"));
+    }
+
+    public void testValidateRuleCount_customRulesExceedsLimit_returnsError() {
+        List<DetectorRule> customRules =
+                IntStream.rangeClosed(1, 101)
+                        .mapToObj(i -> new DetectorRule("custom-rule-" + i))
+                        .collect(Collectors.toList());
+        DetectorInput input =
+                new DetectorInput("test", List.of("index-1"), customRules, Collections.emptyList());
+        Detector detector = randomDetectorWithInputs(List.of(input));
+
+        String error = TransportIndexDetectorAction.validateRuleCount(detector);
+        assertNotNull(error);
+        assertTrue(error.contains("more than 100 rules"));
+    }
+
+    public void testValidateRuleCount_emptyRules_returnsNull() {
+        DetectorInput input =
+                new DetectorInput(
+                        "test", List.of("index-1"), Collections.emptyList(), Collections.emptyList());
+        Detector detector = randomDetectorWithInputs(List.of(input));
+
+        assertNull(TransportIndexDetectorAction.validateRuleCount(detector));
+    }
 
     public void testValidateSingleRuleSpace_onlyPrePackaged_returnsNull() {
         List<DetectorRule> prePackaged =
