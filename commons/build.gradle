@@ -91,6 +91,7 @@ task javadocJar(type: Jar) {
 }
 publishing {
     repositories {
+        mavenLocal()
         maven {
             name = 'staging'
             url = "${rootProject.buildDir}/local-staging-repo"
