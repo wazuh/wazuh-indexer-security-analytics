@@ -72,7 +72,7 @@ jobs:
           path: ~/.m2/repository
           key: ${{ github.run_id }}-common-utils
       - name: Publish notifications to Maven Local
-        uses: wazuh/wazuh-indexer-notifications/.github/actions/5_local_maven_publisher@1436-fix-security-analytics-integtests
+        uses: wazuh/wazuh-indexer-notifications/.github/actions/5_local_maven_publisher@main
         with:
           version: ${{ needs.get-version.outputs.version }}
           revision: 0
