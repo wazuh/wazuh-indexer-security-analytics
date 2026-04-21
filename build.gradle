@@ -140,7 +140,7 @@ testClusters.javaRestTest {
 }
 
 allprojects {
-    group = 'org.opensearch'
+    group = 'com.wazuh'
     version = "${wazuh_version}" + ".${revision}"
 
     apply from: "$rootDir/build-tools/repositories.gradle"
@@ -155,7 +155,7 @@ publishing {
     publications {
         pluginZip(MavenPublication) { publication ->
             pom {
-                groupId = "org.opensearch"
+                groupId = "com.wazuh"
                 name = "wazuh-indexer-security-analytics"
                 description = "Wazuh Indexer Security Analytics plugin"
                 licenses {
@@ -266,6 +266,8 @@ task integTest(type: RestIntegTestTask) {
 tasks.named("check").configure { dependsOn(integTest) }
 
 tasks.named("publishNebulaPublicationToMavenLocal").configure { dependsOn("generatePomFileForPluginZipPublication") }
+
+evaluationDependsOnChildren()
 
 tasks.named("test").configure {
     // Enable prepackaged rules for testing environments.
@@ -426,9 +428,6 @@ testClusters.integTest {
 }
 def usingRemoteCluster = System.properties.containsKey('tests.rest.cluster') || System.properties.containsKey('tests.cluster')
 def usingMultiNode = project.properties.containsKey('numNodes')
-if (!usingRemoteCluster && !usingMultiNode) {
-    apply from: 'build-tools/opensearchplugin-coverage.gradle'
-}
 
 run {
     doFirst {
