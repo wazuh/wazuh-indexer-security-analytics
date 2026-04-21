@@ -76,7 +76,7 @@ public class WTransportIndexDetectorAction
     private static final Logger log = LogManager.getLogger(WTransportIndexDetectorAction.class);
 
     // Constant for the CTI Integrations index
-    private static final String CTI_INTEGRATIONS_INDEX = ".cti-integrations";
+    private static final String CTI_INTEGRATIONS_INDEX = "wazuh-threatintel-integrations";
 
     /**
      * Constructs a new WTransportIndexDetectorAction.
@@ -108,7 +108,8 @@ public class WTransportIndexDetectorAction
     protected void doExecute(
             Task task, WIndexDetectorRequest request, ActionListener<WIndexDetectorResponse> listener) {
 
-        // Fetch the integration document from .cti-integrations to get the true list of rules
+        // Fetch the integration document from wazuh-threatintel-integrations to get the true list of
+        // rules
         SearchRequest integrationSearch = new SearchRequest(CTI_INTEGRATIONS_INDEX);
         integrationSearch.indicesOptions(IndicesOptions.lenientExpandOpen());
 

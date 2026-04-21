@@ -101,7 +101,7 @@ jobs:
         uses: actions/cache/save@v5
         with:
           path: ~/.m2/repository
-          key: maven-common-utils-${{ github.ref_name }}
+          key: ${{ github.run_id }}-common-utils
 
   publish-alerting:
     runs-on: ubuntu-24.04
@@ -111,7 +111,7 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ~/.m2/repository
-          key: maven-common-utils-${{ github.ref_name }}
+          key: ${{ github.run_id }}-common-utils
       - name: Publish alerting to Maven Local
         uses: wazuh/wazuh-indexer-alerting/.github/actions/5_local_maven_publisher@main
         with:
@@ -122,7 +122,7 @@ jobs:
         uses: actions/cache/save@v5
         with:
           path: ~/.m2/repository
-          key: maven-alerting-${{ github.ref_name }}
+          key: ${{ github.run_id }}-alerting
 
   build:
     needs: [get-version, publish-common-utils, publish-alerting]
@@ -139,17 +139,11 @@ jobs:
       - name: Setup Gradle # Used for caching
         uses: gradle/actions/setup-gradle@v6
 
-      - name: Restore Maven Local cache
-        uses: actions/cache/restore@v5
-        with:
-          path: ~/.m2/repository
-          key: maven-common-utils-${{ github.ref_name }}
-
       - name: Restore Maven Local cache (alerting)
         uses: actions/cache/restore@v5
         with:
           path: ~/.m2/repository
-          key: maven-alerting-${{ github.ref_name }}
+          key: ${{ github.run_id }}-alerting
 
       - name: Get version
         id: version
