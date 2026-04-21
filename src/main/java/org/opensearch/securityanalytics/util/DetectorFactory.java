@@ -53,11 +53,6 @@ public class DetectorFactory {
      */
     public static Detector createDetector(
             String integration, String category, List<String> detectorRules) {
-        return createDetector(integration, category, detectorRules, Detector.SIGMA_SOURCE);
-    }
-
-    public static Detector createDetector(
-            String integration, String category, List<String> detectorRules, String source) {
 
         List<DetectorRule> rules = new ArrayList<>();
         detectorRules.forEach(rule -> rules.add(new DetectorRule(rule)));
@@ -91,7 +86,6 @@ public class DetectorFactory {
                 null,
                 null,
                 null,
-                false,
-                source);
+                false);
     }
 }

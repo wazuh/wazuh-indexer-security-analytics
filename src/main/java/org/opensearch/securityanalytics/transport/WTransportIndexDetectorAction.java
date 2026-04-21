@@ -391,7 +391,12 @@ public class WTransportIndexDetectorAction
             List<String> validRuleIds) {
         Detector detector =
                 DetectorFactory.createDetector(
-                        request.getLogTypeName(), request.getCategory(), validRuleIds);
+                        request.getLogTypeName(),
+                        request.getCategory(),
+                        validRuleIds,
+                        request.getSources(),
+                        request.getInterval(),
+                        request.isEnabled());
         detector.setId(request.getDetectorId());
 
         IndexDetectorRequest indexDetectorRequest =
