@@ -404,7 +404,7 @@ public class EventMatcherTests extends OpenSearchTestCase {
         """;
 
     /**
-     * Builds a rule JSON in the same format stored in the .cti-rules index
+     * Builds a rule JSON in the same format stored in the wazuh-threatintel-rules index
      * (after nestMetadataFields processing).
      */
     private static String indexedRuleJson(String id, String title, String level, String detectionField, String detectionValue) {
@@ -494,7 +494,7 @@ public class EventMatcherTests extends OpenSearchTestCase {
         Assert.assertEquals(0, parsed.get("rules_matched"));
     }
 
-    // ---- JSON-based tests (simulating .cti-rules index round-trip) ----
+    // ---- JSON-based tests (simulating wazuh-threatintel-rules index round-trip) ----
 
     /**
      * Startswith parsed from JSON (Content Manager stored format). Verifies the full round-trip: JSON
