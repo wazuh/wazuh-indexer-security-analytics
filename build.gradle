@@ -232,8 +232,8 @@ dependencies {
 
     // Needed for integ tests
     zipArchive group: 'com.wazuh', name: 'wazuh-indexer-alerting', version: "${version}"
-    zipArchive group: 'org.opensearch.plugin', name:'opensearch-notifications-core', version: "${opensearch_build}"
-    zipArchive group: 'org.opensearch.plugin', name:'notifications', version: "${opensearch_build}"
+    zipArchive group: 'com.wazuh', name:'wazuh-indexer-notifications-core', version: "${version}"
+    zipArchive group: 'com.wazuh', name:'wazuh-indexer-notifications', version: "${version}"
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
 
     // Needed for security tests
@@ -354,7 +354,7 @@ testClusters.integTest {
             @Override
             File getAsFile() {
                 return configurations.zipArchive.asFileTree.matching {
-                    include '**/opensearch-notifications-core*'
+                    include '**/wazuh-indexer-notifications-core*'
                 }.singleFile
             }
         }
@@ -364,7 +364,8 @@ testClusters.integTest {
             @Override
             File getAsFile() {
                 return configurations.zipArchive.asFileTree.matching {
-                    include '**/notifications*'
+                    include '**/wazuh-indexer-notifications-*.zip'
+                    exclude '**/wazuh-indexer-notifications-core*'
                 }.singleFile
             }
         }
@@ -374,7 +375,7 @@ testClusters.integTest {
             @Override
             File getAsFile() {
                 return configurations.zipArchive.asFileTree.matching {
-                    include '**/alerting*'
+                    include '**/wazuh-indexer-alerting*'
                 }.singleFile
             }
         }
