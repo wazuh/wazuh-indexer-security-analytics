@@ -40,6 +40,9 @@ public class WIndexDetectorRequest extends ActionRequest {
     private final String category;
     private final List<String> rules;
     private final WriteRequest.RefreshPolicy refreshPolicy;
+    private final List<String> sources;
+    private final int interval;
+    private final boolean enabled;
 
     /**
      * Constructs a new WIndexDetectorRequest.
@@ -55,13 +58,19 @@ public class WIndexDetectorRequest extends ActionRequest {
             String logTypeName,
             String category,
             List<String> rules,
-            WriteRequest.RefreshPolicy refreshPolicy) {
+            WriteRequest.RefreshPolicy refreshPolicy,
+            List<String> sources,
+            int interval,
+            boolean enabled) {
         super();
         this.detectorId = detectorId;
         this.logTypeName = logTypeName;
         this.category = category;
         this.rules = rules;
         this.refreshPolicy = refreshPolicy;
+        this.sources = sources;
+        this.interval = interval;
+        this.enabled = enabled;
     }
 
     /**
@@ -76,7 +85,10 @@ public class WIndexDetectorRequest extends ActionRequest {
                 sin.readString(),
                 sin.readString(),
                 sin.readStringList(),
-                WriteRequest.RefreshPolicy.readFrom(sin));
+                WriteRequest.RefreshPolicy.readFrom(sin),
+                sin.readStringList(),
+                sin.readInt(),
+                sin.readBoolean());
     }
 
     @Override
@@ -91,6 +103,9 @@ public class WIndexDetectorRequest extends ActionRequest {
         out.writeString(this.category);
         out.writeStringCollection(this.rules);
         this.refreshPolicy.writeTo(out);
+        out.writeStringCollection(this.sources);
+        out.writeInt(this.interval);
+        out.writeBoolean(this.enabled);
     }
 
     public String getDetectorId() {
@@ -111,5 +126,17 @@ public class WIndexDetectorRequest extends ActionRequest {
 
     public WriteRequest.RefreshPolicy getRefreshPolicy() {
         return this.refreshPolicy;
+    }
+
+    public List<String> getSources() {
+        return this.sources;
+    }
+
+    public int getInterval() {
+        return this.interval;
+    }
+
+    public boolean isEnabled() {
+        return this.enabled;
     }
 }

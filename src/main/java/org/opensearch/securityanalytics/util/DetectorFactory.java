@@ -91,7 +91,6 @@ public class DetectorFactory {
                 null,
                 null,
                 null,
-                false,
-                source);
+                false);
     }
 }
