@@ -52,7 +52,12 @@ public class DetectorFactory {
      * @return a new {@link Detector} instance configured for the integration
      */
     public static Detector createDetector(
-            String integration, String category, List<String> detectorRules) {
+            String integration,
+            String category,
+            List<String> detectorRules,
+            List<String> sources,
+            int interval,
+            boolean isEnabled) {
 
         List<DetectorRule> rules = new ArrayList<>();
         detectorRules.forEach(rule -> rules.add(new DetectorRule(rule)));
@@ -60,16 +65,18 @@ public class DetectorFactory {
         Long version = 1L;
         String name = integration.toLowerCase(Locale.ROOT);
         String description = "Detector for " + integration + " integration";
-        String dataStream = "wazuh-events-v5-" + category.toLowerCase(Locale.ROOT);
-        IntervalSchedule schedule = new IntervalSchedule(2, ChronoUnit.MINUTES, null);
-        DetectorInput detectorInput =
-                new DetectorInput(description, List.of(dataStream), new ArrayList<>(), rules);
+        List<String> inputs =
+                (sources != null && !sources.isEmpty())
+                        ? sources
+                        : List.of("wazuh-events-v5-" + category.toLowerCase(Locale.ROOT));
+        IntervalSchedule schedule = new IntervalSchedule(interval, ChronoUnit.MINUTES, null);
+        DetectorInput detectorInput = new DetectorInput(description, inputs, new ArrayList<>(), rules);
         // Generate Detector object with this template
         return new Detector(
                 "Detector for " + integration,
                 version,
                 name,
-                true,
+                isEnabled,
                 schedule,
                 Instant.now(),
                 Instant.now(),
