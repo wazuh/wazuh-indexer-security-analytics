@@ -22,6 +22,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Create new Rule Testing action [(#96)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/96)
 - Add --set-as-main flag support to repository bumper [(#90)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/90)
 - Add Wazuh Alerting plugin to the build process [(#114)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/114)
+- Validate single rule space per detector [(#130)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/130)
 
 ### Dependencies
 - Update to JDK 25 [(#49)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/49)
