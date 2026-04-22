@@ -210,53 +210,48 @@ public class WTransportIndexDetectorAction
                 searchRequest,
                 new ActionListener<SearchResponse>() {
                     @Override
+                    @SuppressWarnings("unchecked")
                     public void onResponse(SearchResponse response) {
-                        List<String> invalidSpaceRules = new ArrayList<>();
-                        Set<String> foundRuleIds = new HashSet<>();
-
+                        // Extract hit metadata into RuleHit objects
+                        List<RuleHit> ruleHits = new ArrayList<>();
                         for (var hit : response.getHits().getHits()) {
                             Map<String, Object> sourceMap = hit.getSourceAsMap();
                             Map<String, Object> ruleMap = (Map<String, Object>) sourceMap.get("rule");
 
                             String docId = null;
-                            String spaceSource = null;
+                            String space = null;
 
                             if (ruleMap != null) {
                                 docId = (String) ruleMap.get("document.id");
-                                spaceSource = (String) ruleMap.get("space");
+                                space = (String) ruleMap.get("space");
                             }
 
                             if (docId == null) {
                                 docId = hit.getId();
                             }
 
-                            foundRuleIds.add(docId);
+                            ruleHits.add(new RuleHit(hit.getIndex(), docId, space));
+                        }
 
-                            if ("draft".equalsIgnoreCase(spaceSource) || "test".equalsIgnoreCase(spaceSource)) {
-                                invalidSpaceRules.add(docId);
-                            }
+                        // Classify and validate
+                        RuleClassificationResult result = classifyRuleHits(ruleHits);
+                        String validationError = validateClassificationResult(result, request.getLogTypeName());
+                        if (validationError != null) {
+                            log.warn(validationError);
+                            listener.onFailure(
+                                    new OpenSearchStatusException(validationError, RestStatus.BAD_REQUEST));
+                            return;
                         }
 
                         List<String> missingRules = new ArrayList<>();
                         List<String> validRulesToKeep = new ArrayList<>();
 
-                        // Filter rules: track missing, and collect only the valid ones
                         for (String expectedId : expectedRuleIds) {
-                            if (!foundRuleIds.contains(expectedId)) {
+                            if (!result.foundRuleIds.contains(expectedId)) {
                                 missingRules.add(expectedId);
-                            } else if (!invalidSpaceRules.contains(expectedId)) {
+                            } else {
                                 validRulesToKeep.add(expectedId);
                             }
-                        }
-
-                        if (!invalidSpaceRules.isEmpty()) {
-                            String errorMsg =
-                                    String.format(
-                                            "Cannot create [%s] detector. Rules %s are in draft/test space.",
-                                            request.getLogTypeName(), invalidSpaceRules);
-                            log.warn(errorMsg);
-                            listener.onFailure(new OpenSearchStatusException(errorMsg, RestStatus.BAD_REQUEST));
-                            return;
                         }
 
                         if (!missingRules.isEmpty()) {
@@ -267,15 +262,16 @@ public class WTransportIndexDetectorAction
                         }
 
                         log.debug(
-                                "Rule validation for [{}]: expected={}, found={}, valid={}, missing={}, invalidSpace={}",
+                                "Rule validation for [{}]: expected={}, found={}, valid={}, missing={}, "
+                                        + "prePackaged={}, custom={}",
                                 request.getLogTypeName(),
                                 expectedRuleIds.size(),
-                                foundRuleIds.size(),
+                                result.foundRuleIds.size(),
                                 validRulesToKeep.size(),
                                 missingRules.size(),
-                                invalidSpaceRules.size());
+                                result.prePackagedRuleIds.size(),
+                                result.customRuleIds.size());
 
-                        // Proceed to creation with ONLY the valid, existing rules
                         WTransportIndexDetectorAction.this.executeDetectorCreation(
                                 request, listener, validRulesToKeep);
                     }
@@ -302,6 +298,93 @@ public class WTransportIndexDetectorAction
      *     completion
      * @param validRuleIds the sanitized list of valid rule IDs to associate with the detector
      */
+    /** Result of classifying a set of rule search hits by index origin and space. */
+    static class RuleClassificationResult {
+        final Set<String> prePackagedRuleIds;
+        final Set<String> customRuleIds;
+        final List<String> invalidCustomRules;
+        final Set<String> foundRuleIds;
+
+        RuleClassificationResult(
+                Set<String> prePackagedRuleIds,
+                Set<String> customRuleIds,
+                List<String> invalidCustomRules,
+                Set<String> foundRuleIds) {
+            this.prePackagedRuleIds = prePackagedRuleIds;
+            this.customRuleIds = customRuleIds;
+            this.invalidCustomRules = invalidCustomRules;
+            this.foundRuleIds = foundRuleIds;
+        }
+    }
+
+    /**
+     * Classifies rule hits by their source index and space field.
+     *
+     * <p>Rules from the pre-packaged index are accepted as-is. Rules from the custom index must have
+     * {@code space} equal to "Custom" (case-insensitive); otherwise they are flagged as invalid.
+     *
+     * @param hits list of (index, docId, space) tuples representing search hits
+     * @return classification result with sets of pre-packaged, custom, invalid, and found rule IDs
+     */
+    static RuleClassificationResult classifyRuleHits(List<RuleHit> hits) {
+        Set<String> prePackagedRuleIds = new HashSet<>();
+        Set<String> customRuleIds = new HashSet<>();
+        List<String> invalidCustomRules = new ArrayList<>();
+        Set<String> foundRuleIds = new HashSet<>();
+
+        for (RuleHit hit : hits) {
+            foundRuleIds.add(hit.docId);
+
+            if (Rule.PRE_PACKAGED_RULES_INDEX.equals(hit.index)) {
+                prePackagedRuleIds.add(hit.docId);
+            } else {
+                if ("Custom".equalsIgnoreCase(hit.space)) {
+                    customRuleIds.add(hit.docId);
+                } else {
+                    invalidCustomRules.add(hit.docId);
+                }
+            }
+        }
+
+        return new RuleClassificationResult(
+                prePackagedRuleIds, customRuleIds, invalidCustomRules, foundRuleIds);
+    }
+
+    /**
+     * Validates the classification result, returning an error message or null if valid.
+     *
+     * @param result the classification result
+     * @param logTypeName the log type name, used in the error message
+     * @return an error message string if validation fails, or null if valid
+     */
+    static String validateClassificationResult(RuleClassificationResult result, String logTypeName) {
+        if (!result.invalidCustomRules.isEmpty()) {
+            return String.format(
+                    "Cannot create [%s] detector. Custom rules %s are not in \"Custom\" space.",
+                    logTypeName, result.invalidCustomRules);
+        }
+        if (!result.prePackagedRuleIds.isEmpty() && !result.customRuleIds.isEmpty()) {
+            return String.format(
+                    "Cannot create [%s] detector. Rules must be either all "
+                            + "pre-packaged or all custom, but found both.",
+                    logTypeName);
+        }
+        return null;
+    }
+
+    /** Simple holder for the fields extracted from a rule search hit. */
+    static class RuleHit {
+        final String index;
+        final String docId;
+        final String space;
+
+        RuleHit(String index, String docId, String space) {
+            this.index = index;
+            this.docId = docId;
+            this.space = space;
+        }
+    }
+
     private void executeDetectorCreation(
             WIndexDetectorRequest request,
             ActionListener<WIndexDetectorResponse> listener,
