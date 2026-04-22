@@ -16,204 +16,237 @@
  */
 package org.opensearch.securityanalytics.transport;
 
+import org.opensearch.securityanalytics.model.Rule;
+import org.opensearch.securityanalytics.transport.WTransportIndexDetectorAction.RuleClassificationResult;
+import org.opensearch.securityanalytics.transport.WTransportIndexDetectorAction.RuleHit;
 import org.opensearch.test.OpenSearchTestCase;
 
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 public class WTransportIndexDetectorActionTests extends OpenSearchTestCase {
 
-    public void testClassifyRuleWorld_nullSpace_returnsStandard() {
-        assertEquals("Standard", WTransportIndexDetectorAction.classifyRuleWorld(null));
+    // -----------------------------------------------------------------------
+    // classifyRuleHits tests
+    // -----------------------------------------------------------------------
+
+    public void testClassifyRuleHits_allPrePackaged() {
+        List<RuleHit> hits =
+                List.of(
+                        new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "rule-1", "Sigma"),
+                        new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "rule-2", "Sigma"));
+
+        RuleClassificationResult result = WTransportIndexDetectorAction.classifyRuleHits(hits);
+
+        assertEquals(2, result.prePackagedRuleIds.size());
+        assertTrue(result.prePackagedRuleIds.contains("rule-1"));
+        assertTrue(result.prePackagedRuleIds.contains("rule-2"));
+        assertTrue(result.customRuleIds.isEmpty());
+        assertTrue(result.invalidCustomRules.isEmpty());
+        assertEquals(2, result.foundRuleIds.size());
     }
 
-    public void testClassifyRuleWorld_sigmaSpace_returnsStandard() {
-        assertEquals("Standard", WTransportIndexDetectorAction.classifyRuleWorld("Sigma"));
+    public void testClassifyRuleHits_allCustomWithCustomSpace() {
+        List<RuleHit> hits =
+                List.of(
+                        new RuleHit(Rule.CUSTOM_RULES_INDEX, "rule-1", "Custom"),
+                        new RuleHit(Rule.CUSTOM_RULES_INDEX, "rule-2", "custom"));
+
+        RuleClassificationResult result = WTransportIndexDetectorAction.classifyRuleHits(hits);
+
+        assertTrue(result.prePackagedRuleIds.isEmpty());
+        assertEquals(2, result.customRuleIds.size());
+        assertTrue(result.invalidCustomRules.isEmpty());
     }
 
-    public void testClassifyRuleWorld_sigmaCaseInsensitive_returnsStandard() {
-        assertEquals("Standard", WTransportIndexDetectorAction.classifyRuleWorld("sigma"));
-        assertEquals("Standard", WTransportIndexDetectorAction.classifyRuleWorld("SIGMA"));
+    public void testClassifyRuleHits_customRuleWithDraftSpace_invalid() {
+        List<RuleHit> hits = List.of(new RuleHit(Rule.CUSTOM_RULES_INDEX, "rule-1", "Draft"));
+
+        RuleClassificationResult result = WTransportIndexDetectorAction.classifyRuleHits(hits);
+
+        assertTrue(result.prePackagedRuleIds.isEmpty());
+        assertTrue(result.customRuleIds.isEmpty());
+        assertEquals(1, result.invalidCustomRules.size());
+        assertEquals("rule-1", result.invalidCustomRules.get(0));
     }
 
-    public void testClassifyRuleWorld_draftSpace_returnsUser() {
-        assertEquals("User", WTransportIndexDetectorAction.classifyRuleWorld("Draft"));
+    public void testClassifyRuleHits_customRuleWithTestSpace_invalid() {
+        List<RuleHit> hits = List.of(new RuleHit(Rule.CUSTOM_RULES_INDEX, "rule-1", "Test"));
+
+        RuleClassificationResult result = WTransportIndexDetectorAction.classifyRuleHits(hits);
+
+        assertTrue(result.customRuleIds.isEmpty());
+        assertEquals(1, result.invalidCustomRules.size());
     }
 
-    public void testClassifyRuleWorld_testSpace_returnsUser() {
-        assertEquals("User", WTransportIndexDetectorAction.classifyRuleWorld("Test"));
+    public void testClassifyRuleHits_customRuleWithNullSpace_invalid() {
+        List<RuleHit> hits = List.of(new RuleHit(Rule.CUSTOM_RULES_INDEX, "rule-1", null));
+
+        RuleClassificationResult result = WTransportIndexDetectorAction.classifyRuleHits(hits);
+
+        assertTrue(result.customRuleIds.isEmpty());
+        assertEquals(1, result.invalidCustomRules.size());
     }
 
-    public void testClassifyRuleWorld_customSpace_returnsUser() {
-        assertEquals("User", WTransportIndexDetectorAction.classifyRuleWorld("Custom"));
+    public void testClassifyRuleHits_mixedPrePackagedAndCustom() {
+        List<RuleHit> hits =
+                List.of(
+                        new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "rule-std", "Sigma"),
+                        new RuleHit(Rule.CUSTOM_RULES_INDEX, "rule-cust", "Custom"));
+
+        RuleClassificationResult result = WTransportIndexDetectorAction.classifyRuleHits(hits);
+
+        assertEquals(1, result.prePackagedRuleIds.size());
+        assertEquals(1, result.customRuleIds.size());
+        assertTrue(result.invalidCustomRules.isEmpty());
+        assertEquals(2, result.foundRuleIds.size());
     }
 
-    public void testClassifyRuleWorld_unknownSpace_returnsUser() {
-        assertEquals("User", WTransportIndexDetectorAction.classifyRuleWorld("SomeOtherSpace"));
+    public void testClassifyRuleHits_emptyHits() {
+        RuleClassificationResult result =
+                WTransportIndexDetectorAction.classifyRuleHits(new ArrayList<>());
+
+        assertTrue(result.prePackagedRuleIds.isEmpty());
+        assertTrue(result.customRuleIds.isEmpty());
+        assertTrue(result.invalidCustomRules.isEmpty());
+        assertTrue(result.foundRuleIds.isEmpty());
     }
 
-    public void testClassifyRuleWorld_emptyString_returnsUser() {
-        assertEquals("User", WTransportIndexDetectorAction.classifyRuleWorld(""));
+    public void testClassifyRuleHits_prePackagedWithAnySpace_accepted() {
+        // Pre-packaged rules are accepted regardless of their space value
+        List<RuleHit> hits =
+                List.of(
+                        new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "rule-1", "Sigma"),
+                        new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "rule-2", null),
+                        new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "rule-3", "SomeOther"));
+
+        RuleClassificationResult result = WTransportIndexDetectorAction.classifyRuleHits(hits);
+
+        assertEquals(3, result.prePackagedRuleIds.size());
+        assertTrue(result.customRuleIds.isEmpty());
+        assertTrue(result.invalidCustomRules.isEmpty());
     }
 
-    public void testValidateRuleWorlds_allStandard_returnsNull() {
-        Map<String, String> worldMap = new HashMap<>();
-        worldMap.put("rule-1", "Standard");
-        worldMap.put("rule-2", "Standard");
+    public void testClassifyRuleHits_customRuleWithEmptySpace_invalid() {
+        List<RuleHit> hits = List.of(new RuleHit(Rule.CUSTOM_RULES_INDEX, "rule-1", ""));
 
-        assertNull(
-                WTransportIndexDetectorAction.validateRuleWorlds(
-                        worldMap, List.of("rule-1", "rule-2"), "test-log-type"));
+        RuleClassificationResult result = WTransportIndexDetectorAction.classifyRuleHits(hits);
+
+        assertTrue(result.customRuleIds.isEmpty());
+        assertEquals(1, result.invalidCustomRules.size());
     }
 
-    public void testValidateRuleWorlds_allUser_returnsNull() {
-        Map<String, String> worldMap = new HashMap<>();
-        worldMap.put("rule-1", "User");
-        worldMap.put("rule-2", "User");
+    // -----------------------------------------------------------------------
+    // validateClassificationResult tests
+    // -----------------------------------------------------------------------
 
-        assertNull(
-                WTransportIndexDetectorAction.validateRuleWorlds(
-                        worldMap, List.of("rule-1", "rule-2"), "test-log-type"));
+    public void testValidate_allPrePackaged_returnsNull() {
+        RuleClassificationResult result =
+                WTransportIndexDetectorAction.classifyRuleHits(
+                        List.of(
+                                new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "r1", "Sigma"),
+                                new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "r2", "Sigma")));
+
+        assertNull(WTransportIndexDetectorAction.validateClassificationResult(result, "test-type"));
     }
 
-    public void testValidateRuleWorlds_mixedWorlds_returnsError() {
-        Map<String, String> worldMap = new HashMap<>();
-        worldMap.put("rule-standard", "Standard");
-        worldMap.put("rule-user", "User");
+    public void testValidate_allCustom_returnsNull() {
+        RuleClassificationResult result =
+                WTransportIndexDetectorAction.classifyRuleHits(
+                        List.of(
+                                new RuleHit(Rule.CUSTOM_RULES_INDEX, "r1", "Custom"),
+                                new RuleHit(Rule.CUSTOM_RULES_INDEX, "r2", "Custom")));
+
+        assertNull(WTransportIndexDetectorAction.validateClassificationResult(result, "test-type"));
+    }
+
+    public void testValidate_mixed_returnsError() {
+        RuleClassificationResult result =
+                WTransportIndexDetectorAction.classifyRuleHits(
+                        List.of(
+                                new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "r-std", "Sigma"),
+                                new RuleHit(Rule.CUSTOM_RULES_INDEX, "r-cust", "Custom")));
 
         String error =
-                WTransportIndexDetectorAction.validateRuleWorlds(
-                        worldMap, List.of("rule-standard", "rule-user"), "my-integration");
+                WTransportIndexDetectorAction.validateClassificationResult(result, "my-integration");
 
         assertNotNull(error);
         assertTrue(error.contains("my-integration"));
-        assertTrue(error.contains("standard or custom"));
+        assertTrue(error.contains("pre-packaged or all custom"));
     }
 
-    public void testValidateRuleWorlds_singleRule_standard_returnsNull() {
-        Map<String, String> worldMap = new HashMap<>();
-        worldMap.put("only-rule", "Standard");
+    public void testValidate_invalidCustomSpace_returnsError() {
+        RuleClassificationResult result =
+                WTransportIndexDetectorAction.classifyRuleHits(
+                        List.of(new RuleHit(Rule.CUSTOM_RULES_INDEX, "r-draft", "Draft")));
 
-        assertNull(
-                WTransportIndexDetectorAction.validateRuleWorlds(
-                        worldMap, List.of("only-rule"), "test-log-type"));
-    }
-
-    public void testValidateRuleWorlds_singleRule_user_returnsNull() {
-        Map<String, String> worldMap = new HashMap<>();
-        worldMap.put("only-rule", "User");
-
-        assertNull(
-                WTransportIndexDetectorAction.validateRuleWorlds(
-                        worldMap, List.of("only-rule"), "test-log-type"));
-    }
-
-    public void testValidateRuleWorlds_emptyRuleList_returnsNull() {
-        Map<String, String> worldMap = new HashMap<>();
-        worldMap.put("rule-1", "Standard");
-
-        assertNull(
-                WTransportIndexDetectorAction.validateRuleWorlds(worldMap, List.of(), "test-log-type"));
-    }
-
-    public void testValidateRuleWorlds_ruleNotInMap_ignored() {
-        Map<String, String> worldMap = new HashMap<>();
-        worldMap.put("rule-1", "Standard");
-
-        assertNull(
-                WTransportIndexDetectorAction.validateRuleWorlds(
-                        worldMap, List.of("rule-1", "rule-2"), "test-log-type"));
-    }
-
-    public void testValidateRuleWorlds_multipleStandardWithMissingRules_returnsNull() {
-        Map<String, String> worldMap = new HashMap<>();
-        worldMap.put("rule-a", "Standard");
-        worldMap.put("rule-b", "Standard");
-
-        assertNull(
-                WTransportIndexDetectorAction.validateRuleWorlds(
-                        worldMap, List.of("rule-a", "rule-b", "rule-missing"), "test-log-type"));
-    }
-
-    public void testValidateRuleWorlds_mixedWithMissing_returnsError() {
-        Map<String, String> worldMap = new HashMap<>();
-        worldMap.put("rule-std", "Standard");
-        worldMap.put("rule-usr", "User");
-
-        String error =
-                WTransportIndexDetectorAction.validateRuleWorlds(
-                        worldMap, List.of("rule-std", "rule-usr", "rule-missing"), "mixed-int");
+        String error = WTransportIndexDetectorAction.validateClassificationResult(result, "my-type");
 
         assertNotNull(error);
-        assertTrue(error.contains("mixed-int"));
+        assertTrue(error.contains("my-type"));
+        assertTrue(error.contains("not in \"Custom\" space"));
+        assertTrue(error.contains("r-draft"));
     }
 
-    public void testValidateRuleWorlds_noRulesFoundInMap_returnsNull() {
-        Map<String, String> worldMap = new HashMap<>();
-        worldMap.put("other-rule", "Standard");
+    public void testValidate_invalidCustomSpace_takePrecedenceOverMixedCheck() {
+        // If there are invalid custom rules AND pre-packaged rules, the invalid space
+        // error should be reported (it's checked first)
+        RuleClassificationResult result =
+                WTransportIndexDetectorAction.classifyRuleHits(
+                        List.of(
+                                new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "r-std", "Sigma"),
+                                new RuleHit(Rule.CUSTOM_RULES_INDEX, "r-draft", "Draft")));
 
-        assertNull(
-                WTransportIndexDetectorAction.validateRuleWorlds(
-                        worldMap, List.of("missing-1", "missing-2"), "test-log-type"));
-    }
-
-    public void testClassifyAndValidate_sigmaAndNull_bothStandard() {
-        Map<String, String> worldMap = new HashMap<>();
-        worldMap.put("rule-sigma", WTransportIndexDetectorAction.classifyRuleWorld("Sigma"));
-        worldMap.put("rule-null", WTransportIndexDetectorAction.classifyRuleWorld(null));
-
-        assertNull(
-                WTransportIndexDetectorAction.validateRuleWorlds(
-                        worldMap, List.of("rule-sigma", "rule-null"), "test"));
-    }
-
-    public void testClassifyAndValidate_draftTestCustom_allUser() {
-        Map<String, String> worldMap = new HashMap<>();
-        worldMap.put("r1", WTransportIndexDetectorAction.classifyRuleWorld("Draft"));
-        worldMap.put("r2", WTransportIndexDetectorAction.classifyRuleWorld("Test"));
-        worldMap.put("r3", WTransportIndexDetectorAction.classifyRuleWorld("Custom"));
-
-        assertNull(
-                WTransportIndexDetectorAction.validateRuleWorlds(
-                        worldMap, List.of("r1", "r2", "r3"), "test"));
-    }
-
-    public void testClassifyAndValidate_sigmaAndCustom_rejected() {
-        Map<String, String> worldMap = new HashMap<>();
-        worldMap.put("std", WTransportIndexDetectorAction.classifyRuleWorld("Sigma"));
-        worldMap.put("cust", WTransportIndexDetectorAction.classifyRuleWorld("Custom"));
-
-        String error =
-                WTransportIndexDetectorAction.validateRuleWorlds(
-                        worldMap, List.of("std", "cust"), "wazuh-rootcheck");
+        String error = WTransportIndexDetectorAction.validateClassificationResult(result, "test");
 
         assertNotNull(error);
-        assertTrue(error.contains("wazuh-rootcheck"));
+        assertTrue(error.contains("not in \"Custom\" space"));
     }
 
-    public void testClassifyAndValidate_nullAndDraft_rejected() {
-        Map<String, String> worldMap = new HashMap<>();
-        worldMap.put("std", WTransportIndexDetectorAction.classifyRuleWorld(null));
-        worldMap.put("draft", WTransportIndexDetectorAction.classifyRuleWorld("Draft"));
+    public void testValidate_empty_returnsNull() {
+        RuleClassificationResult result =
+                WTransportIndexDetectorAction.classifyRuleHits(new ArrayList<>());
 
-        String error =
-                WTransportIndexDetectorAction.validateRuleWorlds(
-                        worldMap, List.of("std", "draft"), "my-type");
-
-        assertNotNull(error);
+        assertNull(WTransportIndexDetectorAction.validateClassificationResult(result, "test"));
     }
 
-    public void testClassifyAndValidate_emptyStringAndSigma_rejected() {
-        Map<String, String> worldMap = new HashMap<>();
-        worldMap.put("rule-empty", WTransportIndexDetectorAction.classifyRuleWorld(""));
-        worldMap.put("rule-sigma", WTransportIndexDetectorAction.classifyRuleWorld("Sigma"));
+    public void testValidate_singlePrePackaged_returnsNull() {
+        RuleClassificationResult result =
+                WTransportIndexDetectorAction.classifyRuleHits(
+                        List.of(new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "only-rule", "Sigma")));
 
-        String error =
-                WTransportIndexDetectorAction.validateRuleWorlds(
-                        worldMap, List.of("rule-empty", "rule-sigma"), "mixed-edge-case");
+        assertNull(WTransportIndexDetectorAction.validateClassificationResult(result, "test"));
+    }
+
+    public void testValidate_singleCustom_returnsNull() {
+        RuleClassificationResult result =
+                WTransportIndexDetectorAction.classifyRuleHits(
+                        List.of(new RuleHit(Rule.CUSTOM_RULES_INDEX, "only-rule", "Custom")));
+
+        assertNull(WTransportIndexDetectorAction.validateClassificationResult(result, "test"));
+    }
+
+    public void testValidate_multipleInvalidCustomSpaces_allReported() {
+        RuleClassificationResult result =
+                WTransportIndexDetectorAction.classifyRuleHits(
+                        List.of(
+                                new RuleHit(Rule.CUSTOM_RULES_INDEX, "r-draft", "Draft"),
+                                new RuleHit(Rule.CUSTOM_RULES_INDEX, "r-test", "Test")));
+
+        String error = WTransportIndexDetectorAction.validateClassificationResult(result, "my-type");
 
         assertNotNull(error);
-        assertTrue(error.contains("mixed-edge-case"));
+        assertTrue(error.contains("r-draft"));
+        assertTrue(error.contains("r-test"));
+    }
+
+    public void testValidate_customCaseInsensitive_accepted() {
+        RuleClassificationResult result =
+                WTransportIndexDetectorAction.classifyRuleHits(
+                        List.of(
+                                new RuleHit(Rule.CUSTOM_RULES_INDEX, "r1", "CUSTOM"),
+                                new RuleHit(Rule.CUSTOM_RULES_INDEX, "r2", "custom")));
+
+        assertNull(WTransportIndexDetectorAction.validateClassificationResult(result, "test"));
     }
 }
