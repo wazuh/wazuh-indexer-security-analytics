@@ -114,7 +114,7 @@ public class CorrelationAlertService {
                     }
                 },
                 e -> {
-                    log.error("Search request to fetch correlation alerts failed", e);
+                    log.error("Search request to fetch correlation alerts failed: {}", e.getMessage());
                     listener.onFailure(e);
                 }
         ));
@@ -147,7 +147,7 @@ public class CorrelationAlertService {
 
             client.index(indexRequest, listener);
         } catch (IOException ex) {
-            log.error("Exception while adding alerts in .opensearch-sap-correlation-alerts index", ex);
+            log.error("Exception while adding alerts in .opensearch-sap-correlation-alerts index: {}", ex.getMessage());
         }
     }
 
@@ -189,7 +189,7 @@ public class CorrelationAlertService {
                     }
                 },
                 e -> {
-                    log.error("Search request to fetch correlation alerts failed", e);
+                    log.error("Search request to fetch correlation alerts failed: {}", e.getMessage());
                     if (e instanceof IndexNotFoundException) {
                         listener.onResponse(new GetCorrelationAlertsResponse(Collections.emptyList(), 0));
                     } else {

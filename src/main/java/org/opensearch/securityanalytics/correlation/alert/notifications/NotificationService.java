@@ -15,7 +15,6 @@ import org.opensearch.commons.notifications.action.GetNotificationConfigRequest;
 import org.opensearch.commons.notifications.action.GetNotificationConfigResponse;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.rest.RestStatus;
-import org.opensearch.securityanalytics.threatIntel.iocscan.service.ThreatIntelAlertContext;
 import org.opensearch.securityanalytics.util.SecurityAnalyticsException;
 import org.opensearch.script.ScriptService;
 import org.opensearch.transport.client.node.NodeClient;
@@ -131,10 +130,6 @@ public class NotificationService {
     }
 
     public static String compileTemplate(CorrelationAlertContext ctx, Script template) {
-        return compileTemplateGeneric(template, ctx.asTemplateArg());
-    }
-
-    public static String compileTemplate(ThreatIntelAlertContext ctx, Script template) {
         return compileTemplateGeneric(template, ctx.asTemplateArg());
     }
 

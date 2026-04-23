@@ -57,9 +57,23 @@ public class SigmaRule {
 
     private CompositeSigmaErrors errors;
 
+    private SigmaMetadata metadata;
+
+    private SigmaMitre mitre;
+
+    private SigmaCompliance compliance;
+
     public SigmaRule(String title, SigmaLogSource logSource, SigmaDetections detection, UUID id, SigmaStatus status,
                      String description, List<String> references, List<SigmaRuleTag> tags, String author, Date date,
                      List<String> fields, List<String> falsePositives, SigmaLevel level, CompositeSigmaErrors errors) {
+        this(title, logSource, detection, id, status, description, references, tags, author, date,
+                fields, falsePositives, level, errors, null, null, null);
+    }
+
+    public SigmaRule(String title, SigmaLogSource logSource, SigmaDetections detection, UUID id, SigmaStatus status,
+                     String description, List<String> references, List<SigmaRuleTag> tags, String author, Date date,
+                     List<String> fields, List<String> falsePositives, SigmaLevel level, CompositeSigmaErrors errors,
+                     SigmaMetadata metadata, SigmaMitre mitre, SigmaCompliance compliance) {
         this.title = title;
         this.logSource = logSource;
         this.detection = detection;
@@ -75,6 +89,10 @@ public class SigmaRule {
         this.level = level;
 
         this.errors = errors;
+
+        this.metadata = metadata;
+        this.mitre = mitre;
+        this.compliance = compliance;
 
         if (this.references == null) {
             this.references = new ArrayList<>();
@@ -94,6 +112,16 @@ public class SigmaRule {
     protected static SigmaRule fromDict(Map<String, Object> rule, boolean collectErrors) {
         CompositeSigmaErrors errors = new CompositeSigmaErrors();
 
+        // 1. Parse metadata FIRST to apply the new normalized schema
+        SigmaMetadata metadata = null;
+        if (rule.containsKey("metadata")) {
+            try {
+                metadata = SigmaMetadata.fromDict((Map<String, Object>) rule.get("metadata"));
+            } catch (Exception ex) {
+                errors.addError(new SigmaError("Invalid metadata block: " + ex.getMessage()));
+            }
+        }
+
         UUID ruleId;
         if (rule.containsKey("id")) {
             try {
@@ -107,15 +135,18 @@ public class SigmaRule {
             ruleId = null;
         }
 
-        String title;
-        if (rule.containsKey("title")) {
+        // 2. Extract Title (Metadata takes precedence)
+        String title = null;
+        if (metadata != null && metadata.getTitle() != null) {
+            title = metadata.getTitle();
+        } else if (rule.containsKey("title")) {
             title = rule.get("title").toString();
-            if (!title.matches("^.{1,256}$"))
-            {
-                errors.addError(new SigmaTitleError("Sigma rule title can be max 256 characters"));
-            }
-        } else {
+        }
+
+        if (title == null) {
             title = "";
+        } else if (!title.matches("^.{1,256}$")) {
+            errors.addError(new SigmaTitleError("Sigma rule title can be max 256 characters"));
         }
 
         SigmaLevel level = null;
@@ -140,18 +171,21 @@ public class SigmaRule {
             errors.addError(new SigmaStatusError("Sigma rule status cannot be null"));
         }
 
+        // 3. Extract Date (Metadata takes precedence)
         Date ruleDate = null;
-        if (rule.containsKey("date")) {
+        Object dateObj = (metadata != null && metadata.getDate() != null) ? metadata.getDate() : rule.get("date");
+        if (dateObj != null) {
             try {
-                if (rule.get("date").toString().contains("/")) {
+                String dateStr = dateObj.toString();
+                if (dateStr.contains("/")) {
                     SimpleDateFormat formatter = new SimpleDateFormat("yyyy/MM/dd", Locale.getDefault());
-                    ruleDate = formatter.parse(rule.get("date").toString());
-                } else if (rule.get("date").toString().contains("-")) {
+                    ruleDate = formatter.parse(dateStr);
+                } else if (dateStr.contains("-")) {
                     SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
-                    ruleDate = formatter.parse(rule.get("date").toString());
+                    ruleDate = formatter.parse(dateStr);
                 }
             } catch (Exception ex) {
-                errors.addError(new SigmaDateError("Rule date " + rule.get("date").toString() + " is invalid, must be yyyy/mm/dd or yyyy-mm-dd"));
+                errors.addError(new SigmaDateError("Rule date " + dateObj + " is invalid, must be yyyy/mm/dd or yyyy-mm-dd"));
             }
         }
 
@@ -185,14 +219,51 @@ public class SigmaRule {
             }
         }
 
+        SigmaMitre mitre = null;
+        if (rule.containsKey("mitre")) {
+            try {
+                mitre = SigmaMitre.fromDict((Map<String, Object>) rule.get("mitre"));
+            } catch (SigmaError ex) {
+                errors.addError(ex);
+            }
+        }
+
+        SigmaCompliance compliance = null;
+        if (rule.containsKey("compliance")) {
+            Object compObj = rule.get("compliance");
+            if (compObj instanceof Map) {
+                try {
+                    compliance = SigmaCompliance.fromMap((Map<String, Object>) compObj);
+                } catch (SigmaError ex) {
+                    errors.addError(ex);
+                }
+            } else {
+                errors.addError(new SigmaError("Compliance block must be an object containing framework lists"));
+            }
+        }
+
+        if (rule.containsKey("detection")) {
+            try {
+                WCSFieldValidator.validateDetectionFields((Map<String, Object>) rule.get("detection"));
+            } catch (SigmaError ex) {
+                errors.addError(ex);
+            }
+        }
+
         if (!collectErrors && !errors.getErrors().isEmpty()) {
             throw errors;
         }
 
+        // 4. Extract remaining shared fields (Metadata takes precedence)
+        String description = (metadata != null && metadata.getDescription() != null) ? metadata.getDescription() : (rule.get("description") != null ? rule.get("description").toString() : null);
+        String author = (metadata != null && metadata.getAuthor() != null) ? metadata.getAuthor() : (rule.get("author") != null ? rule.get("author").toString() : null);
+        List<String> references = (metadata != null && metadata.getReferences() != null && !metadata.getReferences().isEmpty()) ? metadata.getReferences() : (rule.get("references") != null ? (List<String>) rule.get("references") : null);
+
         return new SigmaRule(title, logSource, detections, ruleId, status,
-                rule.get("description").toString(), rule.get("references") != null? (List<String>) rule.get("references"): null, ruleTags,
-                rule.get("author").toString(), ruleDate, rule.get("fields") != null? (List<String>) rule.get("fields"): null,
-                rule.get("falsepositives") != null? (List<String>) rule.get("falsepositives"): null, level, errors);
+                description, references, ruleTags, author, ruleDate,
+                rule.get("fields") != null? (List<String>) rule.get("fields"): null,
+                rule.get("falsepositives") != null? (List<String>) rule.get("falsepositives"): null, level, errors,
+                metadata, mitre, compliance);
     }
 
     public static SigmaRule fromYaml(String rule, boolean collectErrors) {
@@ -258,5 +329,17 @@ public class SigmaRule {
 
     public CompositeSigmaErrors getErrors() {
         return errors;
+    }
+
+    public SigmaMetadata getMetadata() {
+        return metadata;
+    }
+
+    public SigmaMitre getMitre() {
+        return mitre;
+    }
+
+    public SigmaCompliance getCompliance() {
+        return compliance;
     }
 }

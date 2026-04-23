@@ -27,6 +27,8 @@ buildscript {
         opensearch_build = version_tokens[0] + '.0'
         plugin_no_snapshot = opensearch_build
         opensearch_no_snapshot = opensearch_version.replace("-SNAPSHOT","")
+        wazuh_version = System.getProperty("version", "5.0.0")
+        revision = System.getProperty("revision", "0")
         sa_commons_version = '1.0.0'
         if (buildVersionQualifier) {
             opensearch_build += "-${buildVersionQualifier}"
@@ -40,7 +42,9 @@ buildscript {
             // TODO consider enabling snapshot options once SA commons is published to maven central
 //            sa_commons_version += "-SNAPSHOT"
         }
-        common_utils_version = System.getProperty("common_utils.version", opensearch_build)
+        common_utils_version = System.getProperty("common_utils.version", "${wazuh_version}.${revision}")
+        alerting_spi_build = System.getProperty("alerting_spi_build", "${wazuh_version}.${revision}")
+
         kotlin_version = '1.8.21'
 
         sa_commons_file_name = "security-analytics-commons-${sa_commons_version}.jar"
@@ -60,12 +64,20 @@ buildscript {
 
 plugins {
     id 'java'
-    id 'com.diffplug.spotless' version '6.22.0'
+    id 'com.diffplug.spotless' version '6.25.0'
     id "com.netflix.nebula.ospackage" version "12.0.0"
     id 'java-library'
     id "de.undercouch.download" version "5.6.0"
     id "org.gradle.test-retry" version "1.6.2"
 }
+
+task installLocalGitHook(type: Copy){
+    from new File(rootProject.rootDir, 'tools/pre-commit')
+    into { new File(rootProject.rootDir, '.git/hooks')}
+}
+
+// Install git pre-commit hook on the project.
+build.dependsOn installLocalGitHook
 
 apply plugin: 'opensearch.opensearchplugin'
 apply plugin: 'opensearch.testclusters'
@@ -109,10 +121,10 @@ validateNebulaPom.enabled = false
 loggerUsageCheck.enabled = false
 
 opensearchplugin {
-    name 'opensearch-security-analytics'
-    description 'OpenSearch Security Analytics plugin'
+    name 'wazuh-indexer-security-analytics'
+    description 'Wazuh Indexer Security Analytics plugin'
     classname 'org.opensearch.securityanalytics.SecurityAnalyticsPlugin'
-    extendedPlugins = ['opensearch-job-scheduler', 'opensearch-alerting']
+    extendedPlugins = ['wazuh-indexer-alerting']
 }
 
 javaRestTest {
@@ -122,17 +134,14 @@ javaRestTest {
 
 testClusters.javaRestTest {
     testDistribution = 'INTEG_TEST'
+    // Enable prepackaged rules for testing environments.
+    // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
+     systemProperty 'default_rules.enabled', 'true'
 }
 
 allprojects {
-    group = 'org.opensearch'
-    version = opensearch_version.tokenize('-')[0] + '.0'
-    if (buildVersionQualifier) {
-        version += "-${buildVersionQualifier}"
-    }
-    if (isSnapshot) {
-        version += "-SNAPSHOT"
-    }
+    group = 'com.wazuh'
+    version = "${wazuh_version}" + ".${revision}"
 
     apply from: "$rootDir/build-tools/repositories.gradle"
 
@@ -146,9 +155,9 @@ publishing {
     publications {
         pluginZip(MavenPublication) { publication ->
             pom {
-                groupId = "org.opensearch.plugin"
-                name = "opensearch-security-analytics"
-                description = "OpenSearch Security Analytics plugin"
+                groupId = "com.wazuh"
+                name = "wazuh-indexer-security-analytics"
+                description = "Wazuh Indexer Security Analytics plugin"
                 licenses {
                     license {
                         name = "The Apache License, Version 2.0"
@@ -157,8 +166,8 @@ publishing {
                 }
                 developers {
                     developer {
-                        name = "OpenSearch"
-                        url = "https://github.com/opensearch-project/security-analytics"
+                        name = "wazuh-indexer"
+                        url = "https://github.com/wazuh/wazuh-indexer-security-analytics"
                     }
                 }
             }
@@ -203,11 +212,10 @@ dependencies {
     implementation group: 'org.apache.commons', name: 'commons-lang3', version: "${versions.commonslang}"
     compileOnly "org.antlr:antlr4-runtime:4.10.1"
     compileOnly "com.cronutils:cron-utils:9.1.7"
-    compileOnly "org.opensearch:common-utils:${common_utils_version}@jar"
+    compileOnly "com.wazuh:wazuh-indexer-common-utils:${common_utils_version}@jar"
     compileOnly "org.opensearch.client:opensearch-rest-client:${opensearch_version}"
     compileOnly "org.jetbrains.kotlin:kotlin-stdlib:${kotlin_version}"
-    compileOnly "org.opensearch:opensearch-job-scheduler-spi:${opensearch_build}"
-    compileOnly "org.opensearch.alerting:alerting-spi:${alerting_spi_build}"
+    compileOnly "com.wazuh:wazuh-indexer-alerting-spi:${alerting_spi_build}@jar"
     implementation "org.apache.commons:commons-csv:1.10.0"
     implementation 'com.jayway.jsonpath:json-path:2.9.0'
     implementation 'net.minidev:json-smart:2.5.2'
@@ -215,16 +223,17 @@ dependencies {
     implementation "com.google.guava:guava:32.1.3-jre"
 
     // TODO uncomment once SA commons is published to maven central
-//    api "org.opensearch:security-analytics-commons:${sa_commons_version}@jar"
+    // api "org.opensearch:security-analytics-commons:${sa_commons_version}@jar"
 
     // TODO remove once SA commons is published to maven central
     api files(sa_commons_file_path)
 
+    implementation group: 'com.wazuh', name: 'wazuh-indexer-security-analytics-commons', version: "${version}"
+
     // Needed for integ tests
-    zipArchive group: 'org.opensearch.plugin', name:'alerting', version: "${opensearch_build}"
-    zipArchive group: 'org.opensearch.plugin', name:'opensearch-notifications-core', version: "${opensearch_build}"
-    zipArchive group: 'org.opensearch.plugin', name:'notifications', version: "${opensearch_build}"
-    zipArchive group: 'org.opensearch.plugin', name:'opensearch-job-scheduler', version: "${opensearch_build}"
+    zipArchive group: 'com.wazuh', name: 'wazuh-indexer-alerting', version: "${version}"
+    zipArchive group: 'com.wazuh', name:'wazuh-indexer-notifications-core', version: "${version}"
+    zipArchive group: 'com.wazuh', name:'wazuh-indexer-notifications', version: "${version}"
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
 
     // Needed for security tests
@@ -255,6 +264,16 @@ task integTest(type: RestIntegTestTask) {
     }
 }
 tasks.named("check").configure { dependsOn(integTest) }
+
+tasks.named("publishNebulaPublicationToMavenLocal").configure { dependsOn("generatePomFileForPluginZipPublication") }
+
+evaluationDependsOnChildren()
+
+tasks.named("test").configure {
+    // Enable prepackaged rules for testing environments.
+    // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
+    systemProperty 'default_rules.enabled', 'true'
+}
 
 integTest {
     if (project.hasProperty('excludeTests')) {
@@ -313,6 +332,9 @@ integTest.getClusters().forEach{c -> {
 }}
 
 testClusters.integTest {
+    // Enable prepackaged rules for testing environments.
+    // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
+    systemProperty 'default_rules.enabled', 'true'
     testDistribution = 'ARCHIVE'
 
     // Cluster shrink exception thrown if we try to set numberOfNodes to 1, so only apply if > 1
@@ -332,7 +354,7 @@ testClusters.integTest {
             @Override
             File getAsFile() {
                 return configurations.zipArchive.asFileTree.matching {
-                    include '**/opensearch-notifications-core*'
+                    include '**/wazuh-indexer-notifications-core*'
                 }.singleFile
             }
         }
@@ -342,7 +364,8 @@ testClusters.integTest {
             @Override
             File getAsFile() {
                 return configurations.zipArchive.asFileTree.matching {
-                    include '**/notifications*'
+                    include '**/wazuh-indexer-notifications-*.zip'
+                    exclude '**/wazuh-indexer-notifications-core*'
                 }.singleFile
             }
         }
@@ -352,17 +375,7 @@ testClusters.integTest {
             @Override
             File getAsFile() {
                 return configurations.zipArchive.asFileTree.matching {
-                    include '**/alerting*'
-                }.singleFile
-            }
-        }
-    }))
-    plugin(provider({
-        new RegularFile() {
-            @Override
-            File getAsFile() {
-                return configurations.zipArchive.asFileTree.matching {
-                    include '**/opensearch-job-scheduler*'
+                    include '**/wazuh-indexer-alerting*'
                 }.singleFile
             }
         }
@@ -416,9 +429,6 @@ testClusters.integTest {
 }
 def usingRemoteCluster = System.properties.containsKey('tests.rest.cluster') || System.properties.containsKey('tests.cluster')
 def usingMultiNode = project.properties.containsKey('numNodes')
-if (!usingRemoteCluster && !usingMultiNode) {
-    apply from: 'build-tools/opensearchplugin-coverage.gradle'
-}
 
 run {
     doFirst {
@@ -432,6 +442,10 @@ run {
 }
 
 task integTestRemote(type: RestIntegTestTask) {
+    // Enable prepackaged rules for testing environments.
+    // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
+    systemProperty 'default_rules.enabled', 'true'
+
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
     systemProperty 'tests.security.manager', 'false'
@@ -487,11 +501,10 @@ afterEvaluate {
         prefix '/usr'
 
         license 'ASL-2.0'
-        maintainer 'OpenSearch Team <opensearch@amazon.com>'
-        url 'https://opensearch.org/downloads.html'
+        maintainer 'Wazuh-Indexer Team'
+        url 'https://wazuh.com/'
         summary '''
-         Security Analytics plugin for OpenSearch.
-         Reference documentation can be found at https://docs-beta.opensearch.org/.
+         Security Analytics plugin for Wazuh-Indexer.
     '''.stripIndent().replace('\n', ' ').trim()
     }
 

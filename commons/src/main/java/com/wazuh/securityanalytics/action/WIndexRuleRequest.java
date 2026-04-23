@@ -1,0 +1,234 @@
+/*
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+package com.wazuh.securityanalytics.action;
+
+import org.opensearch.action.ActionRequest;
+import org.opensearch.action.ActionRequestValidationException;
+import org.opensearch.action.support.WriteRequest;
+import org.opensearch.core.common.io.stream.StreamInput;
+import org.opensearch.core.common.io.stream.StreamOutput;
+import org.opensearch.rest.RestRequest;
+
+import java.io.IOException;
+import java.util.Locale;
+
+import static org.opensearch.action.ValidateActions.addValidationError;
+
+/**
+ * Request for indexing a Wazuh rule.
+ *
+ * <p>This request contains all the information needed to create or update a Sigma rule, including
+ * the rule ID, log type, HTTP method, rule YAML content, and force flag.
+ *
+ * <p>The log type is automatically converted to lowercase during construction.
+ *
+ * @see WIndexRuleAction
+ * @see WIndexRuleResponse
+ */
+public class WIndexRuleRequest extends ActionRequest {
+
+    /** The rule ID to update. */
+    private final String ruleId;
+
+    /** Refresh policy for create/update operations. */
+    private final WriteRequest.RefreshPolicy refreshPolicy;
+
+    /** The log type of the rule which maps 1-1 to a log type category. */
+    private final String logType;
+
+    /** REST method for the request (PUT for update, POST for create). */
+    private final RestRequest.Method method;
+
+    /** The actual Sigma Rule YAML content. */
+    private final String rule;
+
+    /**
+     * Forces updating the rule even if it is used by running detectors. If false, an error is thrown
+     * when the rule is actively used by detectors.
+     */
+    private final Boolean forced;
+
+    /** The UUID of the original document in the Content Manager plugin. */
+    private final String documentId;
+
+    /** The space this rule belongs to (e.g., "draft", "test", "custom"). */
+    private final String space;
+
+    /**
+     * Constructs a new WIndexRuleRequest (backward-compatible, without documentId/space).
+     *
+     * @param ruleId the unique identifier for the rule
+     * @param refreshPolicy the refresh policy for the index operation
+     * @param logType the log type category for this rule (will be lowercased)
+     * @param method the HTTP method (PUT for update, POST for create)
+     * @param rule the Sigma rule YAML content
+     * @param forced if true, updates the rule even if used by active detectors
+     */
+    public WIndexRuleRequest(
+            String ruleId,
+            WriteRequest.RefreshPolicy refreshPolicy,
+            String logType,
+            RestRequest.Method method,
+            String rule,
+            Boolean forced) {
+        this(ruleId, refreshPolicy, logType, method, rule, forced, null, null);
+    }
+
+    /**
+     * Constructs a new WIndexRuleRequest with original document ID and space.
+     *
+     * @param ruleId the unique identifier for the rule
+     * @param refreshPolicy the refresh policy for the index operation
+     * @param logType the log type category for this rule (will be lowercased)
+     * @param method the HTTP method (PUT for update, POST for create)
+     * @param rule the Sigma rule YAML content
+     * @param forced if true, updates the rule even if used by active detectors
+     * @param documentId the UUID of the original document in the Content Manager
+     * @param space the space this rule belongs to
+     */
+    public WIndexRuleRequest(
+            String ruleId,
+            WriteRequest.RefreshPolicy refreshPolicy,
+            String logType,
+            RestRequest.Method method,
+            String rule,
+            Boolean forced,
+            String documentId,
+            String space) {
+        super();
+        this.ruleId = ruleId;
+        this.refreshPolicy = refreshPolicy;
+        this.logType = logType.toLowerCase(Locale.ROOT);
+        this.method = method;
+        this.rule = rule;
+        this.forced = forced;
+        this.documentId = documentId;
+        this.space = space;
+    }
+
+    /**
+     * Constructs a WIndexRuleRequest by deserializing from a stream.
+     *
+     * @param sin the stream input to read from
+     * @throws IOException if an I/O error occurs during deserialization
+     */
+    public WIndexRuleRequest(StreamInput sin) throws IOException {
+        this(
+                sin.readString(),
+                WriteRequest.RefreshPolicy.readFrom(sin),
+                sin.readString(),
+                sin.readEnum(RestRequest.Method.class),
+                sin.readString(),
+                sin.readBoolean(),
+                sin.readOptionalString(),
+                sin.readOptionalString());
+    }
+
+    @Override
+    public ActionRequestValidationException validate() {
+        ActionRequestValidationException validationException = null;
+
+        if (this.logType == null || this.logType.isEmpty()) {
+            validationException = addValidationError("rule category is missing", validationException);
+        }
+        return validationException;
+    }
+
+    @Override
+    public void writeTo(StreamOutput out) throws IOException {
+        out.writeString(this.ruleId);
+        this.refreshPolicy.writeTo(out);
+        out.writeString(this.logType);
+        out.writeEnum(this.method);
+        out.writeString(this.rule);
+        out.writeBoolean(this.forced);
+        out.writeOptionalString(this.documentId);
+        out.writeOptionalString(this.space);
+    }
+
+    /**
+     * Gets the rule ID to update.
+     *
+     * @return the rule ID
+     */
+    public String getRuleId() {
+        return this.ruleId;
+    }
+
+    /**
+     * Gets the refresh policy for the index operation.
+     *
+     * @return the refresh policy
+     */
+    public WriteRequest.RefreshPolicy getRefreshPolicy() {
+        return this.refreshPolicy;
+    }
+
+    /**
+     * Gets the log type category for this rule.
+     *
+     * @return the log type
+     */
+    public String getLogType() {
+        return this.logType;
+    }
+
+    /**
+     * Gets the HTTP method for the request.
+     *
+     * @return the HTTP method (PUT for update, POST for create)
+     */
+    public RestRequest.Method getMethod() {
+        return this.method;
+    }
+
+    /**
+     * Gets the Sigma rule YAML content.
+     *
+     * @return the rule content
+     */
+    public String getRule() {
+        return this.rule;
+    }
+
+    /**
+     * Indicates whether to force updating the rule even if it is used by running detectors.
+     *
+     * @return true if the update should be forced, false otherwise
+     */
+    public Boolean isForced() {
+        return this.forced;
+    }
+
+    /**
+     * Gets the original document ID from the Content Manager plugin.
+     *
+     * @return the original document UUID, or null if not set
+     */
+    public String getDocumentId() {
+        return this.documentId;
+    }
+
+    /**
+     * Gets the space this rule belongs to.
+     *
+     * @return the space name, or null if not set
+     */
+    public String getSpace() {
+        return this.space;
+    }
+}

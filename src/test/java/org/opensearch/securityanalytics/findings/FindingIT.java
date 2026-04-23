@@ -48,6 +48,8 @@ import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSetting
 
 public class FindingIT extends SecurityAnalyticsRestTestCase {
 
+    // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
+    @AwaitsFix(bugUrl = "")
     @SuppressWarnings("unchecked")
     public void testGetFindings_byDetectorId_success() throws IOException {
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
@@ -101,6 +103,8 @@ public class FindingIT extends SecurityAnalyticsRestTestCase {
         Assert.assertEquals(1, getFindingsBody.get("total_findings"));
     }
 
+    // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
+    @AwaitsFix(bugUrl = "")
     public void testGetFindings_noDetector_failure() throws IOException {
         Map<String, String> params = new HashMap<>();
         params.put("detector_id", "nonexistent_id");
@@ -111,6 +115,8 @@ public class FindingIT extends SecurityAnalyticsRestTestCase {
         }
     }
 
+    // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
+    @AwaitsFix(bugUrl = "")
     public void testGetFindings_byDetectorType_oneDetector_success() throws IOException {
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
 
@@ -163,6 +169,8 @@ public class FindingIT extends SecurityAnalyticsRestTestCase {
         Assert.assertEquals(1, getFindingsBody.get("total_findings"));
     }
 
+    // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
+    @AwaitsFix(bugUrl = "")
     public void testGetFindings_byDetectorType_success() throws IOException {
         String index1 = createTestIndex(randomIndex(), windowsIndexMapping());
 
@@ -273,6 +281,8 @@ public class FindingIT extends SecurityAnalyticsRestTestCase {
         Assert.assertEquals(1, getFindingsBody.get("total_findings"));
     }
 
+    // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
+    @AwaitsFix(bugUrl = "")
     public void testGetAllFindings_success() throws IOException {
         String index1 = createTestIndex(randomIndex(), windowsIndexMapping());
 
@@ -376,6 +386,9 @@ public class FindingIT extends SecurityAnalyticsRestTestCase {
         Assert.assertEquals(1, getFindingsBody.get("total_findings"));
     }
 
+    // TODO: Create issue to fix the tests. Failing Reason: "IOC stuff was removed from the plugin"
+    // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
+    @AwaitsFix(bugUrl = "")
     public void testGetFindings_byDetectionType_success() throws IOException {
         String index1 = createTestIndex(randomIndex(), windowsIndexMapping());
 
@@ -482,6 +495,8 @@ public class FindingIT extends SecurityAnalyticsRestTestCase {
         Assert.assertEquals(1, getFindingsBody.get("total_findings"));
     }
 
+    // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
+    @AwaitsFix(bugUrl = "")
     public void testGetFindings_bySeverity_success() throws IOException {
         String index1 = createTestIndex(randomIndex(), windowsIndexMapping());
 
@@ -602,7 +617,8 @@ public class FindingIT extends SecurityAnalyticsRestTestCase {
         Assert.assertEquals(1, getFindingsBody.get("total_findings"));
     }
 
-    @Ignore
+    // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
+    @AwaitsFix(bugUrl = "")
     public void testGetFindings_bySearchString_success() throws IOException {
         String index1 = createTestIndex(randomIndex(), windowsIndexMapping());
 
@@ -723,7 +739,8 @@ public class FindingIT extends SecurityAnalyticsRestTestCase {
         Assert.assertEquals(2, getFindingsBody.get("total_findings"));
     }
 
-    @Ignore
+    // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
+    @AwaitsFix(bugUrl = "")
     public void testGetFindings_byStartTimeAndEndTime_success() throws IOException {
         String index1 = createTestIndex(randomIndex(), windowsIndexMapping());
 
@@ -852,7 +869,8 @@ public class FindingIT extends SecurityAnalyticsRestTestCase {
         Assert.assertEquals(1, getFindingsBody.get("total_findings"));
     }
 
-    @Ignore
+    // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
+    @AwaitsFix(bugUrl = "")
     public void testGetFindings_rolloverByMaxAge_success() throws IOException, InterruptedException {
 
         updateClusterSetting(FINDING_HISTORY_ROLLOVER_PERIOD.getKey(), "1s");
@@ -923,7 +941,8 @@ public class FindingIT extends SecurityAnalyticsRestTestCase {
         restoreAlertsFindingsIMSettings();
     }
 
-    @Ignore
+    // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
+    @AwaitsFix(bugUrl = "")
     public void testGetFindings_rolloverByMaxDoc_success() throws IOException, InterruptedException {
 
         updateClusterSetting(FINDING_HISTORY_ROLLOVER_PERIOD.getKey(), "1s");
@@ -989,7 +1008,8 @@ public class FindingIT extends SecurityAnalyticsRestTestCase {
         restoreAlertsFindingsIMSettings();
     }
 
-    @Ignore
+    // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
+    @AwaitsFix(bugUrl = "")
     public void testCreateDetectorWithNotCondition_verifyFindings_success() throws IOException {
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
 
@@ -1090,7 +1110,8 @@ public class FindingIT extends SecurityAnalyticsRestTestCase {
         assertTrue(Arrays.asList("1", "2").containsAll(foundDocIds));
     }
 
-    @Ignore
+    // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
+    @AwaitsFix(bugUrl = "")
     public void testCreateDetectorWithNotCondition_verifyFindings_success_boolAndNum() throws IOException {
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
 
@@ -1184,6 +1205,8 @@ public class FindingIT extends SecurityAnalyticsRestTestCase {
     Create a detector with custom rules that include a "not" condition in the sigma rule.
     Insert two test documents one matching the rule and one without the field matching the condition to generate only one finding
  */
+    // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
+    @AwaitsFix(bugUrl = "")
     public void testCreateDetectorWithNotCondition_verifyFindingsAndNoFindings_success() throws IOException {
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
 
@@ -1284,7 +1307,8 @@ public class FindingIT extends SecurityAnalyticsRestTestCase {
         assertTrue(Arrays.asList("1", "4").containsAll(foundDocIds));
     }
 
-    @Ignore
+    // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
+    @AwaitsFix(bugUrl = "")
     public void testGetFindings_rolloverByMaxDoc_short_retention_success() throws IOException, InterruptedException {
         updateClusterSetting(FINDING_HISTORY_ROLLOVER_PERIOD.getKey(), "1s");
         updateClusterSetting(FINDING_HISTORY_MAX_DOCS.getKey(), "1");

@@ -1,6 +1,18 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.util;
 
@@ -42,21 +54,24 @@ import org.opensearch.securityanalytics.logtype.LogTypeService;
 import org.opensearch.securityanalytics.model.Rule;
 import org.opensearch.securityanalytics.rules.backend.OSQueryBackend;
 import org.opensearch.securityanalytics.rules.backend.QueryBackend;
-import org.opensearch.securityanalytics.rules.exceptions.SigmaError;
 import org.opensearch.securityanalytics.rules.exceptions.CompositeSigmaErrors;
+import org.opensearch.securityanalytics.rules.exceptions.SigmaError;
 import org.opensearch.securityanalytics.rules.objects.SigmaRule;
 import org.opensearch.threadpool.ThreadPool;
 import org.opensearch.transport.client.Client;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.net.URISyntaxException;
-import java.net.URL;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -76,7 +91,11 @@ public class RuleIndices {
 
     private final LogTypeService logTypeService;
 
-    public RuleIndices(LogTypeService logTypeService, Client client, ClusterService clusterService, ThreadPool threadPool) {
+    public RuleIndices(
+            LogTypeService logTypeService,
+            Client client,
+            ClusterService clusterService,
+            ThreadPool threadPool) {
         this.client = client;
         this.clusterService = clusterService;
         this.threadPool = threadPool;
@@ -84,37 +103,57 @@ public class RuleIndices {
     }
 
     public static String ruleMappings() throws IOException {
-        return new String(Objects.requireNonNull(RuleIndices.class.getClassLoader().getResourceAsStream("mappings/rules.json")).readAllBytes(), Charset.defaultCharset());
+        return new String(
+                Objects.requireNonNull(
+                                RuleIndices.class.getClassLoader().getResourceAsStream("mappings/rules.json"))
+                        .readAllBytes(),
+                Charset.defaultCharset());
     }
 
-    public void initRuleIndex(ActionListener<CreateIndexResponse> actionListener, boolean isPrepackaged) throws IOException {
+    public void initRuleIndex(
+            ActionListener<CreateIndexResponse> actionListener, boolean isPrepackaged)
+            throws IOException {
         if (!ruleIndexExists(isPrepackaged)) {
-            Settings indexSettings = Settings.builder()
-                    .put("index.hidden", true)
-                    .put(IndexMetadata.SETTING_NUMBER_OF_SHARDS, 1)
-                    .put("index.auto_expand_replicas", minSystemIndexReplicas + "-" + maxSystemIndexReplicas)
-                    .build();
-            CreateIndexRequest indexRequest = new CreateIndexRequest(getRuleIndex(isPrepackaged))
-                    .mapping(ruleMappings())
-                    .settings(indexSettings);
+            Settings indexSettings =
+                    Settings.builder()
+                            .put("index.hidden", true)
+                            .put(IndexMetadata.SETTING_NUMBER_OF_SHARDS, 1)
+                            .put(
+                                    "index.auto_expand_replicas",
+                                    minSystemIndexReplicas + "-" + maxSystemIndexReplicas)
+                            .build();
+            CreateIndexRequest indexRequest =
+                    new CreateIndexRequest(getRuleIndex(isPrepackaged))
+                            .mapping(ruleMappings())
+                            .settings(indexSettings);
             client.admin().indices().create(indexRequest, actionListener);
         }
     }
 
-    public void loadRules(List<Rule> rules, WriteRequest.RefreshPolicy refreshPolicy, TimeValue indexTimeout,
-                          ActionListener<BulkResponse> actionListener, boolean isPrepackaged) throws IOException {
+    public void loadRules(
+            List<Rule> rules,
+            WriteRequest.RefreshPolicy refreshPolicy,
+            TimeValue indexTimeout,
+            ActionListener<BulkResponse> actionListener,
+            boolean isPrepackaged)
+            throws IOException {
         String ruleIndex = getRuleIndex(isPrepackaged);
-        BulkRequest bulkRequest = new BulkRequest().setRefreshPolicy(refreshPolicy).timeout(indexTimeout);
+        BulkRequest bulkRequest =
+                new BulkRequest().setRefreshPolicy(refreshPolicy).timeout(indexTimeout);
 
         if (rules.isEmpty()) {
-            actionListener.onResponse(new BulkResponse(new BulkItemResponse[]{}, 1));
+            actionListener.onResponse(new BulkResponse(new BulkItemResponse[] {}, 1));
             return;
         }
-        for (Rule rule: rules) {
-            IndexRequest indexRequest = new IndexRequest(ruleIndex)
-                    .id(rule.getId())
-                    .source(rule.toXContent(XContentFactory.jsonBuilder(), new ToXContent.MapParams(Map.of("with_type", "true"))))
-                    .timeout(indexTimeout);
+        for (Rule rule : rules) {
+            IndexRequest indexRequest =
+                    new IndexRequest(ruleIndex)
+                            .id(rule.getId())
+                            .source(
+                                    rule.toXContent(
+                                            XContentFactory.jsonBuilder(),
+                                            new ToXContent.MapParams(Map.of("with_type", "true"))))
+                            .timeout(indexTimeout);
 
             bulkRequest.add(indexRequest);
         }
@@ -130,10 +169,10 @@ public class RuleIndices {
         ClusterIndexHealth indexHealth = null;
 
         if (ruleIndexExists(isPrepackaged)) {
-            IndexRoutingTable indexRoutingTable = clusterService.state().routingTable()
-                    .index(getRuleIndex(isPrepackaged));
-            IndexMetadata indexMetadata = clusterService.state().metadata()
-                    .index(getRuleIndex(isPrepackaged));
+            IndexRoutingTable indexRoutingTable =
+                    clusterService.state().routingTable().index(getRuleIndex(isPrepackaged));
+            IndexMetadata indexMetadata =
+                    clusterService.state().metadata().index(getRuleIndex(isPrepackaged));
 
             indexHealth = new ClusterIndexHealth(indexMetadata, indexRoutingTable);
         }
@@ -141,7 +180,7 @@ public class RuleIndices {
     }
 
     private String getRuleIndex(boolean isPrepackaged) {
-        return isPrepackaged? Rule.PRE_PACKAGED_RULES_INDEX: Rule.CUSTOM_RULES_INDEX;
+        return isPrepackaged ? Rule.PRE_PACKAGED_RULES_INDEX : Rule.CUSTOM_RULES_INDEX;
     }
 
     public ThreadPool getThreadPool() {
@@ -150,43 +189,73 @@ public class RuleIndices {
 
     public void onCreateMappingsResponse(CreateIndexResponse response, boolean isPrepackaged) {
         if (response.isAcknowledged()) {
-            log.info(String.format(Locale.getDefault(), "Created %s with mappings.", isPrepackaged? Rule.PRE_PACKAGED_RULES_INDEX: Rule.CUSTOM_RULES_INDEX));
+            log.info(
+                    String.format(
+                            Locale.getDefault(),
+                            "Created %s with mappings.",
+                            isPrepackaged ? Rule.PRE_PACKAGED_RULES_INDEX : Rule.CUSTOM_RULES_INDEX));
             if (isPrepackaged) {
                 IndexUtils.prePackagedRuleIndexUpdated();
             } else {
                 IndexUtils.customRuleIndexUpdated();
             }
         } else {
-            log.error(String.format(Locale.getDefault(), "Create %s mappings call not acknowledged.", isPrepackaged? Rule.PRE_PACKAGED_RULES_INDEX: Rule.CUSTOM_RULES_INDEX));
-            throw new OpenSearchStatusException(String.format(Locale.getDefault(), "Create %s mappings call not acknowledged", isPrepackaged? Rule.PRE_PACKAGED_RULES_INDEX: Rule.CUSTOM_RULES_INDEX), RestStatus.INTERNAL_SERVER_ERROR);
+            log.error(
+                    String.format(
+                            Locale.getDefault(),
+                            "Create %s mappings call not acknowledged.",
+                            isPrepackaged ? Rule.PRE_PACKAGED_RULES_INDEX : Rule.CUSTOM_RULES_INDEX));
+            throw new OpenSearchStatusException(
+                    String.format(
+                            Locale.getDefault(),
+                            "Create %s mappings call not acknowledged",
+                            isPrepackaged ? Rule.PRE_PACKAGED_RULES_INDEX : Rule.CUSTOM_RULES_INDEX),
+                    RestStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
     public void onUpdateMappingsResponse(AcknowledgedResponse response, boolean isPrepackaged) {
         if (response.isAcknowledged()) {
-            log.info(String.format(Locale.getDefault(), "Updated  %s with mappings.", isPrepackaged? Rule.PRE_PACKAGED_RULES_INDEX: Rule.CUSTOM_RULES_INDEX));
+            log.info(
+                    String.format(
+                            Locale.getDefault(),
+                            "Updated  %s with mappings.",
+                            isPrepackaged ? Rule.PRE_PACKAGED_RULES_INDEX : Rule.CUSTOM_RULES_INDEX));
             if (isPrepackaged) {
                 IndexUtils.prePackagedRuleIndexUpdated();
             } else {
                 IndexUtils.customRuleIndexUpdated();
             }
         } else {
-            log.error(String.format(Locale.getDefault(), "Update %s mappings call not acknowledged.", isPrepackaged? Rule.PRE_PACKAGED_RULES_INDEX: Rule.CUSTOM_RULES_INDEX));
-            throw new OpenSearchStatusException(String.format(Locale.getDefault(), "Update %s mappings call not acknowledged.", isPrepackaged? Rule.PRE_PACKAGED_RULES_INDEX: Rule.CUSTOM_RULES_INDEX), RestStatus.INTERNAL_SERVER_ERROR);
+            log.error(
+                    String.format(
+                            Locale.getDefault(),
+                            "Update %s mappings call not acknowledged.",
+                            isPrepackaged ? Rule.PRE_PACKAGED_RULES_INDEX : Rule.CUSTOM_RULES_INDEX));
+            throw new OpenSearchStatusException(
+                    String.format(
+                            Locale.getDefault(),
+                            "Update %s mappings call not acknowledged.",
+                            isPrepackaged ? Rule.PRE_PACKAGED_RULES_INDEX : Rule.CUSTOM_RULES_INDEX),
+                    RestStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
-    public void initPrepackagedRulesIndex(ActionListener<CreateIndexResponse> createListener, ActionListener<AcknowledgedResponse> updateListener, ActionListener<SearchResponse> searchListener) {
+    public void initPrepackagedRulesIndex(
+            ActionListener<CreateIndexResponse> createListener,
+            ActionListener<AcknowledgedResponse> updateListener,
+            ActionListener<SearchResponse> searchListener) {
         try {
             if (!ruleIndexExists(true)) {
                 initRuleIndex(createListener, true);
             } else if (!IndexUtils.prePackagedRuleIndexUpdated) {
                 IndexUtils.updateIndexMapping(
                         Rule.PRE_PACKAGED_RULES_INDEX,
-                        RuleIndices.ruleMappings(), clusterService.state(), client.admin().indices(),
+                        RuleIndices.ruleMappings(),
+                        clusterService.state(),
+                        client.admin().indices(),
                         updateListener,
-                        false
-                );
+                        false);
             } else {
                 countRules(searchListener);
             }
@@ -195,11 +264,14 @@ public class RuleIndices {
         }
     }
 
-    public void importRules(WriteRequest.RefreshPolicy refreshPolicy, TimeValue indexTimeout, ActionListener<BulkResponse> listener) {
+    public void importRules(
+            WriteRequest.RefreshPolicy refreshPolicy,
+            TimeValue indexTimeout,
+            ActionListener<BulkResponse> listener) {
         try {
             final String configDirName = System.getProperty("opensearch.path.conf");
             if (configDirName != null) {
-                Path path = Path.of(configDirName, "opensearch-security-analytics", "rules");
+                Path path = Path.of(configDirName, "wazuh-indexer-security-analytics", "rules");
                 loadQueries(path, refreshPolicy, indexTimeout, listener);
             } else {
                 log.warn("opensearch.path.conf system property not found");
@@ -219,25 +291,28 @@ public class RuleIndices {
     }
 
     public void countRules(ActionListener<SearchResponse> listener) {
-        SearchRequest request = new SearchRequest(Rule.PRE_PACKAGED_RULES_INDEX)
-                .source(new SearchSourceBuilder().size(0))
-                .preference(Preference.PRIMARY_FIRST.type());
+        SearchRequest request =
+                new SearchRequest(Rule.PRE_PACKAGED_RULES_INDEX)
+                        .source(new SearchSourceBuilder().size(0))
+                        .preference(Preference.PRIMARY_FIRST.type());
         client.search(request, listener);
     }
 
     public void searchRules(String logTypeName, ActionListener<SearchResponse> listener) {
         QueryBuilder queryBuilder =
-                QueryBuilders.nestedQuery("rule",
-                        QueryBuilders.boolQuery().must(
-                                QueryBuilders.matchQuery("rule.category", logTypeName)
-                        ), ScoreMode.Avg);
+                QueryBuilders.nestedQuery(
+                        "rule",
+                        QueryBuilders.boolQuery().must(QueryBuilders.matchQuery("rule.category", logTypeName)),
+                        ScoreMode.Avg);
 
-        SearchRequest searchRequest = new SearchRequest(Rule.CUSTOM_RULES_INDEX)
-                .source(new SearchSourceBuilder()
-                        .seqNoAndPrimaryTerm(true)
-                        .version(true)
-                        .query(queryBuilder)
-                        .size(0));
+        SearchRequest searchRequest =
+                new SearchRequest(Rule.CUSTOM_RULES_INDEX)
+                        .source(
+                                new SearchSourceBuilder()
+                                        .seqNoAndPrimaryTerm(true)
+                                        .version(true)
+                                        .query(queryBuilder)
+                                        .size(0));
 
         client.search(searchRequest, listener);
     }
@@ -245,30 +320,40 @@ public class RuleIndices {
     private List<String> getRules(List<Path> listOfRules) {
         List<String> rules = new ArrayList<>();
 
-        listOfRules.forEach(path -> {
-            try {
-                if (Files.isDirectory(path)) {
-                    rules.addAll(getRules(Files.list(path).collect(Collectors.toList())));
-                } else {
-                    rules.add(Files.readString(path, StandardCharsets.UTF_8));
-                }
-            } catch (IOException ex) {
-                // suppress with log
-                log.warn("rules cannot be parsed");
-            }
-        });
+        listOfRules.forEach(
+                path -> {
+                    try {
+                        if (Files.isDirectory(path)) {
+                            rules.addAll(getRules(Files.list(path).collect(Collectors.toList())));
+                        } else {
+                            rules.add(Files.readString(path, StandardCharsets.UTF_8));
+                        }
+                    } catch (IOException ex) {
+                        // suppress with log
+                        log.warn("rules cannot be parsed");
+                    }
+                });
         return rules;
     }
 
-    private void loadQueries(Path path, WriteRequest.RefreshPolicy refreshPolicy, TimeValue indexTimeout, ActionListener<BulkResponse> listener) throws IOException, SigmaError {
+    private void loadQueries(
+            Path path,
+            WriteRequest.RefreshPolicy refreshPolicy,
+            TimeValue indexTimeout,
+            ActionListener<BulkResponse> listener)
+            throws IOException, SigmaError {
         Stream<Path> folder = Files.list(path);
         List<Path> folderPaths = folder.collect(Collectors.toList());
         Map<String, List<String>> logIndexToRules = new HashMap<>();
-
-        for (Path folderPath: folderPaths) {
-            List<String> rules = getRules(List.of(folderPath));
-            String ruleCategory = getRuleCategory(folderPath);
-            logIndexToRules.put(ruleCategory, rules);
+        // Disabled pre-packaged rules loading for production builds, enabled only on test environments.
+        // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
+        String enabledPrepackaged = System.getProperty("default_rules.enabled");
+        if (enabledPrepackaged != null && enabledPrepackaged.equals("true")) {
+            for (Path folderPath : folderPaths) {
+                List<String> rules = getRules(List.of(folderPath));
+                String ruleCategory = getRuleCategory(folderPath);
+                logIndexToRules.put(ruleCategory, rules);
+            }
         }
         checkLogTypes(logIndexToRules, refreshPolicy, indexTimeout, listener);
     }
@@ -277,82 +362,114 @@ public class RuleIndices {
         return folderPath.getFileName().toString();
     }
 
-    private void ingestQueries(Map<String, List<String>> logIndexToRules, WriteRequest.RefreshPolicy refreshPolicy, TimeValue indexTimeout, ActionListener<BulkResponse> listener) throws SigmaError, IOException, CompositeSigmaErrors {
+    private void ingestQueries(
+            Map<String, List<String>> logIndexToRules,
+            WriteRequest.RefreshPolicy refreshPolicy,
+            TimeValue indexTimeout,
+            ActionListener<BulkResponse> listener)
+            throws SigmaError, IOException, CompositeSigmaErrors {
         List<Rule> queries = new ArrayList<>();
 
-        // Moving others_cloud to the top so those queries are indexed first and can be overwritten if other categories
-        // contain the same rules. Tracking issue: https://github.com/opensearch-project/security-analytics/issues/630
+        // Moving others_cloud to the top so those queries are indexed first and can be overwritten if
+        // other categories
+        // contain the same rules. Tracking issue:
+        // https://github.com/opensearch-project/security-analytics/issues/630
         List<String> categories = new ArrayList<>(logIndexToRules.keySet());
         if (categories.remove("others_cloud")) {
             categories.add(0, "others_cloud");
         }
-        for (String category: categories) {
-            Map<String, String> fieldMappings = logTypeService.getRuleFieldMappingsForBuiltinLogType(category);
+        for (String category : categories) {
+            Map<String, String> fieldMappings =
+                    logTypeService.getRuleFieldMappingsForBuiltinLogType(category);
             final QueryBackend backend = new OSQueryBackend(fieldMappings, true, true);
             queries.addAll(getQueries(backend, category, logIndexToRules.get(category)));
         }
         loadRules(queries, refreshPolicy, indexTimeout, listener, true);
     }
 
-    private void loadQueries(String[] paths, WriteRequest.RefreshPolicy refreshPolicy, TimeValue indexTimeout, ActionListener<BulkResponse> listener) throws IOException, SigmaError {
+    private void loadQueries(
+            String[] paths,
+            WriteRequest.RefreshPolicy refreshPolicy,
+            TimeValue indexTimeout,
+            ActionListener<BulkResponse> listener)
+            throws IOException, SigmaError {
         Path path = FileUtils.getFs().getPath(paths[1]);
         loadQueries(path, refreshPolicy, indexTimeout, listener);
     }
 
-    private List<Rule> getQueries(QueryBackend backend, String category, List<String> rules) throws SigmaError, CompositeSigmaErrors {
+    private List<Rule> getQueries(QueryBackend backend, String category, List<String> rules)
+            throws SigmaError, CompositeSigmaErrors {
         List<Rule> queries = new ArrayList<>();
-        for (String ruleStr: rules) {
+        for (String ruleStr : rules) {
             SigmaRule rule = SigmaRule.fromYaml(ruleStr, true);
             // TODO: Check if there are cx errors from the rule created and throw errors
             backend.resetQueryFields();
             List<Object> ruleQueries = backend.convertRule(rule);
             Set<String> queryFieldNames = backend.getQueryFields().keySet();
-
-            Rule ruleModel = new Rule(
-                    rule.getId().toString(), NO_VERSION, rule, category,
-                    ruleQueries.stream().map(Object::toString).collect(Collectors.toList()),
-                    new ArrayList<>(queryFieldNames),
-                    ruleStr
-            );
+            Rule ruleModel =
+                    new Rule(
+                            rule.getId().toString(),
+                            NO_VERSION,
+                            rule,
+                            category,
+                            ruleQueries.stream().map(Object::toString).collect(Collectors.toList()),
+                            new ArrayList<>(queryFieldNames),
+                            ruleStr);
             queries.add(ruleModel);
         }
         return queries;
     }
 
-    private void checkLogTypes(Map<String, List<String>> logIndexToRules, WriteRequest.RefreshPolicy refreshPolicy, TimeValue indexTimeout, ActionListener<BulkResponse> listener) {
-        logTypeService.ensureConfigIndexIsInitialized(new ActionListener<>() {
-            @Override
-            public void onResponse(Void unused) {
-                BoolQueryBuilder queryBuilder = QueryBuilders.boolQuery()
-                        .must(QueryBuilders.existsQuery("source"));
-                SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
-                searchSourceBuilder.query(queryBuilder);
-                searchSourceBuilder.fetchSource(true);
-                searchSourceBuilder.size(10000);
-                SearchRequest searchRequest = new SearchRequest();
-                searchRequest.indices(LogTypeService.LOG_TYPE_INDEX);
-                searchRequest.source(searchSourceBuilder);
-
-                client.search(searchRequest, new ActionListener<>() {
+    private void checkLogTypes(
+            Map<String, List<String>> logIndexToRules,
+            WriteRequest.RefreshPolicy refreshPolicy,
+            TimeValue indexTimeout,
+            ActionListener<BulkResponse> listener) {
+        logTypeService.ensureConfigIndexIsInitialized(
+                new ActionListener<>() {
                     @Override
-                    public void onResponse(SearchResponse response) {
-                        if (response.isTimedOut()) {
-                            listener.onFailure(new OpenSearchStatusException("Search request timed out", RestStatus.REQUEST_TIMEOUT));
-                        }
-                        try {
-                            SearchHit[] hits = response.getHits().getHits();
-                            Map<String, List<String>> filteredLogIndexToRules = new HashMap<>();
-                            for (SearchHit hit : hits) {
-                                String name = hit.getSourceAsMap().get("name").toString();
+                    public void onResponse(Void unused) {
+                        BoolQueryBuilder queryBuilder =
+                                QueryBuilders.boolQuery().must(QueryBuilders.existsQuery("space"));
+                        SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+                        searchSourceBuilder.query(queryBuilder);
+                        searchSourceBuilder.fetchSource(true);
+                        searchSourceBuilder.size(10000);
+                        SearchRequest searchRequest = new SearchRequest();
+                        searchRequest.indices(LogTypeService.LOG_TYPE_INDEX);
+                        searchRequest.source(searchSourceBuilder);
 
-                                if (logIndexToRules.containsKey(name)) {
-                                    filteredLogIndexToRules.put(name, logIndexToRules.get(name));
-                                }
-                            }
-                            ingestQueries(filteredLogIndexToRules, refreshPolicy, indexTimeout, listener);
-                        } catch (SigmaError | IOException | CompositeSigmaErrors e) {
-                            onFailure(e);
-                        }
+                        client.search(
+                                searchRequest,
+                                new ActionListener<>() {
+                                    @Override
+                                    public void onResponse(SearchResponse response) {
+                                        if (response.isTimedOut()) {
+                                            listener.onFailure(
+                                                    new OpenSearchStatusException(
+                                                            "Search request timed out", RestStatus.REQUEST_TIMEOUT));
+                                        }
+                                        try {
+                                            SearchHit[] hits = response.getHits().getHits();
+                                            Map<String, List<String>> filteredLogIndexToRules = new HashMap<>();
+                                            for (SearchHit hit : hits) {
+                                                String name = hit.getSourceAsMap().get("name").toString();
+
+                                                if (logIndexToRules.containsKey(name)) {
+                                                    filteredLogIndexToRules.put(name, logIndexToRules.get(name));
+                                                }
+                                            }
+                                            ingestQueries(filteredLogIndexToRules, refreshPolicy, indexTimeout, listener);
+                                        } catch (SigmaError | IOException | CompositeSigmaErrors e) {
+                                            onFailure(e);
+                                        }
+                                    }
+
+                                    @Override
+                                    public void onFailure(Exception e) {
+                                        listener.onFailure(e);
+                                    }
+                                });
                     }
 
                     @Override
@@ -360,12 +477,5 @@ public class RuleIndices {
                         listener.onFailure(e);
                     }
                 });
-            }
-
-            @Override
-            public void onFailure(Exception e) {
-                listener.onFailure(e);
-            }
-        });
     }
 }

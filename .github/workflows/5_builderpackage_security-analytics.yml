@@ -1,0 +1,169 @@
+run-name: Build Wazuh Indexer Security Analytics plugin | ${{ inputs.id }}
+name: (5.x) Build packages
+
+# This workflow runs when any of the following occur:
+# - Run manually
+# - Invoked from another workflow
+on:
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: "Revision"
+        type: string
+        default: "0"
+      id:
+        description: "ID used to identify the workflow uniquely."
+        type: string
+        required: false
+  workflow_call:
+    inputs:
+      revision:
+        description: "Revision"
+        type: string
+        default: "0"
+      id:
+        description: "ID used to identify the workflow uniquely."
+        type: string
+        required: false
+
+# ==========================
+# Bibliography
+# ==========================
+#
+# * Reusable workflows: limitations
+#   | https://docs.github.com/en/actions/using-workflows/reusing-workflows#limitations
+# * Using matrix in reusable workflows:
+#   | https://docs.github.com/en/actions/using-workflows/reusing-workflows#using-a-matrix-strategy-with-a-reusable-workflow
+# * Reading input from the called workflow
+#   | https://docs.github.com/en/enterprise-cloud@latest/actions/using-workflows/workflow-syntax-for-github-actions#onworkflow_callinputs
+# * Ternary operator
+#   | https://docs.github.com/en/actions/learn-github-actions/expressions#example
+
+jobs:
+  branches:
+    runs-on: ubuntu-24.04
+    outputs:
+      common_utils_ref: ${{ steps.resolve.outputs.wazuh_indexer_common_utils_branch }}
+      alerting_ref: ${{ steps.resolve.outputs.wazuh_indexer_alerting_branch }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Resolve branches
+        id: resolve
+        uses: wazuh/wazuh-indexer/.github/actions/5_builderpackage_indexer_branch_resolver@main
+        with:
+          branch: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
+
+      - name: Validate resolved branches
+        run: |
+          common_utils_ref="${{ steps.resolve.outputs.wazuh_indexer_common_utils_branch }}"
+          alerting_ref="${{ steps.resolve.outputs.wazuh_indexer_alerting_branch }}"
+
+          echo "Resolved common_utils_ref: $common_utils_ref"
+          echo "Resolved alerting_ref: $alerting_ref"
+
+          if [ -z "$common_utils_ref" ]; then
+            echo "Resolver output wazuh_indexer_common_utils_branch is empty"
+            exit 1
+          fi
+
+          if [ -z "$alerting_ref" ]; then
+            echo "Resolver output wazuh_indexer_alerting_branch is empty"
+            exit 1
+          fi
+
+      - name: Display resolved branches
+        run: |
+          echo "Common Utils branch: ${{ steps.resolve.outputs.wazuh_indexer_common_utils_branch }}"
+          echo "Alerting branch: ${{ steps.resolve.outputs.wazuh_indexer_alerting_branch }}"
+
+  get-version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Get version
+        id: version
+        run: echo "version=$(jq -r .version<VERSION.json)" >> "$GITHUB_OUTPUT"
+
+  publish-common-utils:
+    runs-on: ubuntu-24.04
+    needs: [branches, get-version]
+    steps:
+      - name: Publish common-utils to Maven Local
+        uses: wazuh/wazuh-indexer-common-utils/.github/actions/5_local_maven_publisher@main
+        with:
+          version: ${{ needs.get-version.outputs.version }}
+          revision: ${{ inputs.revision }}
+          reference: ${{ needs.branches.outputs.common_utils_ref }}
+      - name: Cache Maven Local
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.m2/repository
+          key: ${{ github.run_id }}-common-utils
+
+  publish-alerting:
+    runs-on: ubuntu-24.04
+    needs: [ branches, get-version, publish-common-utils ]
+    steps:
+      - name: Restore Maven Local cache (common-utils)
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.m2/repository
+          key: ${{ github.run_id }}-common-utils
+      - name: Publish alerting to Maven Local
+        uses: wazuh/wazuh-indexer-alerting/.github/actions/5_local_maven_publisher@main
+        with:
+          version: ${{ needs.get-version.outputs.version }}
+          revision: ${{ inputs.revision }}
+          reference: ${{ needs.branches.outputs.alerting_ref }}
+      - name: Cache Maven Local
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.m2/repository
+          key: ${{ github.run_id }}-alerting
+
+  build:
+    needs: [get-version, publish-common-utils, publish-alerting]
+    runs-on: ubuntu-24.04
+    env:
+      plugin_name: wazuh-indexer-security-analytics
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - name: Setup Gradle # Used for caching
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Restore Maven Local cache (alerting)
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.m2/repository
+          key: ${{ github.run_id }}-alerting
+
+      - name: Get version
+        id: version
+        run: echo "version=$(jq -r .version<VERSION.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to Maven local
+        uses: ./.github/actions/5_local_maven_publisher
+        with:
+          version: ${{ steps.version.outputs.version }}
+          revision: '0'
+          reference: ${{ github.ref }}
+
+      - name: Build with Gradle
+        run: ./gradlew build -Dversion=${{ steps.version.outputs.version }} -Drevision=${{ inputs.revision }} -x integTest
+
+      - run: ls -la build/distributions
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.plugin_name }}-${{ steps.version.outputs.version }}.${{ inputs.revision }}.zip
+          path: build/distributions/${{ env.plugin_name }}-${{ steps.version.outputs.version }}.${{ inputs.revision }}.zip
+          if-no-files-found: error

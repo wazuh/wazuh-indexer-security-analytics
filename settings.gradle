@@ -3,4 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-rootProject.name = 'opensearch-security-analytics'
+rootProject.name = 'wazuh-indexer-security-analytics'
+include 'commons'
+
+project(":commons").name = rootProject.name + "-commons"

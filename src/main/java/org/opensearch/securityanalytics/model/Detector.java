@@ -1,33 +1,45 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.model;
 
-import java.util.HashMap;
-import java.util.Map;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.opensearch.commons.alerting.model.CronSchedule;
+import org.opensearch.commons.alerting.model.Schedule;
+import org.opensearch.commons.authuser.User;
+import org.opensearch.core.ParseField;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
 import org.opensearch.core.common.io.stream.Writeable;
-import org.opensearch.core.xcontent.XContentParserUtils;
-import org.opensearch.core.ParseField;
 import org.opensearch.core.xcontent.NamedXContentRegistry;
 import org.opensearch.core.xcontent.ToXContent;
 import org.opensearch.core.xcontent.ToXContentObject;
 import org.opensearch.core.xcontent.XContentBuilder;
 import org.opensearch.core.xcontent.XContentParser;
-import org.opensearch.commons.alerting.model.CronSchedule;
-import org.opensearch.commons.alerting.model.Schedule;
-import org.opensearch.commons.authuser.User;
+import org.opensearch.core.xcontent.XContentParserUtils;
 
 import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 
 public class Detector implements Writeable, ToXContentObject {
@@ -54,6 +66,10 @@ public class Detector implements Writeable, ToXContentObject {
     public static final String ALERTING_WORKFLOW_ID = "workflow_ids";
 
     public static final String BUCKET_MONITOR_ID_RULE_ID = "bucket_monitor_id_rule_id";
+
+    public static final String SOURCE_FIELD = "source";
+    public static final String DEFAULT_SOURCE = "Custom";
+    public static final String SIGMA_SOURCE = "Sigma";
     private static final String RULE_TOPIC_INDEX = "rule_topic_index";
 
     private static final String ALERTS_INDEX = "alert_index";
@@ -67,12 +83,72 @@ public class Detector implements Writeable, ToXContentObject {
     // Used as a key in rule-monitor map for the purpose of easy detection of the doc level monitor
     public static final String DOC_LEVEL_MONITOR = "-1";
 
-    public static final NamedXContentRegistry.Entry XCONTENT_REGISTRY = new NamedXContentRegistry.Entry(
-            Detector.class,
-            new ParseField(DETECTOR_TYPE),
-            xcp -> parse(xcp, null, null)
-    );
+    public static final NamedXContentRegistry.Entry XCONTENT_REGISTRY =
+            new NamedXContentRegistry.Entry(
+                    Detector.class, new ParseField(DETECTOR_TYPE), xcp -> parse(xcp, null, null));
 
+    @Override
+    public String toString() {
+        return "Detector{"
+                + "id='"
+                + id
+                + '\''
+                + ", version="
+                + version
+                + ", name='"
+                + name
+                + '\''
+                + ", threatIntelEnabled="
+                + threatIntelEnabled
+                + ", enabled="
+                + enabled
+                + ", schedule="
+                + schedule
+                + ", lastUpdateTime="
+                + lastUpdateTime
+                + ", enabledTime="
+                + enabledTime
+                + ", logType='"
+                + logType
+                + '\''
+                + ", user="
+                + user
+                + ", inputs="
+                + inputs
+                + ", triggers="
+                + triggers
+                + ", monitorIds="
+                + monitorIds
+                + ", ruleIdMonitorIdMap="
+                + ruleIdMonitorIdMap
+                + ", workflowIds="
+                + workflowIds
+                + ", ruleIndex='"
+                + ruleIndex
+                + '\''
+                + ", alertsIndex='"
+                + alertsIndex
+                + '\''
+                + ", alertsHistoryIndex='"
+                + alertsHistoryIndex
+                + '\''
+                + ", alertsHistoryIndexPattern='"
+                + alertsHistoryIndexPattern
+                + '\''
+                + ", findingsIndex='"
+                + findingsIndex
+                + '\''
+                + ", findingsIndexPattern='"
+                + findingsIndexPattern
+                + '\''
+                + ", type='"
+                + type
+                + '\''
+                + ", source='"
+                + source
+                + '\''
+                + '}';
+    }
 
     private String id;
 
@@ -116,14 +192,33 @@ public class Detector implements Writeable, ToXContentObject {
 
     private String findingsIndexPattern;
 
+    private String source;
+
     private final String type;
 
-    public Detector(String id, Long version, String name, Boolean enabled, Schedule schedule,
-                    Instant lastUpdateTime, Instant enabledTime, String logType,
-                    User user, List<DetectorInput> inputs, List<DetectorTrigger> triggers, List<String> monitorIds,
-                    String ruleIndex, String alertsIndex, String alertsHistoryIndex, String alertsHistoryIndexPattern,
-                    String findingsIndex, String findingsIndexPattern, Map<String, String> rulePerMonitor,
-                    List<String> workflowIds, Boolean threatIntelEnabled) {
+    public Detector(
+            String id,
+            Long version,
+            String name,
+            Boolean enabled,
+            Schedule schedule,
+            Instant lastUpdateTime,
+            Instant enabledTime,
+            String logType,
+            User user,
+            List<DetectorInput> inputs,
+            List<DetectorTrigger> triggers,
+            List<String> monitorIds,
+            String ruleIndex,
+            String alertsIndex,
+            String alertsHistoryIndex,
+            String alertsHistoryIndexPattern,
+            String findingsIndex,
+            String findingsIndexPattern,
+            Map<String, String> rulePerMonitor,
+            List<String> workflowIds,
+            Boolean threatIntelEnabled,
+            String source) {
         this.type = DETECTOR_TYPE;
 
         this.id = id != null ? id : NO_ID;
@@ -147,6 +242,7 @@ public class Detector implements Writeable, ToXContentObject {
         this.logType = logType;
         this.workflowIds = workflowIds != null ? workflowIds : null;
         this.threatIntelEnabled = threatIntelEnabled != null && threatIntelEnabled;
+        this.source = source != null ? source : DEFAULT_SOURCE;
 
         if (enabled) {
             Objects.requireNonNull(enabledTime);
@@ -175,8 +271,8 @@ public class Detector implements Writeable, ToXContentObject {
                 sin.readOptionalString(),
                 sin.readMap(StreamInput::readString, StreamInput::readString),
                 sin.readStringList(),
-                sin.readBoolean()
-            );
+                sin.readBoolean(),
+                sin.readOptionalString());
     }
 
     @Override
@@ -203,7 +299,7 @@ public class Detector implements Writeable, ToXContentObject {
             it.writeTo(out);
         }
         out.writeVInt(triggers.size());
-        for (DetectorTrigger it: triggers) {
+        for (DetectorTrigger it : triggers) {
             it.writeTo(out);
         }
         out.writeStringCollection(monitorIds);
@@ -219,9 +315,11 @@ public class Detector implements Writeable, ToXContentObject {
             out.writeStringCollection(workflowIds);
         }
         out.writeBoolean(threatIntelEnabled);
+        out.writeOptionalString(source);
     }
 
-    public XContentBuilder toXContentWithUser(XContentBuilder builder, Params params) throws IOException {
+    public XContentBuilder toXContentWithUser(XContentBuilder builder, Params params)
+            throws IOException {
         return createXContentBuilder(builder, params, false);
     }
 
@@ -230,14 +328,13 @@ public class Detector implements Writeable, ToXContentObject {
         return createXContentBuilder(builder, params, true);
     }
 
-    private XContentBuilder createXContentBuilder(XContentBuilder builder, ToXContent.Params params, Boolean secure) throws IOException {
+    private XContentBuilder createXContentBuilder(
+            XContentBuilder builder, ToXContent.Params params, Boolean secure) throws IOException {
         builder.startObject();
         if (params.paramAsBoolean("with_type", false)) {
             builder.startObject(type);
         }
-        builder.field(TYPE_FIELD, type)
-                .field(NAME_FIELD, name)
-                .field(DETECTOR_TYPE_FIELD, logType);
+        builder.field(TYPE_FIELD, type).field(NAME_FIELD, name).field(DETECTOR_TYPE_FIELD, logType);
 
         if (!secure) {
             if (user == null) {
@@ -253,23 +350,29 @@ public class Detector implements Writeable, ToXContentObject {
         if (enabledTime == null) {
             builder.nullField(ENABLED_TIME_FIELD);
         } else {
-            builder.timeField(ENABLED_TIME_FIELD, String.format(Locale.getDefault(), "%s_in_millis", ENABLED_TIME_FIELD), enabledTime.toEpochMilli());
+            builder.timeField(
+                    ENABLED_TIME_FIELD,
+                    String.format(Locale.getDefault(), "%s_in_millis", ENABLED_TIME_FIELD),
+                    enabledTime.toEpochMilli());
         }
 
         builder.field(SCHEDULE_FIELD, schedule);
 
-        DetectorInput[] inputsArray = new DetectorInput[]{};
+        DetectorInput[] inputsArray = new DetectorInput[] {};
         inputsArray = inputs.toArray(inputsArray);
         builder.field(INPUTS_FIELD, inputsArray);
 
-        DetectorTrigger[] triggerArray = new DetectorTrigger[]{};
+        DetectorTrigger[] triggerArray = new DetectorTrigger[] {};
         triggerArray = triggers.toArray(triggerArray);
         builder.field(TRIGGERS_FIELD, triggerArray);
 
         if (lastUpdateTime == null) {
             builder.nullField(LAST_UPDATE_TIME_FIELD);
         } else {
-            builder.timeField(LAST_UPDATE_TIME_FIELD, String.format(Locale.getDefault(), "%s_in_millis", LAST_UPDATE_TIME_FIELD), lastUpdateTime.toEpochMilli());
+            builder.timeField(
+                    LAST_UPDATE_TIME_FIELD,
+                    String.format(Locale.getDefault(), "%s_in_millis", LAST_UPDATE_TIME_FIELD),
+                    lastUpdateTime.toEpochMilli());
         }
 
         builder.field(ALERTING_MONITOR_ID, monitorIds);
@@ -280,7 +383,6 @@ public class Detector implements Writeable, ToXContentObject {
             builder.field(ALERTING_WORKFLOW_ID, workflowIds);
         }
 
-
         builder.field(BUCKET_MONITOR_ID_RULE_ID, ruleIdMonitorIdMap);
         builder.field(RULE_TOPIC_INDEX, ruleIndex);
         builder.field(ALERTS_INDEX, alertsIndex);
@@ -288,6 +390,7 @@ public class Detector implements Writeable, ToXContentObject {
         builder.field(ALERTS_HISTORY_INDEX_PATTERN, alertsHistoryIndexPattern);
         builder.field(FINDINGS_INDEX, findingsIndex);
         builder.field(FINDINGS_INDEX_PATTERN, findingsIndexPattern);
+        builder.field(SOURCE_FIELD, source);
 
         if (params.paramAsBoolean("with_type", false)) {
             builder.endObject();
@@ -296,9 +399,11 @@ public class Detector implements Writeable, ToXContentObject {
     }
 
     public static Detector docParse(XContentParser xcp, String id, Long version) throws IOException {
-        XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.nextToken(), xcp);
+        XContentParserUtils.ensureExpectedToken(
+                XContentParser.Token.START_OBJECT, xcp.nextToken(), xcp);
         XContentParserUtils.ensureExpectedToken(XContentParser.Token.FIELD_NAME, xcp.nextToken(), xcp);
-        XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.nextToken(), xcp);
+        XContentParserUtils.ensureExpectedToken(
+                XContentParser.Token.START_OBJECT, xcp.nextToken(), xcp);
         Detector detector = xcp.namedObject(Detector.class, xcp.currentName(), null);
         XContentParserUtils.ensureExpectedToken(XContentParser.Token.END_OBJECT, xcp.nextToken(), xcp);
 
@@ -336,8 +441,10 @@ public class Detector implements Writeable, ToXContentObject {
         String findingsIndex = null;
         String findingsIndexPattern = null;
         Boolean enableThreatIntel = false;
+        String source = DEFAULT_SOURCE;
 
-        XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
+        XContentParserUtils.ensureExpectedToken(
+                XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
         while (xcp.nextToken() != XContentParser.Token.END_OBJECT) {
             String fieldName = xcp.currentName();
             xcp.nextToken();
@@ -366,14 +473,16 @@ public class Detector implements Writeable, ToXContentObject {
                     schedule = Schedule.parse(xcp);
                     break;
                 case INPUTS_FIELD:
-                    XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_ARRAY, xcp.currentToken(), xcp);
+                    XContentParserUtils.ensureExpectedToken(
+                            XContentParser.Token.START_ARRAY, xcp.currentToken(), xcp);
                     while (xcp.nextToken() != XContentParser.Token.END_ARRAY) {
                         DetectorInput input = DetectorInput.parse(xcp);
                         inputs.add(input);
                     }
                     break;
                 case TRIGGERS_FIELD:
-                    XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_ARRAY, xcp.currentToken(), xcp);
+                    XContentParserUtils.ensureExpectedToken(
+                            XContentParser.Token.START_ARRAY, xcp.currentToken(), xcp);
                     while (xcp.nextToken() != XContentParser.Token.END_ARRAY) {
                         DetectorTrigger trigger = DetectorTrigger.parse(xcp);
                         triggers.add(trigger);
@@ -400,14 +509,16 @@ public class Detector implements Writeable, ToXContentObject {
                     }
                     break;
                 case ALERTING_MONITOR_ID:
-                    XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_ARRAY, xcp.currentToken(), xcp);
+                    XContentParserUtils.ensureExpectedToken(
+                            XContentParser.Token.START_ARRAY, xcp.currentToken(), xcp);
                     while (xcp.nextToken() != XContentParser.Token.END_ARRAY) {
                         String monitorId = xcp.text();
                         monitorIds.add(monitorId);
                     }
                     break;
                 case ALERTING_WORKFLOW_ID:
-                    XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_ARRAY, xcp.currentToken(), xcp);
+                    XContentParserUtils.ensureExpectedToken(
+                            XContentParser.Token.START_ARRAY, xcp.currentToken(), xcp);
                     while (xcp.nextToken() != XContentParser.Token.END_ARRAY) {
                         String workflowId = xcp.textOrNull();
                         if (workflowId != null) {
@@ -416,7 +527,7 @@ public class Detector implements Writeable, ToXContentObject {
                     }
                     break;
                 case BUCKET_MONITOR_ID_RULE_ID:
-                    rulePerMonitor= xcp.mapStrings();
+                    rulePerMonitor = xcp.mapStrings();
                     break;
                 case RULE_TOPIC_INDEX:
                     ruleIndex = xcp.text();
@@ -435,6 +546,9 @@ public class Detector implements Writeable, ToXContentObject {
                     break;
                 case FINDINGS_INDEX_PATTERN:
                     findingsIndexPattern = xcp.text();
+                    break;
+                case SOURCE_FIELD:
+                    source = xcp.text();
                     break;
                 default:
                     xcp.skipChildren();
@@ -472,8 +586,8 @@ public class Detector implements Writeable, ToXContentObject {
                 findingsIndexPattern,
                 rulePerMonitor,
                 workflowIds,
-                enableThreatIntel
-                );
+                enableThreatIntel,
+                source);
     }
 
     public static Detector readFrom(StreamInput sin) throws IOException {
@@ -556,7 +670,9 @@ public class Detector implements Writeable, ToXContentObject {
         this.user = user;
     }
 
-    public Map<String, String> getRuleIdMonitorIdMap() {return ruleIdMonitorIdMap; }
+    public Map<String, String> getRuleIdMonitorIdMap() {
+        return ruleIdMonitorIdMap;
+    }
 
     public void setId(String id) {
         this.id = id;
@@ -609,6 +725,7 @@ public class Detector implements Writeable, ToXContentObject {
     public void setMonitorIds(List<String> monitorIds) {
         this.monitorIds = monitorIds;
     }
+
     public void setRuleIdMonitorIdMap(Map<String, String> ruleIdMonitorIdMap) {
         this.ruleIdMonitorIdMap = ruleIdMonitorIdMap;
     }
@@ -637,16 +754,65 @@ public class Detector implements Writeable, ToXContentObject {
         return threatIntelEnabled;
     }
 
+    public String getLogType() {
+        return logType;
+    }
+
+    public String getSource() {
+        return source;
+    }
+
+    public void setSource(String source) {
+        this.source = source;
+    }
+
+    /**
+     * Returns whether this detector belongs to the standard (Sigma) space and is therefore protected
+     * from user modifications.
+     */
+    public boolean isStandardDetector() {
+        return SIGMA_SOURCE.equalsIgnoreCase(source);
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         Detector detector = (Detector) o;
-        return Objects.equals(id, detector.id) && Objects.equals(version, detector.version) && Objects.equals(name, detector.name) && Objects.equals(enabled, detector.enabled) && Objects.equals(schedule, detector.schedule) && Objects.equals(lastUpdateTime, detector.lastUpdateTime) && Objects.equals(enabledTime, detector.enabledTime) && Objects.equals(logType, detector.logType) && ((user == null && detector.user == null) || Objects.equals(user, detector.user)) && Objects.equals(inputs, detector.inputs) && Objects.equals(triggers, detector.triggers) && Objects.equals(type, detector.type) && Objects.equals(monitorIds, detector.monitorIds) && Objects.equals(ruleIndex, detector.ruleIndex);
+        return Objects.equals(id, detector.id)
+                && Objects.equals(version, detector.version)
+                && Objects.equals(name, detector.name)
+                && Objects.equals(enabled, detector.enabled)
+                && Objects.equals(schedule, detector.schedule)
+                && Objects.equals(lastUpdateTime, detector.lastUpdateTime)
+                && Objects.equals(enabledTime, detector.enabledTime)
+                && Objects.equals(logType, detector.logType)
+                && ((user == null && detector.user == null) || Objects.equals(user, detector.user))
+                && Objects.equals(inputs, detector.inputs)
+                && Objects.equals(triggers, detector.triggers)
+                && Objects.equals(type, detector.type)
+                && Objects.equals(monitorIds, detector.monitorIds)
+                && Objects.equals(ruleIndex, detector.ruleIndex)
+                && Objects.equals(source, detector.source);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, version, name, enabled, schedule, lastUpdateTime, enabledTime, logType, user, inputs, triggers, type, monitorIds, ruleIndex);
+        return Objects.hash(
+                id,
+                version,
+                name,
+                enabled,
+                schedule,
+                lastUpdateTime,
+                enabledTime,
+                logType,
+                user,
+                inputs,
+                triggers,
+                type,
+                monitorIds,
+                ruleIndex,
+                source);
     }
 }
