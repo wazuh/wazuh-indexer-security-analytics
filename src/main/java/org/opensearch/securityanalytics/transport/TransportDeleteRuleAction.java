@@ -1,19 +1,22 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.transport;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
-
 import org.apache.lucene.search.join.ScoreMode;
-
 import org.opensearch.OpenSearchStatusException;
 import org.opensearch.action.ActionRunnable;
 import org.opensearch.action.get.GetRequest;
@@ -55,9 +58,18 @@ import org.opensearch.threadpool.ThreadPool;
 import org.opensearch.transport.TransportService;
 import org.opensearch.transport.client.Client;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+
 import static org.opensearch.securityanalytics.model.Detector.NO_VERSION;
 
-public class TransportDeleteRuleAction extends HandledTransportAction<DeleteRuleRequest, DeleteRuleResponse> {
+public class TransportDeleteRuleAction
+        extends HandledTransportAction<DeleteRuleRequest, DeleteRuleResponse> {
 
     protected final String ruleIndex;
 
@@ -71,12 +83,11 @@ public class TransportDeleteRuleAction extends HandledTransportAction<DeleteRule
 
     @Inject
     public TransportDeleteRuleAction(
-        TransportService transportService,
-        Client client,
-        DetectorIndices detectorIndices,
-        ActionFilters actionFilters,
-        NamedXContentRegistry xContentRegistry
-    ) {
+            TransportService transportService,
+            Client client,
+            DetectorIndices detectorIndices,
+            ActionFilters actionFilters,
+            NamedXContentRegistry xContentRegistry) {
         super(DeleteRuleAction.NAME, transportService, actionFilters, DeleteRuleRequest::new);
         this.client = client;
         this.detectorIndices = detectorIndices;
@@ -85,16 +96,16 @@ public class TransportDeleteRuleAction extends HandledTransportAction<DeleteRule
         this.ruleIndex = Rule.CUSTOM_RULES_INDEX;
     }
 
-    // Adds the new actionName String to avoid the IllegalArgumentException when creating a new WTransportDeleteRuleAction
+    // Adds the new actionName String to avoid the IllegalArgumentException when creating a new
+    // WTransportDeleteRuleAction
     public TransportDeleteRuleAction(
-        String actionName,
-        TransportService transportService,
-        Client client,
-        DetectorIndices detectorIndices,
-        ActionFilters actionFilters,
-        NamedXContentRegistry xContentRegistry,
-        String ruleIndex
-    ) {
+            String actionName,
+            TransportService transportService,
+            Client client,
+            DetectorIndices detectorIndices,
+            ActionFilters actionFilters,
+            NamedXContentRegistry xContentRegistry,
+            String ruleIndex) {
         super(actionName, transportService, actionFilters, DeleteRuleRequest::new);
         this.client = client;
         this.detectorIndices = detectorIndices;
@@ -104,7 +115,8 @@ public class TransportDeleteRuleAction extends HandledTransportAction<DeleteRule
     }
 
     @Override
-    protected void doExecute(Task task, DeleteRuleRequest request, ActionListener<DeleteRuleResponse> listener) {
+    protected void doExecute(
+            Task task, DeleteRuleRequest request, ActionListener<DeleteRuleResponse> listener) {
         AsyncDeleteRuleAction asyncAction = new AsyncDeleteRuleAction(task, request, listener);
         asyncAction.start();
     }
@@ -118,7 +130,8 @@ public class TransportDeleteRuleAction extends HandledTransportAction<DeleteRule
         private final AtomicInteger checker = new AtomicInteger();
         private final Task task;
 
-        AsyncDeleteRuleAction(Task task, DeleteRuleRequest request, ActionListener<DeleteRuleResponse> listener) {
+        AsyncDeleteRuleAction(
+                Task task, DeleteRuleRequest request, ActionListener<DeleteRuleResponse> listener) {
             this.task = task;
             this.request = request;
             this.listener = listener;
@@ -130,117 +143,132 @@ public class TransportDeleteRuleAction extends HandledTransportAction<DeleteRule
             String ruleId = request.getRuleId();
             GetRequest getRequest = new GetRequest(ruleIndex, ruleId);
 
-            client.get(getRequest, new ActionListener<>() {
-                @Override
-                public void onResponse(GetResponse response) {
-                    if (!response.isExists()) {
-                        onFailures(
-                            new OpenSearchStatusException(
-                                String.format(Locale.getDefault(), "Rule with %s is not found", ruleId),
-                                RestStatus.NOT_FOUND
-                            )
-                        );
-                        return;
-                    }
-                    try {
-                        XContentParser xcp = XContentHelper.createParser(
-                            xContentRegistry,
-                            LoggingDeprecationHandler.INSTANCE,
-                            response.getSourceAsBytesRef(),
-                            XContentType.JSON
-                        );
+            client.get(
+                    getRequest,
+                    new ActionListener<>() {
+                        @Override
+                        public void onResponse(GetResponse response) {
+                            if (!response.isExists()) {
+                                onFailures(
+                                        new OpenSearchStatusException(
+                                                String.format(Locale.getDefault(), "Rule with %s is not found", ruleId),
+                                                RestStatus.NOT_FOUND));
+                                return;
+                            }
+                            try {
+                                XContentParser xcp =
+                                        XContentHelper.createParser(
+                                                xContentRegistry,
+                                                LoggingDeprecationHandler.INSTANCE,
+                                                response.getSourceAsBytesRef(),
+                                                XContentType.JSON);
 
-                        Rule rule = Rule.docParse(xcp, response.getId(), response.getVersion());
-                        onGetResponse(rule);
-                    } catch (IOException e) {
-                        onFailures(e);
-                    }
-                }
+                                Rule rule = Rule.docParse(xcp, response.getId(), response.getVersion());
+                                onGetResponse(rule);
+                            } catch (IOException e) {
+                                onFailures(e);
+                            }
+                        }
 
-                @Override
-                public void onFailure(Exception e) {
-                    onFailures(
-                        new OpenSearchStatusException(
-                            String.format(Locale.getDefault(), "Rule with %s is not found", ruleId),
-                            RestStatus.NOT_FOUND
-                        )
-                    );
-                }
-            });
+                        @Override
+                        public void onFailure(Exception e) {
+                            onFailures(
+                                    new OpenSearchStatusException(
+                                            String.format(Locale.getDefault(), "Rule with %s is not found", ruleId),
+                                            RestStatus.NOT_FOUND));
+                        }
+                    });
         }
 
         private void onGetResponse(Rule rule) {
             if (detectorIndices.detectorIndexExists()) {
-                QueryBuilder queryBuilder = QueryBuilders.nestedQuery(
-                    "detector.inputs.detector_input.custom_rules",
-                    QueryBuilders.boolQuery()
-                        .must(QueryBuilders.matchQuery("detector.inputs.detector_input.custom_rules.id", rule.getId())),
-                    ScoreMode.Avg
-                );
+                // Detectors reference custom rules by the content-manager's document.id (see
+                // TransportIndexDetectorAction resolving custom rules by rule.document.id). Querying by the
+                // rule's OpenSearch _id would miss those detectors and leave stale references behind.
+                // Fall back to _id for legacy rules that have no document.id.
+                String detectorRuleId = rule.getDocumentId() != null ? rule.getDocumentId() : rule.getId();
+                QueryBuilder queryBuilder =
+                        QueryBuilders.nestedQuery(
+                                "detector.inputs.detector_input.custom_rules",
+                                QueryBuilders.boolQuery()
+                                        .must(
+                                                QueryBuilders.matchQuery(
+                                                        "detector.inputs.detector_input.custom_rules.id", detectorRuleId)),
+                                ScoreMode.Avg);
 
-                SearchRequest searchRequest = new SearchRequest(Detector.DETECTORS_INDEX).source(
-                    new SearchSourceBuilder().seqNoAndPrimaryTerm(true).version(true).query(queryBuilder).size(10000)
-                ).preference(Preference.PRIMARY_FIRST.type());
+                SearchRequest searchRequest =
+                        new SearchRequest(Detector.DETECTORS_INDEX)
+                                .source(
+                                        new SearchSourceBuilder()
+                                                .seqNoAndPrimaryTerm(true)
+                                                .version(true)
+                                                .query(queryBuilder)
+                                                .size(10000))
+                                .preference(Preference.PRIMARY_FIRST.type());
 
-                client.search(searchRequest, new ActionListener<>() {
-                    @Override
-                    public void onResponse(SearchResponse response) {
-                        if (response.isTimedOut()) {
-                            onFailures(
-                                new OpenSearchStatusException(
-                                    String.format(
-                                        Locale.getDefault(),
-                                        "Search request timed out. Rule with id %s cannot be deleted",
-                                        rule.getId()
-                                    ),
-                                    RestStatus.REQUEST_TIMEOUT
-                                )
-                            );
-                            return;
-                        }
-
-                        if (response.getHits().getTotalHits().value() > 0) {
-                            if (!request.isForced()) {
-                                onFailures(
-                                    new OpenSearchStatusException(
-                                        String.format(
-                                            Locale.getDefault(),
-                                            "Rule with id %s is actively used by detectors. Deletion can be forced by setting forced flag to true",
-                                            rule.getId()
-                                        ),
-                                        RestStatus.BAD_REQUEST
-                                    )
-                                );
-                                return;
-                            }
-
-                            List<Detector> detectors = new ArrayList<>();
-                            try {
-                                for (SearchHit hit : response.getHits()) {
-                                    XContentParser xcp = XContentType.JSON.xContent()
-                                        .createParser(xContentRegistry, LoggingDeprecationHandler.INSTANCE, hit.getSourceAsString());
-
-                                    Detector detector = Detector.docParse(xcp, hit.getId(), hit.getVersion());
-                                    if (!detector.getInputs().isEmpty()) {
-                                        detector.getInputs().get(0).setCustomRules(removeRuleFromDetectors(detector, rule.getId()));
-                                    }
-                                    detectors.add(detector);
+                client.search(
+                        searchRequest,
+                        new ActionListener<>() {
+                            @Override
+                            public void onResponse(SearchResponse response) {
+                                if (response.isTimedOut()) {
+                                    onFailures(
+                                            new OpenSearchStatusException(
+                                                    String.format(
+                                                            Locale.getDefault(),
+                                                            "Search request timed out. Rule with id %s cannot be deleted",
+                                                            rule.getId()),
+                                                    RestStatus.REQUEST_TIMEOUT));
+                                    return;
                                 }
-                            } catch (IOException ex) {
-                                onFailures(ex);
+
+                                if (response.getHits().getTotalHits().value() > 0) {
+                                    if (!request.isForced()) {
+                                        onFailures(
+                                                new OpenSearchStatusException(
+                                                        String.format(
+                                                                Locale.getDefault(),
+                                                                "Rule with id %s is actively used by detectors. Deletion can be forced by setting forced flag to true",
+                                                                rule.getId()),
+                                                        RestStatus.BAD_REQUEST));
+                                        return;
+                                    }
+
+                                    List<Detector> detectors = new ArrayList<>();
+                                    try {
+                                        for (SearchHit hit : response.getHits()) {
+                                            XContentParser xcp =
+                                                    XContentType.JSON
+                                                            .xContent()
+                                                            .createParser(
+                                                                    xContentRegistry,
+                                                                    LoggingDeprecationHandler.INSTANCE,
+                                                                    hit.getSourceAsString());
+
+                                            Detector detector = Detector.docParse(xcp, hit.getId(), hit.getVersion());
+                                            if (!detector.getInputs().isEmpty()) {
+                                                detector
+                                                        .getInputs()
+                                                        .get(0)
+                                                        .setCustomRules(removeRuleFromDetectors(detector, detectorRuleId));
+                                            }
+                                            detectors.add(detector);
+                                        }
+                                    } catch (IOException ex) {
+                                        onFailures(ex);
+                                    }
+
+                                    updateDetectors(detectors);
+                                } else {
+                                    deleteRule(rule.getId());
+                                }
                             }
 
-                            updateDetectors(detectors);
-                        } else {
-                            deleteRule(rule.getId());
-                        }
-                    }
-
-                    @Override
-                    public void onFailure(Exception e) {
-                        onFailures(e);
-                    }
-                });
+                            @Override
+                            public void onFailure(Exception e) {
+                                onFailures(e);
+                            }
+                        });
             } else {
                 deleteRule(rule.getId());
             }
@@ -248,31 +276,32 @@ public class TransportDeleteRuleAction extends HandledTransportAction<DeleteRule
 
         private void updateDetectors(List<Detector> detectors) {
             for (Detector detector : detectors) {
-                IndexDetectorRequest indexRequest = new IndexDetectorRequest(
-                    detector.getId(),
-                    request.getRefreshPolicy(),
-                    RestRequest.Method.PUT,
-                    detector
-                );
-                client.execute(IndexDetectorAction.INSTANCE, indexRequest, new ActionListener<>() {
-                    @Override
-                    public void onResponse(IndexDetectorResponse response) {
-                        if (response.getStatus() != RestStatus.OK) {
-                            onFailures(
-                                new OpenSearchStatusException(
-                                    String.format(Locale.getDefault(), "Rule with id %s cannot be deleted", request.getRuleId()),
-                                    RestStatus.INTERNAL_SERVER_ERROR
-                                )
-                            );
-                        }
-                        onComplete(request.getRuleId(), detectors.size());
-                    }
+                IndexDetectorRequest indexRequest =
+                        new IndexDetectorRequest(
+                                detector.getId(), request.getRefreshPolicy(), RestRequest.Method.PUT, detector);
+                client.execute(
+                        IndexDetectorAction.INSTANCE,
+                        indexRequest,
+                        new ActionListener<>() {
+                            @Override
+                            public void onResponse(IndexDetectorResponse response) {
+                                if (response.getStatus() != RestStatus.OK) {
+                                    onFailures(
+                                            new OpenSearchStatusException(
+                                                    String.format(
+                                                            Locale.getDefault(),
+                                                            "Rule with id %s cannot be deleted",
+                                                            request.getRuleId()),
+                                                    RestStatus.INTERNAL_SERVER_ERROR));
+                                }
+                                onComplete(request.getRuleId(), detectors.size());
+                            }
 
-                    @Override
-                    public void onFailure(Exception e) {
-                        onFailures(e);
-                    }
-                });
+                            @Override
+                            public void onFailure(Exception e) {
+                                onFailures(e);
+                            }
+                        });
             }
         }
 
@@ -283,30 +312,33 @@ public class TransportDeleteRuleAction extends HandledTransportAction<DeleteRule
         }
 
         private void deleteRule(String ruleId) {
-            new DeleteByQueryRequestBuilder(client, DeleteByQueryAction.INSTANCE).source(ruleIndex)
-                .filter(QueryBuilders.matchQuery("_id", ruleId))
-                .refresh(true)
-                .execute(new ActionListener<>() {
-                    @Override
-                    public void onResponse(BulkByScrollResponse response) {
-                        if (response.isTimedOut()) {
-                            onFailures(
-                                new OpenSearchStatusException(
-                                    String.format(Locale.getDefault(), "Request timed out. Rule with id %s cannot be deleted", ruleId),
-                                    RestStatus.REQUEST_TIMEOUT
-                                )
-                            );
-                            return;
-                        }
+            new DeleteByQueryRequestBuilder(client, DeleteByQueryAction.INSTANCE)
+                    .source(ruleIndex)
+                    .filter(QueryBuilders.matchQuery("_id", ruleId))
+                    .refresh(true)
+                    .execute(
+                            new ActionListener<>() {
+                                @Override
+                                public void onResponse(BulkByScrollResponse response) {
+                                    if (response.isTimedOut()) {
+                                        onFailures(
+                                                new OpenSearchStatusException(
+                                                        String.format(
+                                                                Locale.getDefault(),
+                                                                "Request timed out. Rule with id %s cannot be deleted",
+                                                                ruleId),
+                                                        RestStatus.REQUEST_TIMEOUT));
+                                        return;
+                                    }
 
-                        onOperation(response, ruleId);
-                    }
+                                    onOperation(response, ruleId);
+                                }
 
-                    @Override
-                    public void onFailure(Exception e) {
-                        onFailures(e);
-                    }
-                });
+                                @Override
+                                public void onFailure(Exception e) {
+                                    onFailures(e);
+                                }
+                            });
         }
 
         private List<DetectorRule> removeRuleFromDetectors(Detector detector, String ruleId) {
@@ -337,16 +369,21 @@ public class TransportDeleteRuleAction extends HandledTransportAction<DeleteRule
         }
 
         private void finishHim(String ruleId, Exception t) {
-            threadPool.executor(ThreadPool.Names.GENERIC).execute(ActionRunnable.supply(listener, () -> {
-                if (t != null) {
-                    if (t instanceof OpenSearchStatusException) {
-                        throw t;
-                    }
-                    throw SecurityAnalyticsException.wrap(t);
-                } else {
-                    return new DeleteRuleResponse(ruleId, NO_VERSION, RestStatus.NO_CONTENT);
-                }
-            }));
+            threadPool
+                    .executor(ThreadPool.Names.GENERIC)
+                    .execute(
+                            ActionRunnable.supply(
+                                    listener,
+                                    () -> {
+                                        if (t != null) {
+                                            if (t instanceof OpenSearchStatusException) {
+                                                throw t;
+                                            }
+                                            throw SecurityAnalyticsException.wrap(t);
+                                        } else {
+                                            return new DeleteRuleResponse(ruleId, NO_VERSION, RestStatus.NO_CONTENT);
+                                        }
+                                    }));
         }
     }
 }
