@@ -185,8 +185,15 @@ public class TransportDeleteRuleAction
                 // Detectors reference custom rules by the content-manager's document.id (see
                 // TransportIndexDetectorAction resolving custom rules by rule.document.id). Querying by the
                 // rule's OpenSearch _id would miss those detectors and leave stale references behind.
-                // Fall back to _id for legacy rules that have no document.id.
-                String detectorRuleId = rule.getDocumentId() != null ? rule.getDocumentId() : rule.getId();
+                String detectorRuleId = rule.getDocumentId();
+                if (detectorRuleId == null) {
+                    onFailures(
+                            new OpenSearchStatusException(
+                                    String.format(
+                                            Locale.getDefault(), "Rule with %s is not found", request.getRuleId()),
+                                    RestStatus.NOT_FOUND));
+                    return;
+                }
                 QueryBuilder queryBuilder =
                         QueryBuilders.nestedQuery(
                                 "detector.inputs.detector_input.custom_rules",
