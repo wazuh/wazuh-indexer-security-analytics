@@ -1,0 +1,4 @@
+Reference file used to validate that a bump revert correctly restores
+non-version files while preserving VERSION.json.
+
+Tracked version marker: 5.0.0-beta2
