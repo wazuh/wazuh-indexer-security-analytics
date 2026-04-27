@@ -394,7 +394,7 @@ public class TransportIndexDetectorAction
             int ruleCount = Math.max(input.getCustomRules().size(), input.getPrePackagedRules().size());
             if (ruleCount > MAX_RULES_PER_DETECTOR) {
                 return String.format(
-                        Locale.getDefault(),
+                        Locale.ROOT,
                         "Detector cannot have more than %d rules, but found %d",
                         MAX_RULES_PER_DETECTOR,
                         ruleCount);
