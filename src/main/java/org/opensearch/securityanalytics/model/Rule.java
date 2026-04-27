@@ -145,13 +145,13 @@ public class Rule implements Writeable, ToXContentObject {
         this(
                 id,
                 version,
-            category,
+                category,
                 logSource,
-            references,
+                references,
                 tags,
                 level,
                 falsePositives,
-            status,
+                status,
                 date,
                 queries,
                 queryFieldNames,
@@ -165,13 +165,13 @@ public class Rule implements Writeable, ToXContentObject {
     public Rule(
             String id,
             Long version,
-        String category,
+            String category,
             String logSource,
-        List<Value> references,
+            List<Value> references,
             List<Value> tags,
             String level,
             List<Value> falsePositives,
-        String status,
+            String status,
             Instant date,
             List<Value> queries,
             List<Value> queryFieldNames,
@@ -216,13 +216,13 @@ public class Rule implements Writeable, ToXContentObject {
         this(
                 id,
                 version,
-            category,
+                category,
                 rule.getLogSource().getCategory() != null
                         ? rule.getLogSource().getCategory()
                         : (rule.getLogSource().getProduct() != null
                                 ? rule.getLogSource().getProduct()
                                 : rule.getLogSource().getService()),
-            rule.getReferences().stream().map(Value::new).collect(Collectors.toList()),
+                rule.getReferences().stream().map(Value::new).collect(Collectors.toList()),
                 rule.getTags().stream()
                         .map(
                                 ruleTag ->
@@ -235,7 +235,7 @@ public class Rule implements Writeable, ToXContentObject {
                         .collect(Collectors.toList()),
                 rule.getLevel().toString(),
                 rule.getFalsePositives().stream().map(Value::new).collect(Collectors.toList()),
-            rule.getStatus().toString(),
+                rule.getStatus().toString(),
                 Instant.ofEpochMilli(rule.getDate().getTime()),
                 queries.stream()
                         .filter(query -> !(query instanceof AggregationQueries))
@@ -260,13 +260,13 @@ public class Rule implements Writeable, ToXContentObject {
         this(
                 sin.readString(),
                 sin.readLong(),
-            sin.readString(),
                 sin.readString(),
-            sin.readList(Value::readFrom),
+                sin.readString(),
+                sin.readList(Value::readFrom),
                 sin.readList(Value::readFrom),
                 sin.readString(),
                 sin.readList(Value::readFrom),
-            sin.readString(),
+                sin.readString(),
                 sin.readInstant(),
                 sin.readList(Value::readFrom),
                 sin.readList(Value::readFrom),
@@ -510,13 +510,13 @@ public class Rule implements Writeable, ToXContentObject {
                 new Rule(
                         id,
                         version,
-                    Objects.requireNonNull(category, "Rule Category is null"),
+                        Objects.requireNonNull(category, "Rule Category is null"),
                         Objects.requireNonNull(logSource, "Rule LogSource is null"),
-                    references,
+                        references,
                         tags,
                         level,
                         falsePositives,
-                    status,
+                        status,
                         date,
                         queries,
                         queryFields,
