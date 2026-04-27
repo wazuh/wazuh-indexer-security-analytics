@@ -1,15 +1,27 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.rules.objects;
 
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
 import org.opensearch.securityanalytics.rules.exceptions.SigmaTypeError;
 import org.opensearch.securityanalytics.rules.types.SigmaCIDRExpression;
 import org.opensearch.test.OpenSearchTestCase;
+import org.junit.After;
+import org.junit.Assert;
+import org.junit.Before;
 
 import java.util.HashSet;
 import java.util.List;
@@ -40,54 +52,53 @@ public class WazuhExtensionsTests extends OpenSearchTestCase {
     }
 
     private static final String FULL_RULE_YAML =
-            "title: Test Rule\n" +
-                    "id: 12345678-1234-1234-1234-123456789012\n" +
-                    "status: experimental\n" +
-                    "description: Top-level description\n" +
-                    "author: Test Author\n" +
-                    "date: 2024/01/15\n" +
-                    "level: high\n" +
-                    "logsource:\n" +
-                    "    product: windows\n" +
-                    "    service: system\n" +
-                    "detection:\n" +
-                    "    selection:\n" +
-                    "        event.id: 16\n" +
-                    "    condition: selection\n" +
-                    "falsepositives:\n" +
-                    "    - Unknown\n" +
-                    "metadata:\n" +
-                    "    title: Metadata Title Override\n" +
-                    "    author: Metadata Author\n" +
-                    "    date: '2024-02-01'\n" +
-                    "    modified: '2024-03-01'\n" +
-                    "    description: Metadata description override\n" +
-                    "    references:\n" +
-                    "        - https://example.com\n" +
-                    "    documentation: https://docs.example.com\n" +
-                    "    module: syscheck\n" +
-                    "    versions:\n" +
-                    "        - '4.8'\n" +
-                    "        - '4.9'\n" +
-                    "    compatibility:\n" +
-                    "        - '>=4.8'\n" +
-                    "    supports:\n" +
-                    "        - wazuh-4.8\n" +
-                    "mitre:\n" +
-                    "    tactic:\n" +
-                    "        - TA0005\n" +
-                    "        - TA0043\n" +
-                    "    technique:\n" +
-                    "        - T1222\n" +
-                    "    subtechnique:\n" +
-                    "        - T1222.002\n" +
-                    "compliance:\n" +
-                    "    pci_dss:\n" +
-                    "        - '11.5'\n" +
-                    "        - '11.5.1'\n" +
-                    "    gdpr:\n" +
-                    "        - Article 32\n";
-
+            "title: Test Rule\n"
+                    + "id: 12345678-1234-1234-1234-123456789012\n"
+                    + "status: experimental\n"
+                    + "description: Top-level description\n"
+                    + "author: Test Author\n"
+                    + "date: 2024/01/15\n"
+                    + "level: high\n"
+                    + "logsource:\n"
+                    + "    product: windows\n"
+                    + "    service: system\n"
+                    + "detection:\n"
+                    + "    selection:\n"
+                    + "        event.id: 16\n"
+                    + "    condition: selection\n"
+                    + "falsepositives:\n"
+                    + "    - Unknown\n"
+                    + "metadata:\n"
+                    + "    title: Metadata Title Override\n"
+                    + "    author: Metadata Author\n"
+                    + "    date: '2024-02-01'\n"
+                    + "    modified: '2024-03-01'\n"
+                    + "    description: Metadata description override\n"
+                    + "    references:\n"
+                    + "        - https://example.com\n"
+                    + "    documentation: https://docs.example.com\n"
+                    + "    module: syscheck\n"
+                    + "    versions:\n"
+                    + "        - '4.8'\n"
+                    + "        - '4.9'\n"
+                    + "    compatibility:\n"
+                    + "        - '>=4.8'\n"
+                    + "    supports:\n"
+                    + "        - wazuh-4.8\n"
+                    + "mitre:\n"
+                    + "    tactic:\n"
+                    + "        - TA0005\n"
+                    + "        - TA0043\n"
+                    + "    technique:\n"
+                    + "        - T1222\n"
+                    + "    subtechnique:\n"
+                    + "        - T1222.002\n"
+                    + "compliance:\n"
+                    + "    pci_dss:\n"
+                    + "        - '11.5'\n"
+                    + "        - '11.5.1'\n"
+                    + "    gdpr:\n"
+                    + "        - Article 32\n";
 
     public void testFullRuleParsing() {
         SigmaRule rule = SigmaRule.fromYaml(FULL_RULE_YAML, true);
@@ -131,7 +142,8 @@ public class WazuhExtensionsTests extends OpenSearchTestCase {
         Assert.assertNotNull(compliance);
         Assert.assertEquals(2, compliance.getEntries().size());
         Assert.assertEquals("PCI DSS", compliance.getEntries().get(0).getName());
-        Assert.assertEquals(List.of("11.5", "11.5.1"), compliance.getEntries().get(0).getRequirementIds());
+        Assert.assertEquals(
+                List.of("11.5", "11.5.1"), compliance.getEntries().get(0).getRequirementIds());
         Assert.assertEquals("GDPR", compliance.getEntries().get(1).getName());
 
         // Compliance -> WCS map
@@ -140,24 +152,23 @@ public class WazuhExtensionsTests extends OpenSearchTestCase {
         Assert.assertEquals(List.of("Article 32"), compMap.get("gdpr"));
     }
 
-
     public void testRuleWithoutNewBlocksStillParsesSuccessfully() {
         String yaml =
-                "title: Basic Rule\n" +
-                        "id: 12345678-1234-1234-1234-123456789012\n" +
-                        "status: experimental\n" +
-                        "description: Basic\n" +
-                        "author: Test\n" +
-                        "date: 2024/01/15\n" +
-                        "level: high\n" +
-                        "logsource:\n" +
-                        "    product: windows\n" +
-                        "detection:\n" +
-                        "    selection:\n" +
-                        "        event.id: 16\n" +
-                        "    condition: selection\n" +
-                        "falsepositives:\n" +
-                        "    - Unknown\n";
+                "title: Basic Rule\n"
+                        + "id: 12345678-1234-1234-1234-123456789012\n"
+                        + "status: experimental\n"
+                        + "description: Basic\n"
+                        + "author: Test\n"
+                        + "date: 2024/01/15\n"
+                        + "level: high\n"
+                        + "logsource:\n"
+                        + "    product: windows\n"
+                        + "detection:\n"
+                        + "    selection:\n"
+                        + "        event.id: 16\n"
+                        + "    condition: selection\n"
+                        + "falsepositives:\n"
+                        + "    - Unknown\n";
         SigmaRule rule = SigmaRule.fromYaml(yaml, true);
         Assert.assertEquals("Basic Rule", rule.getTitle());
         Assert.assertNull(rule.getMetadata());
@@ -165,22 +176,21 @@ public class WazuhExtensionsTests extends OpenSearchTestCase {
         Assert.assertNull(rule.getCompliance());
     }
 
-
     public void testMetadataPartialFields() {
         String yaml =
-                "title: Partial Metadata\n" +
-                        "id: 12345678-1234-1234-1234-123456789012\n" +
-                        "status: experimental\n" +
-                        "level: medium\n" +
-                        "logsource:\n" +
-                        "    product: windows\n" +
-                        "detection:\n" +
-                        "    selection:\n" +
-                        "        event.id: 1\n" +
-                        "    condition: selection\n" +
-                        "metadata:\n" +
-                        "    author: Only Author\n" +
-                        "    module: fim\n";
+                "title: Partial Metadata\n"
+                        + "id: 12345678-1234-1234-1234-123456789012\n"
+                        + "status: experimental\n"
+                        + "level: medium\n"
+                        + "logsource:\n"
+                        + "    product: windows\n"
+                        + "detection:\n"
+                        + "    selection:\n"
+                        + "        event.id: 1\n"
+                        + "    condition: selection\n"
+                        + "metadata:\n"
+                        + "    author: Only Author\n"
+                        + "    module: fim\n";
         SigmaRule rule = SigmaRule.fromYaml(yaml, true);
         SigmaMetadata meta = rule.getMetadata();
         Assert.assertNotNull(meta);
@@ -196,44 +206,50 @@ public class WazuhExtensionsTests extends OpenSearchTestCase {
 
     public void testUnknownComplianceFramework() {
         String yaml =
-                "title: Bad Compliance\n" +
-                        "id: 12345678-1234-1234-1234-123456789012\n" +
-                        "status: experimental\n" +
-                        "level: high\n" +
-                        "logsource:\n" +
-                        "    product: windows\n" +
-                        "detection:\n" +
-                        "    selection:\n" +
-                        "        event.id: 16\n" +
-                        "    condition: selection\n" +
-                        "compliance:\n" +
-                        "    UNKNOWN_FRAMEWORK:\n" +
-                        "        - '1.0'\n";
+                "title: Bad Compliance\n"
+                        + "id: 12345678-1234-1234-1234-123456789012\n"
+                        + "status: experimental\n"
+                        + "level: high\n"
+                        + "logsource:\n"
+                        + "    product: windows\n"
+                        + "detection:\n"
+                        + "    selection:\n"
+                        + "        event.id: 16\n"
+                        + "    condition: selection\n"
+                        + "compliance:\n"
+                        + "    UNKNOWN_FRAMEWORK:\n"
+                        + "        - '1.0'\n";
 
         SigmaRule rule = SigmaRule.fromYaml(yaml, true);
-        Assert.assertTrue(rule.getErrors().getErrors().stream()
-                .anyMatch(e -> e.getMessage().contains("Unknown compliance framework")));
+        Assert.assertTrue(
+                rule.getErrors().getErrors().stream()
+                        .anyMatch(e -> e.getMessage().contains("Unknown compliance framework")));
     }
 
     public void testUnknownWCSFields() {
         String yaml =
-                "title: Unknown Field\n" +
-                        "id: 12345678-1234-1234-1234-123456789012\n" +
-                        "status: experimental\n" +
-                        "level: high\n" +
-                        "logsource:\n" +
-                        "    product: windows\n" +
-                        "detection:\n" +
-                        "    selection:\n" +
-                        "        totally_fake_field: something\n" +
-                        "        another_bad_field|contains: test\n" +
-                        "    condition: selection\n";
+                "title: Unknown Field\n"
+                        + "id: 12345678-1234-1234-1234-123456789012\n"
+                        + "status: experimental\n"
+                        + "level: high\n"
+                        + "logsource:\n"
+                        + "    product: windows\n"
+                        + "detection:\n"
+                        + "    selection:\n"
+                        + "        totally_fake_field: something\n"
+                        + "        another_bad_field|contains: test\n"
+                        + "    condition: selection\n";
 
         SigmaRule rule = SigmaRule.fromYaml(yaml, true);
-        Assert.assertTrue(rule.getErrors().getErrors().stream()
-                .anyMatch(e -> e.getMessage().contains("Unknown WCS fields") &&
-                        e.getMessage().contains("totally_fake_field") &&
-                        e.getMessage().contains("another_bad_field")));
+        Assert.assertTrue(
+                rule.getErrors().getErrors().stream()
+                        .anyMatch(
+                                e ->
+                                        e.getMessage()
+                                                        .contains(
+                                                                "The following fields are not part of the Wazuh Common Schema (WCS)")
+                                                && e.getMessage().contains("totally_fake_field")
+                                                && e.getMessage().contains("another_bad_field")));
     }
 
     public void testIPv6Standard() throws SigmaTypeError {
@@ -311,21 +327,21 @@ public class WazuhExtensionsTests extends OpenSearchTestCase {
 
     public void testThreatMitreMapNoSubtechniques() {
         String yaml =
-                "title: No Subtech\n" +
-                        "id: 12345678-1234-1234-1234-123456789012\n" +
-                        "status: experimental\n" +
-                        "level: high\n" +
-                        "logsource:\n" +
-                        "    product: windows\n" +
-                        "detection:\n" +
-                        "    selection:\n" +
-                        "        event.id: 16\n" +
-                        "    condition: selection\n" +
-                        "mitre:\n" +
-                        "    tactic:\n" +
-                        "        - TA0002\n" +
-                        "    technique:\n" +
-                        "        - T1059\n";
+                "title: No Subtech\n"
+                        + "id: 12345678-1234-1234-1234-123456789012\n"
+                        + "status: experimental\n"
+                        + "level: high\n"
+                        + "logsource:\n"
+                        + "    product: windows\n"
+                        + "detection:\n"
+                        + "    selection:\n"
+                        + "        event.id: 16\n"
+                        + "    condition: selection\n"
+                        + "mitre:\n"
+                        + "    tactic:\n"
+                        + "        - TA0002\n"
+                        + "    technique:\n"
+                        + "        - T1059\n";
 
         SigmaRule rule = SigmaRule.fromYaml(yaml, true);
         Assert.assertTrue(rule.getErrors().getErrors().isEmpty());
