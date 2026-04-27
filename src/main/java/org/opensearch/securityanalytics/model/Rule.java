@@ -333,9 +333,7 @@ public class Rule implements Writeable, ToXContentObject {
             builder.startObject("rule");
         }
 
-        builder
-                .field(CATEGORY, this.category)
-                .field(LOG_SOURCE, this.logSource);
+        builder.field(CATEGORY, this.category).field(LOG_SOURCE, this.logSource);
 
         Value[] refArray = new Value[] {};
         refArray = this.references.toArray(refArray);
