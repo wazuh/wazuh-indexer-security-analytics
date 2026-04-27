@@ -232,7 +232,8 @@ public class WCSFieldValidator {
         }
         List<String> unknownFields = findUnknownFields(detectionMap);
         if (!unknownFields.isEmpty()) {
-            throw new SigmaError("Unknown WCS fields in detection: " + unknownFields);
+            throw new SigmaError(
+                    "The following fields are not part of the Wazuh Common Schema (WCS): " + unknownFields);
         }
     }
 
