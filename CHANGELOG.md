@@ -43,6 +43,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Optimize findings enrichment [(#93)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/93)
 - Limit number of rules per detector [(#111)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/111)
 - Disable standard threat detectors modification [(#121)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/121)
+- Remove duplicated metadata fields for rules [(#163)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/163)
 
 ### Deprecated
 -
