@@ -46,7 +46,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
-import static org.opensearch.securityanalytics.model.Detector.LAST_UPDATE_TIME_FIELD;
 import static org.opensearch.securityanalytics.model.Detector.NO_ID;
 import static org.opensearch.securityanalytics.model.Detector.NO_VERSION;
 
@@ -55,9 +54,7 @@ public class Rule implements Writeable, ToXContentObject {
     private static final Logger log = LogManager.getLogger(Rule.class);
 
     public static final String CATEGORY = "category";
-    public static final String TITLE = "title";
     public static final String LOG_SOURCE = "log_source";
-    public static final String DESCRIPTION = "description";
 
     public static final String TAGS = "tags";
     public static final String REFERENCES = "references";
@@ -65,7 +62,6 @@ public class Rule implements Writeable, ToXContentObject {
     public static final String LEVEL = "level";
     public static final String FALSE_POSITIVES = "false_positives";
 
-    public static final String AUTHOR = "author";
     public static final String STATUS = "status";
 
     private static final String QUERIES = "queries";
@@ -94,13 +90,9 @@ public class Rule implements Writeable, ToXContentObject {
 
     private Long version;
 
-    private final String title;
-
     private final String category;
 
     private final String logSource;
-
-    private final String description;
 
     private final List<Value> references;
 
@@ -109,8 +101,6 @@ public class Rule implements Writeable, ToXContentObject {
     private final String level;
 
     private final List<Value> falsePositives;
-
-    private final String author;
 
     private final String status;
 
@@ -199,10 +189,8 @@ public class Rule implements Writeable, ToXContentObject {
         this.id = id != null ? id : NO_ID;
         this.version = version != null ? version : NO_VERSION;
 
-        this.title = title;
         this.category = category;
         this.logSource = logSource;
-        this.description = description;
 
         this.references = references;
         this.tags = tags;
@@ -210,7 +198,6 @@ public class Rule implements Writeable, ToXContentObject {
         this.level = level;
         this.falsePositives = falsePositives;
 
-        this.author = author;
         this.status = status;
 
         this.date = date;
@@ -310,10 +297,8 @@ public class Rule implements Writeable, ToXContentObject {
         out.writeString(this.id);
         out.writeLong(this.version);
 
-        out.writeString(this.title);
         out.writeString(this.category);
         out.writeString(this.logSource);
-        out.writeString(this.description);
 
         out.writeCollection(this.references);
         out.writeCollection(this.tags);
@@ -321,7 +306,6 @@ public class Rule implements Writeable, ToXContentObject {
         out.writeString(this.level);
         out.writeCollection(this.falsePositives);
 
-        out.writeString(this.author);
         out.writeString(this.status);
         out.writeInstant(this.date);
 
@@ -351,9 +335,7 @@ public class Rule implements Writeable, ToXContentObject {
 
         builder
                 .field(CATEGORY, this.category)
-                .field(TITLE, this.title)
-                .field(LOG_SOURCE, this.logSource)
-                .field(DESCRIPTION, this.description);
+                .field(LOG_SOURCE, this.logSource);
 
         Value[] refArray = new Value[] {};
         refArray = this.references.toArray(refArray);
@@ -369,9 +351,7 @@ public class Rule implements Writeable, ToXContentObject {
         falsePosArray = this.falsePositives.toArray(falsePosArray);
         builder.field(FALSE_POSITIVES, falsePosArray);
 
-        builder.field(AUTHOR, this.author);
         builder.field(STATUS, this.status);
-        builder.timeField(LAST_UPDATE_TIME_FIELD, this.date);
 
         Value[] queryArray = new Value[] {};
         queryArray = this.queries.toArray(queryArray);
@@ -463,17 +443,11 @@ public class Rule implements Writeable, ToXContentObject {
             xcp.nextToken();
 
             switch (fieldName) {
-                case TITLE:
-                    title = xcp.text();
-                    break;
                 case CATEGORY:
                     category = xcp.text();
                     break;
                 case LOG_SOURCE:
                     logSource = xcp.text();
-                    break;
-                case DESCRIPTION:
-                    description = xcp.text();
                     break;
                 case REFERENCES:
                     XContentParserUtils.ensureExpectedToken(
@@ -499,14 +473,8 @@ public class Rule implements Writeable, ToXContentObject {
                         falsePositives.add(Value.parse(xcp));
                     }
                     break;
-                case AUTHOR:
-                    author = xcp.text();
-                    break;
                 case STATUS:
                     status = xcp.text();
-                    break;
-                case LAST_UPDATE_TIME_FIELD:
-                    date = Instant.parse(xcp.text());
                     break;
                 case QUERIES:
                     XContentParserUtils.ensureExpectedToken(
@@ -604,7 +572,13 @@ public class Rule implements Writeable, ToXContentObject {
     }
 
     public String getTitle() {
-        return this.title;
+        if (this.metadata != null) {
+            Object titleObj = this.metadata.get("title");
+            if (titleObj instanceof String) {
+                return (String) titleObj;
+            }
+        }
+        return null;
     }
 
     public String getLogSource() {
@@ -612,7 +586,13 @@ public class Rule implements Writeable, ToXContentObject {
     }
 
     public String getDescription() {
-        return this.description;
+        if (this.metadata != null) {
+            Object titleObj = this.metadata.get("description");
+            if (titleObj instanceof String) {
+                return (String) titleObj;
+            }
+        }
+        return null;
     }
 
     public List<Value> getTags() {
@@ -632,7 +612,13 @@ public class Rule implements Writeable, ToXContentObject {
     }
 
     public String getAuthor() {
-        return this.author;
+        if (this.metadata != null) {
+            Object titleObj = this.metadata.get("author");
+            if (titleObj instanceof String) {
+                return (String) titleObj;
+            }
+        }
+        return null;
     }
 
     public String getStatus() {
