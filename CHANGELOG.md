@@ -23,6 +23,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Add --set-as-main flag support to repository bumper [(#90)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/90)
 - Add Wazuh Alerting plugin to the build process [(#114)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/114)
 - Validate single rule space per detector [(#130)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/130)
+- Add revert bump functionality to repository bumper workflow [(#154)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/154)
 
 ### Dependencies
 - Update to JDK 25 [(#49)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/49)
@@ -57,6 +58,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Fix detector creation to query custom rules by `document.id`[(#97)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/97)
 - Fix race condition on findings correlation [(#106)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/106) [(#132)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/132)
 - Fix codeql issues [(#113)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/113)
+- Fix stale detector references after rule deletion [(#152)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/152)
 
 ### Security
 -
