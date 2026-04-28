@@ -35,7 +35,9 @@ public class DetectorFactoryTests extends OpenSearchTestCase {
         String category = "Network Activity";
         List<String> ruleIds = List.of("rule-1", "rule-2", "rule-3");
 
-        Detector detector = DetectorFactory.createDetector(integration, category, ruleIds);
+        // sources=null, interval=2, isEnabled=true
+        Detector detector =
+                DetectorFactory.createDetector(integration, category, ruleIds, null, 2, true);
 
         Assert.assertNotNull(detector);
         Assert.assertEquals("apache", detector.getName());
@@ -48,7 +50,8 @@ public class DetectorFactoryTests extends OpenSearchTestCase {
         String category = "Security";
         List<String> ruleIds = List.of("rule-1");
 
-        Detector detector = DetectorFactory.createDetector(integration, category, ruleIds);
+        Detector detector =
+                DetectorFactory.createDetector(integration, category, ruleIds, null, 2, true);
 
         Assert.assertEquals("nginx", detector.getName());
     }
@@ -58,7 +61,8 @@ public class DetectorFactoryTests extends OpenSearchTestCase {
         String category = "Network Activity";
         List<String> ruleIds = List.of("rule-1");
 
-        Detector detector = DetectorFactory.createDetector(integration, category, ruleIds);
+        Detector detector =
+                DetectorFactory.createDetector(integration, category, ruleIds, null, 2, true);
 
         DetectorInput input = detector.getInputs().get(0);
         String expectedDataStream = "wazuh-events-v5-network activity";
@@ -70,7 +74,8 @@ public class DetectorFactoryTests extends OpenSearchTestCase {
         String category = "SECURITY";
         List<String> ruleIds = List.of("rule-1");
 
-        Detector detector = DetectorFactory.createDetector(integration, category, ruleIds);
+        Detector detector =
+                DetectorFactory.createDetector(integration, category, ruleIds, null, 2, true);
 
         DetectorInput input = detector.getInputs().get(0);
         String expectedDataStream = "wazuh-events-v5-security";
@@ -82,7 +87,8 @@ public class DetectorFactoryTests extends OpenSearchTestCase {
         String category = "Security";
         List<String> ruleIds = List.of("rule-1", "rule-2");
 
-        Detector detector = DetectorFactory.createDetector(integration, category, ruleIds);
+        Detector detector =
+                DetectorFactory.createDetector(integration, category, ruleIds, null, 2, true);
 
         DetectorInput input = detector.getInputs().get(0);
         List<DetectorRule> rules = input.getPrePackagedRules();
@@ -96,7 +102,8 @@ public class DetectorFactoryTests extends OpenSearchTestCase {
         String category = "Security";
         List<String> ruleIds = Collections.emptyList();
 
-        Detector detector = DetectorFactory.createDetector(integration, category, ruleIds);
+        Detector detector =
+                DetectorFactory.createDetector(integration, category, ruleIds, null, 2, true);
 
         DetectorInput input = detector.getInputs().get(0);
         Assert.assertTrue(input.getPrePackagedRules().isEmpty());
@@ -107,7 +114,8 @@ public class DetectorFactoryTests extends OpenSearchTestCase {
         String category = "Security";
         List<String> ruleIds = List.of("rule-1");
 
-        Detector detector = DetectorFactory.createDetector(integration, category, ruleIds);
+        Detector detector =
+                DetectorFactory.createDetector(integration, category, ruleIds, null, 2, true);
 
         Assert.assertTrue(detector.getSchedule() instanceof IntervalSchedule);
         IntervalSchedule schedule = (IntervalSchedule) detector.getSchedule();
@@ -120,7 +128,8 @@ public class DetectorFactoryTests extends OpenSearchTestCase {
         String category = "Security";
         List<String> ruleIds = List.of("rule-1");
 
-        Detector detector = DetectorFactory.createDetector(integration, category, ruleIds);
+        Detector detector =
+                DetectorFactory.createDetector(integration, category, ruleIds, null, 2, true);
 
         // Verify the detector version is 1
         Assert.assertEquals(Long.valueOf(1L), detector.getVersion());
@@ -131,7 +140,8 @@ public class DetectorFactoryTests extends OpenSearchTestCase {
         String category = "Security";
         List<String> ruleIds = List.of("rule-1");
 
-        Detector detector = DetectorFactory.createDetector(integration, category, ruleIds);
+        Detector detector =
+                DetectorFactory.createDetector(integration, category, ruleIds, null, 2, true);
 
         Assert.assertTrue(detector.getEnabled());
     }
@@ -141,7 +151,8 @@ public class DetectorFactoryTests extends OpenSearchTestCase {
         String category = "Other";
         List<String> ruleIds = List.of("rule-1");
 
-        Detector detector = DetectorFactory.createDetector(integration, category, ruleIds);
+        Detector detector =
+                DetectorFactory.createDetector(integration, category, ruleIds, null, 2, true);
 
         Assert.assertEquals("CustomIntegration", detector.getLogType());
     }
@@ -151,7 +162,8 @@ public class DetectorFactoryTests extends OpenSearchTestCase {
         String category = "Security";
         List<String> ruleIds = List.of("rule-1");
 
-        Detector detector = DetectorFactory.createDetector(integration, category, ruleIds);
+        Detector detector =
+                DetectorFactory.createDetector(integration, category, ruleIds, null, 2, true);
 
         Assert.assertEquals(1, detector.getInputs().size());
     }
@@ -161,9 +173,45 @@ public class DetectorFactoryTests extends OpenSearchTestCase {
         String category = "Security";
         List<String> ruleIds = List.of("rule-1");
 
-        Detector detector = DetectorFactory.createDetector(integration, category, ruleIds);
+        Detector detector =
+                DetectorFactory.createDetector(integration, category, ruleIds, null, 2, true);
 
         DetectorInput input = detector.getInputs().get(0);
         Assert.assertEquals("Detector for Apache integration", input.getDescription());
+    }
+
+    /**
+     * Verifies that the detector is created with custom index sources instead of the default naming
+     * convention.
+     */
+    public void testCreateDetector_withCustomSources() {
+        List<String> customSources = List.of("index-1", "index-2");
+
+        Detector detector =
+                DetectorFactory.createDetector("apache", "security", List.of("r1"), customSources, 5, true);
+
+        DetectorInput input = detector.getInputs().get(0);
+        Assert.assertEquals(customSources, input.getIndices());
+        Assert.assertEquals(2, input.getIndices().size());
+    }
+
+    /** Verifies that the detector schedule is correctly set using the custom interval provided. */
+    public void testCreateDetector_withCustomInterval() {
+        int customInterval = 10;
+
+        Detector detector =
+                DetectorFactory.createDetector(
+                        "apache", "security", List.of("r1"), null, customInterval, true);
+
+        IntervalSchedule schedule = (IntervalSchedule) detector.getSchedule();
+        Assert.assertEquals(customInterval, schedule.getInterval());
+    }
+
+    /** Verifies that the detector's enabled/disabled state is correctly assigned during creation. */
+    public void testCreateDetector_disabledState() {
+        Detector detector =
+                DetectorFactory.createDetector("apache", "security", List.of("r1"), null, 2, false);
+
+        Assert.assertFalse("Detector should be disabled", detector.getEnabled());
     }
 }
