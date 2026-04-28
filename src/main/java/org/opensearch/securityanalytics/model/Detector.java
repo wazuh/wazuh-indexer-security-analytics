@@ -68,8 +68,8 @@ public class Detector implements Writeable, ToXContentObject {
     public static final String BUCKET_MONITOR_ID_RULE_ID = "bucket_monitor_id_rule_id";
 
     public static final String SOURCE_FIELD = "source";
-    public static final String DEFAULT_SOURCE = "Custom";
-    public static final String SIGMA_SOURCE = "Sigma";
+    public static final String DEFAULT_SOURCE = "custom";
+    public static final String STANDARD_SOURCE = "standard";
     private static final String RULE_TOPIC_INDEX = "rule_topic_index";
 
     private static final String ALERTS_INDEX = "alert_index";
@@ -767,11 +767,11 @@ public class Detector implements Writeable, ToXContentObject {
     }
 
     /**
-     * Returns whether this detector belongs to the standard (Sigma) space and is therefore protected
-     * from user modifications.
+     * Returns whether this detector belongs to the standard space and is therefore protected from
+     * user modifications.
      */
     public boolean isStandardDetector() {
-        return SIGMA_SOURCE.equalsIgnoreCase(source);
+        return STANDARD_SOURCE.equalsIgnoreCase(source);
     }
 
     @Override

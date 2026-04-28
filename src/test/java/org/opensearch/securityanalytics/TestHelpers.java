@@ -269,7 +269,7 @@ public class TestHelpers {
             category = "Other";
         }
         if (source == null) {
-            source = "Sigma";
+            source = "standard";
         }
         return new CustomLogType(null, null, name, description, category, source, null);
     }

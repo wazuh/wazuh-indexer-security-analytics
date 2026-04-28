@@ -49,7 +49,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
     public void testCreateACustomLogType() throws IOException {
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
 
-        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "Custom");
+        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "custom");
         Response createResponse =
                 makeRequest(
                         client(),
@@ -152,7 +152,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
     public void testCreateACustomLogTypeWithMappings() throws IOException {
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
 
-        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "Custom");
+        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "custom");
         Response createResponse =
                 makeRequest(
                         client(),
@@ -255,7 +255,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
     public void testEditACustomLogTypeDescription() throws IOException {
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
 
-        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "Custom");
+        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "custom");
         Response createResponse =
                 makeRequest(
                         client(),
@@ -327,7 +327,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
                         toHttpEntity(detector));
         Assert.assertEquals("Create detector failed", RestStatus.CREATED, restStatus(createResponse));
 
-        customLogType = TestHelpers.randomCustomLogType(null, "updated desc", null, "Custom");
+        customLogType = TestHelpers.randomCustomLogType(null, "updated desc", null, "custom");
         Response updatedResponse =
                 makeRequest(
                         client(),
@@ -357,7 +357,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
     public void testEditACustomLogTypeCategory() throws IOException {
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
 
-        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "Custom");
+        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "custom");
         Response createResponse =
                 makeRequest(
                         client(),
@@ -429,7 +429,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
                         toHttpEntity(detector));
         Assert.assertEquals("Create detector failed", RestStatus.CREATED, restStatus(createResponse));
 
-        customLogType = TestHelpers.randomCustomLogType(null, null, "Access Management", "Custom");
+        customLogType = TestHelpers.randomCustomLogType(null, null, "Access Management", "custom");
         Response updatedResponse =
                 makeRequest(
                         client(),
@@ -457,7 +457,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
     @AwaitsFix(bugUrl = "")
     @SuppressWarnings("unchecked")
     public void testEditACustomLogTypeWithoutDetectors() throws IOException {
-        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "Custom");
+        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "custom");
         Response createResponse =
                 makeRequest(
                         client(),
@@ -475,7 +475,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
                 ((Map<String, Object>) responseBody.get("logType")).get("description"));
 
         CustomLogType updatedCustomLogType =
-                TestHelpers.randomCustomLogType("updated_name", null, null, "Custom");
+                TestHelpers.randomCustomLogType("updated_name", null, null, "custom");
         Response updatedResponse =
                 makeRequest(
                         client(),
@@ -498,7 +498,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
     public void testEditACustomLogTypeNameFailsAsDetectorExist() throws IOException {
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
 
-        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "Custom");
+        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "custom");
         Response createResponse =
                 makeRequest(
                         client(),
@@ -568,7 +568,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
                 ResponseException.class,
                 () -> {
                     CustomLogType updatedCustomLogType =
-                            TestHelpers.randomCustomLogType("updated name", null, null, "Custom");
+                            TestHelpers.randomCustomLogType("updated name", null, null, "custom");
                     makeRequest(
                             client(),
                             "PUT",
@@ -584,7 +584,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
     public void testEditACustomLogTypeNameFailsAsCustomRuleExist() throws IOException {
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
 
-        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "Custom");
+        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "custom");
         Response createResponse =
                 makeRequest(
                         client(),
@@ -666,7 +666,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
                 ResponseException.class,
                 () -> {
                     CustomLogType updatedCustomLogType =
-                            TestHelpers.randomCustomLogType("updated name", null, null, "Custom");
+                            TestHelpers.randomCustomLogType("updated name", null, null, "custom");
                     makeRequest(
                             client(),
                             "PUT",
@@ -682,7 +682,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
     public void testEditACustomLogTypeNameWhenCustomRuleIndexMissing() throws IOException {
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
 
-        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "Custom");
+        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "custom");
         Response createResponse =
                 makeRequest(
                         client(),
@@ -768,7 +768,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
                 Collections.emptyMap(),
                 new StringEntity(""));
 
-        customLogType = TestHelpers.randomCustomLogType("test", null, "Access Management", "Custom");
+        customLogType = TestHelpers.randomCustomLogType("test", null, "Access Management", "custom");
         Response updatedResponse =
                 makeRequest(
                         client(),
@@ -790,7 +790,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
     public void testEditACustomLogTypeNameWhenDetectorIndexMissing() throws IOException {
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
 
-        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "Custom");
+        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "custom");
         Response createResponse =
                 makeRequest(
                         client(),
@@ -848,7 +848,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
                         new StringEntity(""));
         Assert.assertEquals("Delete rule successful", RestStatus.OK, restStatus(deleteResponse));
 
-        customLogType = TestHelpers.randomCustomLogType("test", null, "Access Management", "Custom");
+        customLogType = TestHelpers.randomCustomLogType("test", null, "Access Management", "custom");
         Response updatedResponse =
                 makeRequest(
                         client(),
@@ -871,7 +871,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
     public void testEditACustomLogTypeName() throws IOException, InterruptedException {
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
 
-        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "Custom");
+        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "custom");
         Response createResponse =
                 makeRequest(
                         client(),
@@ -959,7 +959,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
         Assert.assertEquals("Delete rule failed", RestStatus.OK, restStatus(deleteResponse));
 
         CustomLogType updatedCustomLogType =
-                TestHelpers.randomCustomLogType("updated_name", null, null, "Custom");
+                TestHelpers.randomCustomLogType("updated_name", null, null, "custom");
         Response updatedResponse =
                 makeRequest(
                         client(),
@@ -977,7 +977,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
     @AwaitsFix(bugUrl = "")
     @SuppressWarnings("unchecked")
     public void testSearchLogTypes() throws IOException, InterruptedException {
-        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "Custom");
+        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "custom");
         Response createResponse =
                 makeRequest(
                         client(),
@@ -1075,7 +1075,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
     public void testDeleteCustomLogTypeFailsAsDetectorExist() throws IOException {
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
 
-        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "Custom");
+        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "custom");
         Response createResponse =
                 makeRequest(
                         client(),
@@ -1159,7 +1159,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
     public void testDeleteCustomLogTypeWithDetectorIndexMissing() throws IOException {
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
 
-        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "Custom");
+        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "custom");
         Response createResponse =
                 makeRequest(
                         client(),
@@ -1251,7 +1251,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
     public void testDeleteCustomLogTypeWithRuleIndexMissing() throws IOException {
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
 
-        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "Custom");
+        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "custom");
         Response createResponse =
                 makeRequest(
                         client(),
@@ -1354,7 +1354,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
     public void testDeleteCustomLogTypeFailsAsRulesExist() throws IOException {
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
 
-        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "Custom");
+        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "custom");
         Response createResponse =
                 makeRequest(
                         client(),
@@ -1448,7 +1448,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
     @AwaitsFix(bugUrl = "")
     @SuppressWarnings("unchecked")
     public void testDeleteCustomLogTypeWithoutDetectors() throws IOException {
-        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "Custom");
+        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "custom");
         Response createResponse =
                 makeRequest(
                         client(),
@@ -1481,7 +1481,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
     public void testDeleteCustomLogType() throws IOException, InterruptedException {
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
 
-        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "Custom");
+        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "custom");
         Response createResponse =
                 makeRequest(
                         client(),
@@ -1582,7 +1582,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
     public void testCreateMultipleLogTypes() throws IOException {
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
 
-        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "Custom");
+        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "custom");
         Response createResponse =
                 makeRequest(
                         client(),
@@ -1667,7 +1667,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
                                 ((Map<String, Object>) hit.getSourceAsMap().get("detector")).get("monitor_id"))
                         .get(0);
 
-        customLogType = TestHelpers.randomCustomLogType("custom-again", null, null, "Custom");
+        customLogType = TestHelpers.randomCustomLogType("custom-again", null, null, "custom");
         createResponse =
                 makeRequest(
                         client(),
@@ -1780,7 +1780,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
     @AwaitsFix(bugUrl = "")
     public void testGetMappingsView() throws IOException {
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
-        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "Custom");
+        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "custom");
         Response createResponse =
                 makeRequest(
                         client(),
@@ -1822,7 +1822,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
     @AwaitsFix(bugUrl = "")
     public void testMultipleLogTypesUpdateFieldMappings() throws IOException {
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
-        CustomLogType customLogType = TestHelpers.randomCustomLogType("logtype1", null, null, "Custom");
+        CustomLogType customLogType = TestHelpers.randomCustomLogType("logtype1", null, null, "custom");
         Response createResponse =
                 makeRequest(
                         client(),
@@ -1845,7 +1845,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
                         new BasicHeader("Content-Type", "application/json"));
         Assert.assertEquals("Create rule failed", RestStatus.CREATED, restStatus(createResponse));
 
-        customLogType = TestHelpers.randomCustomLogType("logtype2", null, null, "Custom");
+        customLogType = TestHelpers.randomCustomLogType("logtype2", null, null, "custom");
         createResponse =
                 makeRequest(
                         client(),
@@ -1900,7 +1900,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
     // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
     @AwaitsFix(bugUrl = "")
     public void testLogTypeNamesAlwaysLowercase() throws IOException {
-        CustomLogType customLogType = TestHelpers.randomCustomLogType("Logtype1", null, null, "Custom");
+        CustomLogType customLogType = TestHelpers.randomCustomLogType("Logtype1", null, null, "custom");
         expectThrows(
                 ResponseException.class,
                 () -> {
@@ -1916,7 +1916,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
     // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
     @AwaitsFix(bugUrl = "")
     public void testMultipleLogTypesCannotBeCreatedWithSameName() throws IOException {
-        CustomLogType customLogType = TestHelpers.randomCustomLogType("logtype", null, null, "Custom");
+        CustomLogType customLogType = TestHelpers.randomCustomLogType("logtype", null, null, "custom");
         Response createResponse =
                 makeRequest(
                         client(),
@@ -1941,7 +1941,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
     // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
     @AwaitsFix(bugUrl = "")
     public void testCreateACustomLogTypeInvalidCategory() throws IOException {
-        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, "Invalid", "Custom");
+        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, "Invalid", "custom");
         expectThrows(
                 ResponseException.class,
                 () -> {

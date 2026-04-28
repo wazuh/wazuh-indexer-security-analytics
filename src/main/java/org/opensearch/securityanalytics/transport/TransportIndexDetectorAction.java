@@ -281,7 +281,7 @@ public class TransportIndexDetectorAction
 
         // Prevent modification of standard detectors
         boolean isInternalCaller = isInternalCaller();
-        // For non-internal callers, force source to Custom
+        // For non-internal callers, force source to custom
         if (!isInternalCaller) {
             request.getDetector().setSource(Detector.DEFAULT_SOURCE);
         }
@@ -320,8 +320,8 @@ public class TransportIndexDetectorAction
     }
 
     /**
-     * Validates that a user update to a standard (Sigma) detector only changes the enabled field. If
-     * the detector is not standard, or the update is valid, the provided continuation is run.
+     * Validates that a user update to a standard detector only changes the enabled field. If the
+     * detector is not standard, or the update is valid, the provided continuation is run.
      */
     private void validateStandardDetectorUpdate(
             IndexDetectorRequest request,
@@ -394,7 +394,7 @@ public class TransportIndexDetectorAction
             int ruleCount = Math.max(input.getCustomRules().size(), input.getPrePackagedRules().size());
             if (ruleCount > MAX_RULES_PER_DETECTOR) {
                 return String.format(
-                        Locale.getDefault(),
+                        Locale.ROOT,
                         "Detector cannot have more than %d rules, but found %d",
                         MAX_RULES_PER_DETECTOR,
                         ruleCount);
@@ -2303,7 +2303,7 @@ public class TransportIndexDetectorAction
                             .map(DetectorRule::getId)
                             .collect(Collectors.toList());
 
-            // Rules are identified by document.id (from the content manager) + space=Custom.
+            // Rules are identified by document.id (from the content manager) + space=custom.
             // Querying by _id would fail because the IDs received here are document.id values,
             // not the internal _id of the custom rules index.
             QueryBuilder queryBuilder =
@@ -2313,7 +2313,7 @@ public class TransportIndexDetectorAction
                                     .filter(
                                             QueryBuilders.termsQuery(
                                                     "rule.document.id", ruleIds.toArray(new String[] {})))
-                                    .filter(QueryBuilders.termQuery("rule.space", "Custom")),
+                                    .filter(QueryBuilders.termQuery("rule.space", "custom")),
                             ScoreMode.None);
             SearchRequest searchRequest =
                     new SearchRequest(Rule.CUSTOM_RULES_INDEX)
@@ -2324,7 +2324,7 @@ public class TransportIndexDetectorAction
                                             .query(queryBuilder)
                                             .size(10000))
                             .preference(Preference.PRIMARY_FIRST.type());
-            logger.debug("importing custom rules by document.id with space=Custom");
+            logger.debug("importing custom rules by document.id with space=custom");
             client.search(
                     searchRequest,
                     new ActionListener<>() {
@@ -2342,7 +2342,7 @@ public class TransportIndexDetectorAction
                                 onFailures(
                                         new OpenSearchStatusException(
                                                 String.format(
-                                                        "Detector creation failed. No custom rules found for IDs: %s. Ensure these rules are promoted to the 'Custom' space first.",
+                                                        "Detector creation failed. No custom rules found for IDs: %s. Ensure these rules are promoted to the 'custom' space first.",
                                                         ruleIds),
                                                 RestStatus.BAD_REQUEST));
                                 return;
