@@ -59,6 +59,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Fix race condition on findings correlation [(#106)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/106) [(#132)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/132)
 - Fix codeql issues [(#113)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/113)
 - Fix stale detector references after rule deletion [(#152)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/152)
+- Fix contains conditions using white spaces [(#162)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/162)
 
 ### Security
 -
