@@ -32,6 +32,7 @@ import org.opensearch.securityanalytics.rules.exceptions.SigmaValueError;
 import org.opensearch.securityanalytics.rules.types.SigmaBool;
 import org.opensearch.securityanalytics.rules.types.SigmaCIDRExpression;
 import org.opensearch.securityanalytics.rules.types.SigmaCompareExpression;
+import org.opensearch.securityanalytics.rules.types.SigmaExists;
 import org.opensearch.securityanalytics.rules.types.SigmaExpansion;
 import org.opensearch.securityanalytics.rules.types.SigmaNumber;
 import org.opensearch.securityanalytics.rules.types.SigmaRegularExpression;
@@ -333,6 +334,20 @@ public class OSQueryBackend extends QueryBackend {
             return String.format(Locale.getDefault(), exprWithDeMorgansApplied, field);
         }
         return String.format(Locale.getDefault(), this.fieldNullExpression, field);
+    }
+
+    @Override
+    public Object convertConditionFieldEqValExists(ConditionFieldEqualsValueExpression condition, boolean isConditionNot, boolean applyDeMorgans) {
+        String field = getFinalField(condition.getField());
+        ruleQueryFields.put(field, Map.of("type", "text", "analyzer", "rule_analyzer"));
+        SigmaExists sigmaExists = (SigmaExists) condition.getValue();
+        // Determine final existence requirement, flipping if De Morgan's law is being applied
+        boolean fieldShouldExist = applyDeMorgans ? !sigmaExists.exists() : sigmaExists.exists();
+        if (fieldShouldExist) {
+            return this.existsToken + this.eqToken + " " + field;
+        } else {
+            return this.notToken + this.tokenSeparator + this.existsToken + this.eqToken + " " + field;
+        }
     }
 
     @Override
