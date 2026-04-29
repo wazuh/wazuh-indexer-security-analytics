@@ -118,7 +118,7 @@ public class Rule implements Writeable, ToXContentObject {
 
     private final Map<String, Object> complianceMap;
 
-    private final Map<String, Object> metadata;
+    private final RuleMetadata metadata;
 
     private String documentId;
 
@@ -159,7 +159,7 @@ public class Rule implements Writeable, ToXContentObject {
                 aggregationQueries,
                 Collections.emptyMap(),
                 Collections.emptyMap(),
-                Collections.emptyMap());
+                RuleMetadata.empty());
     }
 
     public Rule(
@@ -179,7 +179,7 @@ public class Rule implements Writeable, ToXContentObject {
             List<Value> aggregationQueries,
             Map<String, Object> mitre,
             Map<String, Object> complianceMap,
-            Map<String, Object> metadata) {
+            RuleMetadata metadata) {
         this.id = id != null ? id : NO_ID;
         this.version = version != null ? version : NO_VERSION;
 
@@ -202,7 +202,7 @@ public class Rule implements Writeable, ToXContentObject {
         this.aggregationQueries = aggregationQueries;
         this.mitre = mitre != null ? mitre : Collections.emptyMap();
         this.complianceMap = complianceMap != null ? complianceMap : Collections.emptyMap();
-        this.metadata = metadata != null ? metadata : Collections.emptyMap();
+        this.metadata = metadata != null ? metadata : RuleMetadata.empty();
     }
 
     public Rule(
@@ -252,7 +252,20 @@ public class Rule implements Writeable, ToXContentObject {
                 rule.getCompliance() != null
                         ? rule.getCompliance().toComplianceMap()
                         : Collections.emptyMap(),
-                rule.getMetadata() != null ? rule.getMetadata().toMap() : Collections.emptyMap());
+                rule.getMetadata() != null
+                        ? new RuleMetadata(
+                                rule.getMetadata().getTitle(),
+                                rule.getMetadata().getAuthor(),
+                                rule.getMetadata().getDate(),
+                                rule.getMetadata().getModified(),
+                                rule.getMetadata().getDescription(),
+                                rule.getMetadata().getReferences(),
+                                rule.getMetadata().getDocumentation(),
+                                rule.getMetadata().getModule(),
+                                rule.getMetadata().getVersions(),
+                                rule.getMetadata().getCompatibility(),
+                                rule.getMetadata().getSupports())
+                        : RuleMetadata.empty());
     }
 
     @SuppressWarnings("unchecked")
@@ -274,8 +287,7 @@ public class Rule implements Writeable, ToXContentObject {
                 sin.readList(Value::readFrom),
                 (Map<String, Object>) sin.readGenericValue(), // mitre
                 (Map<String, Object>) sin.readGenericValue(), // compliance
-                (Map<String, Object>) sin.readGenericValue() // metadata
-                );
+                RuleMetadata.readFrom(sin));
         this.documentId = sin.readOptionalString();
         this.space = sin.readOptionalString();
     }
@@ -304,7 +316,7 @@ public class Rule implements Writeable, ToXContentObject {
         out.writeCollection(this.aggregationQueries);
         out.writeGenericValue(this.mitre);
         out.writeGenericValue(this.complianceMap);
-        out.writeGenericValue(this.metadata);
+        this.metadata.writeTo(out);
         out.writeOptionalString(this.documentId);
         out.writeOptionalString(this.space);
     }
@@ -359,7 +371,7 @@ public class Rule implements Writeable, ToXContentObject {
             builder.field(COMPLIANCE, this.complianceMap);
         }
         if (this.metadata != null && !this.metadata.isEmpty()) {
-            builder.field(METADATA, this.metadata);
+            builder.field(METADATA, this.metadata.toMap());
         }
 
         if (this.documentId != null) {
@@ -418,7 +430,7 @@ public class Rule implements Writeable, ToXContentObject {
         List<Value> aggregationQueries = new ArrayList<>();
         Map<String, Object> mitre = Collections.emptyMap();
         Map<String, Object> compliance = Collections.emptyMap();
-        Map<String, Object> metadata = Collections.emptyMap();
+        RuleMetadata metadata = RuleMetadata.empty();
         String documentId = null;
         String space = null;
 
@@ -493,7 +505,7 @@ public class Rule implements Writeable, ToXContentObject {
                     compliance = xcp.map();
                     break;
                 case METADATA:
-                    metadata = xcp.map();
+                    metadata = RuleMetadata.parse(xcp);
                     break;
                 case DOCUMENT_ID_FIELD:
                     documentId = xcp.textOrNull();
@@ -554,28 +566,8 @@ public class Rule implements Writeable, ToXContentObject {
         return this.category;
     }
 
-    public String getTitle() {
-        if (this.metadata != null) {
-            Object titleObj = this.metadata.get("title");
-            if (titleObj instanceof String) {
-                return (String) titleObj;
-            }
-        }
-        return null;
-    }
-
     public String getLogSource() {
         return this.logSource;
-    }
-
-    public String getDescription() {
-        if (this.metadata != null) {
-            Object titleObj = this.metadata.get("description");
-            if (titleObj instanceof String) {
-                return (String) titleObj;
-            }
-        }
-        return null;
     }
 
     public List<Value> getTags() {
@@ -592,16 +584,6 @@ public class Rule implements Writeable, ToXContentObject {
 
     public List<Value> getFalsePositives() {
         return this.falsePositives;
-    }
-
-    public String getAuthor() {
-        if (this.metadata != null) {
-            Object titleObj = this.metadata.get("author");
-            if (titleObj instanceof String) {
-                return (String) titleObj;
-            }
-        }
-        return null;
     }
 
     public String getStatus() {
@@ -640,7 +622,7 @@ public class Rule implements Writeable, ToXContentObject {
         return this.complianceMap;
     }
 
-    public Map<String, Object> getMetadata() {
+    public RuleMetadata getMetadata() {
         return this.metadata;
     }
 
