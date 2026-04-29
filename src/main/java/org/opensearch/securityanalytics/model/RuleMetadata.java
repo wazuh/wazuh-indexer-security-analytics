@@ -106,13 +106,9 @@ public class RuleMetadata implements Writeable, ToXContentObject {
                 map != null && map.get(REFERENCES) instanceof List
                         ? castStringList(map.get(REFERENCES))
                         : null,
-                map != null && map.get(DOCUMENTATION) != null
-                        ? map.get(DOCUMENTATION).toString()
-                        : null,
+                map != null && map.get(DOCUMENTATION) != null ? map.get(DOCUMENTATION).toString() : null,
                 map != null && map.get(MODULE) != null ? map.get(MODULE).toString() : null,
-                map != null && map.get(VERSIONS) instanceof List
-                        ? castStringList(map.get(VERSIONS))
-                        : null,
+                map != null && map.get(VERSIONS) instanceof List ? castStringList(map.get(VERSIONS)) : null,
                 map != null && map.get(COMPATIBILITY) instanceof List
                         ? castStringList(map.get(COMPATIBILITY))
                         : null,
