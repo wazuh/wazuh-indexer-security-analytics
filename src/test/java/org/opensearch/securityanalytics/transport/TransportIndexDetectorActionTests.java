@@ -88,4 +88,50 @@ public class TransportIndexDetectorActionTests extends OpenSearchTestCase {
 
         assertNull(TransportIndexDetectorAction.validateRuleCount(detector));
     }
+
+    public void testValidateSingleRuleSpace_onlyPrePackaged_returnsNull() {
+        List<DetectorRule> prePackaged =
+                List.of(new DetectorRule("rule-1"), new DetectorRule("rule-2"));
+        DetectorInput input =
+                new DetectorInput("test", List.of("index-1"), Collections.emptyList(), prePackaged);
+        Detector detector = randomDetectorWithInputs(List.of(input));
+
+        assertNull(TransportIndexDetectorAction.validateSingleRuleSpace(detector));
+    }
+
+    public void testValidateSingleRuleSpace_onlyCustom_returnsNull() {
+        List<DetectorRule> custom = List.of(new DetectorRule("rule-1"), new DetectorRule("rule-2"));
+        DetectorInput input =
+                new DetectorInput("test", List.of("index-1"), custom, Collections.emptyList());
+        Detector detector = randomDetectorWithInputs(List.of(input));
+
+        assertNull(TransportIndexDetectorAction.validateSingleRuleSpace(detector));
+    }
+
+    public void testValidateSingleRuleSpace_bothTypes_returnsError() {
+        List<DetectorRule> prePackaged = List.of(new DetectorRule("std-rule-1"));
+        List<DetectorRule> custom = List.of(new DetectorRule("custom-rule-1"));
+        DetectorInput input = new DetectorInput("test", List.of("index-1"), custom, prePackaged);
+        Detector detector = randomDetectorWithInputs(List.of(input));
+
+        String error = TransportIndexDetectorAction.validateSingleRuleSpace(detector);
+        assertNotNull(error);
+        assertTrue(error.contains("both prepackaged and custom rules"));
+    }
+
+    public void testValidateSingleRuleSpace_emptyRules_returnsNull() {
+        DetectorInput input =
+                new DetectorInput(
+                        "test", List.of("index-1"), Collections.emptyList(), Collections.emptyList());
+        Detector detector = randomDetectorWithInputs(List.of(input));
+
+        assertNull(TransportIndexDetectorAction.validateSingleRuleSpace(detector));
+    }
+
+    public void testValidateSingleRuleSpace_nullRuleLists_returnsNull() {
+        DetectorInput input = new DetectorInput("test", List.of("index-1"), null, null);
+        Detector detector = randomDetectorWithInputs(List.of(input));
+
+        assertNull(TransportIndexDetectorAction.validateSingleRuleSpace(detector));
+    }
 }
