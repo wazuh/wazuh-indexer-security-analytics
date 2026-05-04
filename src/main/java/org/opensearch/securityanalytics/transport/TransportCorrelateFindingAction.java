@@ -56,7 +56,10 @@ import org.opensearch.index.query.QueryBuilders;
 import org.opensearch.search.SearchHit;
 import org.opensearch.search.SearchHits;
 import org.opensearch.search.builder.SearchSourceBuilder;
+import org.opensearch.securityanalytics.correlation.CorrelationRulesCache;
+import org.opensearch.securityanalytics.correlation.DetectorLookupCache;
 import org.opensearch.securityanalytics.correlation.JoinEngine;
+import org.opensearch.securityanalytics.correlation.LogTypeListCache;
 import org.opensearch.securityanalytics.correlation.VectorEmbeddingsEngine;
 import org.opensearch.securityanalytics.correlation.alert.CorrelationAlertService;
 import org.opensearch.securityanalytics.correlation.alert.notifications.NotificationService;
@@ -81,8 +84,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 public class TransportCorrelateFindingAction
         extends HandledTransportAction<ActionRequest, SubscribeFindingsResponse>
@@ -119,6 +126,27 @@ public class TransportCorrelateFindingAction
     private final NotificationService notificationService;
 
     private final WazuhEnrichedFindingService enrichedFindingService;
+
+    private final DetectorLookupCache detectorLookupCache;
+
+    private final LogTypeListCache logTypeListCache;
+
+    private final CorrelationRulesCache correlationRulesCache;
+
+    /**
+     * Limits the number of correlation pipelines (one per published finding) running concurrently.
+     * When alerting's doc-level monitor fan-out publishes many findings at once, this semaphore caps
+     * peak demand on the search thread pool to avoid {@code OpenSearchRejectedExecutionException}
+     * from the search thread pool's bounded queue.
+     */
+    private final Semaphore correlationPermits;
+
+    /** Pipelines waiting for an in-flight permit; drained as permits are released. */
+    private final ConcurrentLinkedQueue<AsyncCorrelateFindingAction> pendingStarts =
+            new ConcurrentLinkedQueue<>();
+
+    /** Tracks the current configured permit count to compute deltas on dynamic updates. */
+    private volatile int currentMaxInFlight;
 
     static Map<String, CustomLogType> buildLogTypesFromHits(
             SearchHit[] hits, String monitorId, String findingId) {
@@ -173,7 +201,10 @@ public class TransportCorrelateFindingAction
             ActionFilters actionFilters,
             CorrelationAlertService correlationAlertService,
             NotificationService notificationService,
-            WazuhEnrichedFindingService enrichedFindingService) {
+            WazuhEnrichedFindingService enrichedFindingService,
+            DetectorLookupCache detectorLookupCache,
+            LogTypeListCache logTypeListCache,
+            CorrelationRulesCache correlationRulesCache) {
         super(
                 AlertingActions.SUBSCRIBE_FINDINGS_ACTION_NAME,
                 transportService,
@@ -189,6 +220,12 @@ public class TransportCorrelateFindingAction
         this.correlationAlertService = correlationAlertService;
         this.notificationService = notificationService;
         this.enrichedFindingService = enrichedFindingService;
+        this.detectorLookupCache = detectorLookupCache;
+        this.logTypeListCache = logTypeListCache;
+        this.correlationRulesCache = correlationRulesCache;
+        this.currentMaxInFlight =
+                SecurityAnalyticsSettings.CORRELATION_MAX_IN_FLIGHT_FINDINGS.get(settings);
+        this.correlationPermits = new AdjustableSemaphore(this.currentMaxInFlight);
         this.threadPool = this.detectorIndices.getThreadPool();
 
         this.indexTimeout = SecurityAnalyticsSettings.INDEX_TIMEOUT.get(this.settings);
@@ -214,7 +251,72 @@ public class TransportCorrelateFindingAction
                 .addSettingsUpdateConsumer(
                         SecurityAnalyticsSettings.ENRICHED_FINDINGS_ENABLED,
                         enrichedFindingService::setEnabled);
+        this.clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        SecurityAnalyticsSettings.CORRELATION_DETECTOR_CACHE_TTL, detectorLookupCache::setTtl);
+        this.clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        SecurityAnalyticsSettings.CORRELATION_MAX_IN_FLIGHT_FINDINGS, this::adjustMaxInFlight);
+        this.clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        SecurityAnalyticsSettings.CORRELATION_METADATA_CACHE_TTL,
+                        ttl -> {
+                            logTypeListCache.setTtl(ttl);
+                            correlationRulesCache.setTtl(ttl);
+                        });
         this.setupTimestamp = System.currentTimeMillis();
+    }
+
+    /**
+     * Adds {@code action} to the in-flight queue and starts as many queued pipelines as permits
+     * allow. The terminal callbacks ({@link AsyncCorrelateFindingAction#onOperation()}, {@link
+     * AsyncCorrelateFindingAction#onFailures(Exception)}) release the permit.
+     */
+    private void scheduleCorrelation(AsyncCorrelateFindingAction action) {
+        pendingStarts.add(action);
+        drainPending();
+    }
+
+    private void drainPending() {
+        while (correlationPermits.tryAcquire()) {
+            AsyncCorrelateFindingAction next = pendingStarts.poll();
+            if (next == null) {
+                correlationPermits.release();
+                return;
+            }
+            next.markPermitAcquired();
+            next.doStart();
+        }
+    }
+
+    private void releasePermitAndDrain() {
+        correlationPermits.release();
+        drainPending();
+    }
+
+    private synchronized void adjustMaxInFlight(int newMax) {
+        int delta = newMax - currentMaxInFlight;
+        if (delta > 0) {
+            correlationPermits.release(delta);
+        } else if (delta < 0) {
+            ((AdjustableSemaphore) correlationPermits).reducePermits(-delta);
+        }
+        currentMaxInFlight = newMax;
+    }
+
+    /** Exposes {@link Semaphore#reducePermits(int)} so the dynamic setting can shrink the cap. */
+    private static final class AdjustableSemaphore extends Semaphore {
+        AdjustableSemaphore(int permits) {
+            super(permits);
+        }
+
+        @Override
+        public void reducePermits(int reduction) {
+            super.reducePermits(reduction);
+        }
     }
 
     @Override
@@ -222,6 +324,21 @@ public class TransportCorrelateFindingAction
             Task task, ActionRequest request, ActionListener<SubscribeFindingsResponse> actionListener) {
         try {
             PublishFindingsRequest transformedRequest = transformRequest(request);
+
+            // Dispatch enrichment up front, completely outside the correlation throttle. The
+            // throttle's pendingStarts queue and per-pipeline permit are exposed to permit
+            // leaks if any async chain in JoinEngine/VectorEmbeddingsEngine fails to reach a
+            // terminal callback (e.g. under search-pool rejection). Decoupling enrichment
+            // here guarantees every published finding produces an enrichment dispatch.
+            try {
+                enrichedFindingService.enrich(transformedRequest.getFinding());
+            } catch (Exception e) {
+                log.warn(
+                        "Enrichment dispatch failed for finding {}",
+                        transformedRequest.getFinding().getId(),
+                        e);
+            }
+
             AsyncCorrelateFindingAction correlateFindingAction =
                     new AsyncCorrelateFindingAction(
                             task, transformedRequest, readUserFromThreadContext(this.threadPool), actionListener);
@@ -329,8 +446,13 @@ public class TransportCorrelateFindingAction
                 correlateFindingAction.start();
             }
         } catch (Exception e) {
-            throw new SecurityAnalyticsException(
-                    "Unknown exception occurred", RestStatus.INTERNAL_SERVER_ERROR, e);
+            // Route synchronous failures to the listener instead of rethrowing. The caller
+            // is the alerting plugin's publishFinding loop, and a synchronous throw there
+            // unwinds the forEach and silently drops every subsequent finding in the batch.
+            log.error("Unknown exception occurred while handling publish-findings request", e);
+            actionListener.onFailure(
+                    new SecurityAnalyticsException(
+                            "Unknown exception occurred", RestStatus.INTERNAL_SERVER_ERROR, e));
         }
     }
 
@@ -343,6 +465,13 @@ public class TransportCorrelateFindingAction
         private final AtomicReference<Object> response;
         private final AtomicBoolean counter = new AtomicBoolean();
         private final Task task;
+
+        /**
+         * Set to {@code true} when this pipeline has acquired an in-flight permit; gates the permit
+         * release in {@link #onOperation()} / {@link #onFailures(Exception)} so early failures (before
+         * {@link #start()} ever runs) do not over-release.
+         */
+        private volatile boolean permitAcquired = false;
 
         AsyncCorrelateFindingAction(
                 Task task,
@@ -365,72 +494,31 @@ public class TransportCorrelateFindingAction
                             enableAutoCorrelation,
                             correlationAlertService,
                             notificationService,
-                            user);
+                            user,
+                            correlationRulesCache);
             this.vectorEmbeddingsEngine =
                     new VectorEmbeddingsEngine(client, indexTimeout, corrTimeWindow, this);
         }
 
+        /**
+         * Public entry point. Hands the pipeline to the outer transport action, which queues it until
+         * an in-flight permit is available; once acquired, {@link #doStart()} runs.
+         */
         void start() {
+            scheduleCorrelation(this);
+        }
+
+        void markPermitAcquired() {
+            this.permitAcquired = true;
+        }
+
+        /** Body of {@code start()}; only invoked once a permit has been acquired. */
+        void doStart() {
             TransportCorrelateFindingAction.this.threadPool.getThreadContext().stashContext();
             String monitorId = request.getMonitorId();
             Finding finding = request.getFinding();
 
-            if (detectorIndices.detectorIndexExists()) {
-                NestedQueryBuilder queryBuilder =
-                        QueryBuilders.nestedQuery(
-                                "detector",
-                                QueryBuilders.matchQuery("detector.monitor_id", monitorId),
-                                ScoreMode.None);
-
-                SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
-                searchSourceBuilder.query(queryBuilder);
-                searchSourceBuilder.fetchSource(true);
-                searchSourceBuilder.size(1);
-                SearchRequest searchRequest = new SearchRequest();
-                searchRequest.indices(Detector.DETECTORS_INDEX);
-                searchRequest.source(searchSourceBuilder);
-                searchRequest.preference(Preference.PRIMARY_FIRST.type());
-                searchRequest.setCancelAfterTimeInterval(TimeValue.timeValueSeconds(30L));
-
-                client.search(
-                        searchRequest,
-                        ActionListener.wrap(
-                                response -> {
-                                    if (response.isTimedOut()) {
-                                        onFailures(
-                                                new OpenSearchStatusException(
-                                                        "Search request timed out", RestStatus.REQUEST_TIMEOUT));
-                                    }
-
-                                    SearchHits hits = response.getHits();
-                                    if (hits.getHits().length > 0) {
-                                        try {
-                                            SearchHit hit = hits.getAt(0);
-
-                                            XContentParser xcp =
-                                                    XContentType.JSON
-                                                            .xContent()
-                                                            .createParser(
-                                                                    xContentRegistry,
-                                                                    LoggingDeprecationHandler.INSTANCE,
-                                                                    hit.getSourceAsString());
-                                            Detector detector = Detector.docParse(xcp, hit.getId(), hit.getVersion());
-                                            // Fire-and-forget enrichment — must not block the correlation path
-                                            enrichedFindingService.enrich(finding);
-                                            joinEngine.onSearchDetectorResponse(detector, finding);
-                                        } catch (Exception e) {
-                                            log.error("Exception for request {}", searchRequest, e);
-                                            onFailures(e);
-                                        }
-                                    } else {
-                                        onFailures(
-                                                new OpenSearchStatusException(
-                                                        "detector not found given monitor id " + request.getMonitorId(),
-                                                        RestStatus.INTERNAL_SERVER_ERROR));
-                                    }
-                                },
-                                this::onFailures));
-            } else {
+            if (!detectorIndices.detectorIndexExists()) {
                 onFailures(
                         new SecurityAnalyticsException(
                                 String.format(
@@ -439,7 +527,72 @@ public class TransportCorrelateFindingAction
                                         Detector.DETECTORS_INDEX),
                                 RestStatus.INTERNAL_SERVER_ERROR,
                                 new RuntimeException()));
+                return;
             }
+
+            Optional<Detector> cached = detectorLookupCache.get(monitorId);
+            if (cached.isPresent()) {
+                try {
+                    joinEngine.onSearchDetectorResponse(cached.get(), finding);
+                } catch (Exception e) {
+                    onFailures(e);
+                }
+                return;
+            }
+
+            NestedQueryBuilder queryBuilder =
+                    QueryBuilders.nestedQuery(
+                            "detector",
+                            QueryBuilders.matchQuery("detector.monitor_id", monitorId),
+                            ScoreMode.None);
+
+            SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+            searchSourceBuilder.query(queryBuilder);
+            searchSourceBuilder.fetchSource(true);
+            searchSourceBuilder.size(1);
+            SearchRequest searchRequest = new SearchRequest();
+            searchRequest.indices(Detector.DETECTORS_INDEX);
+            searchRequest.source(searchSourceBuilder);
+            searchRequest.preference(Preference.PRIMARY_FIRST.type());
+            searchRequest.setCancelAfterTimeInterval(TimeValue.timeValueSeconds(30L));
+
+            client.search(
+                    searchRequest,
+                    ActionListener.wrap(
+                            response -> {
+                                if (response.isTimedOut()) {
+                                    onFailures(
+                                            new OpenSearchStatusException(
+                                                    "Search request timed out", RestStatus.REQUEST_TIMEOUT));
+                                }
+
+                                SearchHits hits = response.getHits();
+                                if (hits.getHits().length > 0) {
+                                    try {
+                                        SearchHit hit = hits.getAt(0);
+
+                                        XContentParser xcp =
+                                                XContentType.JSON
+                                                        .xContent()
+                                                        .createParser(
+                                                                xContentRegistry,
+                                                                LoggingDeprecationHandler.INSTANCE,
+                                                                hit.getSourceAsString());
+                                        Detector detector = Detector.docParse(xcp, hit.getId(), hit.getVersion());
+                                        detectorLookupCache.put(monitorId, detector);
+                                        joinEngine.onSearchDetectorResponse(detector, finding);
+                                    } catch (Exception e) {
+                                        log.error("Exception for request {}", searchRequest, e);
+                                        onFailures(e);
+                                    }
+                                } else {
+                                    onFailures(
+                                            new OpenSearchStatusException(
+                                                    "detector not found given monitor id " + request.getMonitorId(),
+                                                    RestStatus.INTERNAL_SERVER_ERROR));
+                                }
+                            },
+                            this::onFailures));
         }
 
         public void initCorrelationIndex(
@@ -535,93 +688,23 @@ public class TransportCorrelateFindingAction
                                                                                             IndexRequest scoreIndexRequest =
                                                                                                     getCorrelationMetadataIndexRequest(
                                                                                                             id, newScoreTimestamp);
+                                                                                            float fixedTimestampFeature =
+                                                                                                    Long.valueOf(
+                                                                                                                    CorrelationIndices
+                                                                                                                                    .FIXED_HISTORICAL_INTERVAL
+                                                                                                                            / 1000L)
+                                                                                                            .floatValue();
 
                                                                                             client.index(
                                                                                                     scoreIndexRequest,
                                                                                                     ActionListener.wrap(
-                                                                                                            indexResponse -> {
-                                                                                                                SearchRequest searchRequest =
-                                                                                                                        getSearchLogTypeIndexRequest();
-
-                                                                                                                client.search(
-                                                                                                                        searchRequest,
-                                                                                                                        ActionListener.wrap(
-                                                                                                                                searchResponse -> {
-                                                                                                                                    if (searchResponse.isTimedOut()) {
-                                                                                                                                        onFailures(
-                                                                                                                                                new OpenSearchStatusException(
-                                                                                                                                                        "Search request timed out",
-                                                                                                                                                        RestStatus
-                                                                                                                                                                .REQUEST_TIMEOUT));
-                                                                                                                                    }
-
-                                                                                                                                    SearchHit[] hits =
-                                                                                                                                            searchResponse
-                                                                                                                                                    .getHits()
-                                                                                                                                                    .getHits();
-                                                                                                                                    Map<String, CustomLogType>
-                                                                                                                                            logTypes = new HashMap<>();
-                                                                                                                                    for (SearchHit hit : hits) {
-                                                                                                                                        Map<String, Object> sourceMap =
-                                                                                                                                                hit.getSourceAsMap();
-                                                                                                                                        logTypes.put(
-                                                                                                                                                sourceMap
-                                                                                                                                                        .get("name")
-                                                                                                                                                        .toString(),
-                                                                                                                                                new CustomLogType(
-                                                                                                                                                        sourceMap));
-                                                                                                                                    }
-
-                                                                                                                                    if (correlatedFindings != null) {
-                                                                                                                                        if (correlatedFindings
-                                                                                                                                                .isEmpty()) {
-                                                                                                                                            vectorEmbeddingsEngine
-                                                                                                                                                    .insertOrphanFindings(
-                                                                                                                                                            detectorType,
-                                                                                                                                                            request.getFinding(),
-                                                                                                                                                            Long.valueOf(
-                                                                                                                                                                            CorrelationIndices
-                                                                                                                                                                                            .FIXED_HISTORICAL_INTERVAL
-                                                                                                                                                                                    / 1000L)
-                                                                                                                                                                    .floatValue(),
-                                                                                                                                                            logTypes);
-                                                                                                                                        }
-                                                                                                                                        for (Map.Entry<
-                                                                                                                                                        String, List<String>>
-                                                                                                                                                correlatedFinding :
-                                                                                                                                                        correlatedFindings
-                                                                                                                                                                .entrySet()) {
-                                                                                                                                            vectorEmbeddingsEngine
-                                                                                                                                                    .insertCorrelatedFindings(
-                                                                                                                                                            detectorType,
-                                                                                                                                                            request.getFinding(),
-                                                                                                                                                            correlatedFinding
-                                                                                                                                                                    .getKey(),
-                                                                                                                                                            correlatedFinding
-                                                                                                                                                                    .getValue(),
-                                                                                                                                                            Long.valueOf(
-                                                                                                                                                                            CorrelationIndices
-                                                                                                                                                                                            .FIXED_HISTORICAL_INTERVAL
-                                                                                                                                                                                    / 1000L)
-                                                                                                                                                                    .floatValue(),
-                                                                                                                                                            correlationRules,
-                                                                                                                                                            logTypes);
-                                                                                                                                        }
-                                                                                                                                    } else {
-                                                                                                                                        vectorEmbeddingsEngine
-                                                                                                                                                .insertOrphanFindings(
-                                                                                                                                                        detectorType,
-                                                                                                                                                        orphanFinding,
-                                                                                                                                                        Long.valueOf(
-                                                                                                                                                                        CorrelationIndices
-                                                                                                                                                                                        .FIXED_HISTORICAL_INTERVAL
-                                                                                                                                                                                / 1000L)
-                                                                                                                                                                .floatValue(),
-                                                                                                                                                        logTypes);
-                                                                                                                                    }
-                                                                                                                                },
-                                                                                                                                this::onFailures));
-                                                                                                            },
+                                                                                                            indexResponse ->
+                                                                                                                    insertFindings(
+                                                                                                                            fixedTimestampFeature,
+                                                                                                                            correlatedFindings,
+                                                                                                                            detectorType,
+                                                                                                                            correlationRules,
+                                                                                                                            orphanFinding),
                                                                                                             this::onFailures));
                                                                                         } catch (Exception ex) {
                                                                                             onFailures(ex);
@@ -632,11 +715,8 @@ public class TransportCorrelateFindingAction
                                                                                                                 (findingTimestamp - scoreTimestamp) / 1000L)
                                                                                                         .floatValue();
 
-                                                                                        SearchRequest searchRequest =
-                                                                                                getSearchLogTypeIndexRequest();
                                                                                         insertFindings(
                                                                                                 timestampFeature,
-                                                                                                searchRequest,
                                                                                                 correlatedFindings,
                                                                                                 detectorType,
                                                                                                 correlationRules,
@@ -679,79 +759,27 @@ public class TransportCorrelateFindingAction
                                             if (newScoreTimestamp > scoreTimestamp) {
                                                 IndexRequest scoreIndexRequest =
                                                         getCorrelationMetadataIndexRequest(id, newScoreTimestamp);
+                                                float fixedTimestampFeature =
+                                                        Long.valueOf(CorrelationIndices.FIXED_HISTORICAL_INTERVAL / 1000L)
+                                                                .floatValue();
 
                                                 client.index(
                                                         scoreIndexRequest,
                                                         ActionListener.wrap(
-                                                                indexResponse -> {
-                                                                    SearchRequest searchRequest = getSearchLogTypeIndexRequest();
-
-                                                                    client.search(
-                                                                            searchRequest,
-                                                                            ActionListener.wrap(
-                                                                                    searchResponse -> {
-                                                                                        if (searchResponse.isTimedOut()) {
-                                                                                            onFailures(
-                                                                                                    new OpenSearchStatusException(
-                                                                                                            "Search request timed out",
-                                                                                                            RestStatus.REQUEST_TIMEOUT));
-                                                                                        }
-
-                                                                                        SearchHit[] hits = searchResponse.getHits().getHits();
-                                                                                        Map<String, CustomLogType> logTypes =
-                                                                                                buildLogTypes(hits);
-
-                                                                                        if (correlatedFindings != null) {
-                                                                                            if (correlatedFindings.isEmpty()) {
-                                                                                                vectorEmbeddingsEngine.insertOrphanFindings(
-                                                                                                        detectorType,
-                                                                                                        request.getFinding(),
-                                                                                                        Long.valueOf(
-                                                                                                                        CorrelationIndices
-                                                                                                                                        .FIXED_HISTORICAL_INTERVAL
-                                                                                                                                / 1000L)
-                                                                                                                .floatValue(),
-                                                                                                        logTypes);
-                                                                                            }
-                                                                                            for (Map.Entry<String, List<String>>
-                                                                                                    correlatedFinding :
-                                                                                                            correlatedFindings.entrySet()) {
-                                                                                                vectorEmbeddingsEngine.insertCorrelatedFindings(
-                                                                                                        detectorType,
-                                                                                                        request.getFinding(),
-                                                                                                        correlatedFinding.getKey(),
-                                                                                                        correlatedFinding.getValue(),
-                                                                                                        Long.valueOf(
-                                                                                                                        CorrelationIndices
-                                                                                                                                        .FIXED_HISTORICAL_INTERVAL
-                                                                                                                                / 1000L)
-                                                                                                                .floatValue(),
-                                                                                                        correlationRules,
-                                                                                                        logTypes);
-                                                                                            }
-                                                                                        } else {
-                                                                                            vectorEmbeddingsEngine.insertOrphanFindings(
-                                                                                                    detectorType,
-                                                                                                    orphanFinding,
-                                                                                                    Long.valueOf(
-                                                                                                                    CorrelationIndices
-                                                                                                                                    .FIXED_HISTORICAL_INTERVAL
-                                                                                                                            / 1000L)
-                                                                                                            .floatValue(),
-                                                                                                    logTypes);
-                                                                                        }
-                                                                                    },
-                                                                                    this::onFailures));
-                                                                },
+                                                                indexResponse ->
+                                                                        insertFindings(
+                                                                                fixedTimestampFeature,
+                                                                                correlatedFindings,
+                                                                                detectorType,
+                                                                                correlationRules,
+                                                                                orphanFinding),
                                                                 this::onFailures));
                                             } else {
                                                 float timestampFeature =
                                                         Long.valueOf((findingTimestamp - scoreTimestamp) / 1000L).floatValue();
 
-                                                SearchRequest searchRequest = getSearchLogTypeIndexRequest();
                                                 insertFindings(
                                                         timestampFeature,
-                                                        searchRequest,
                                                         correlatedFindings,
                                                         detectorType,
                                                         correlationRules,
@@ -800,44 +828,59 @@ public class TransportCorrelateFindingAction
 
         private void insertFindings(
                 float timestampFeature,
-                SearchRequest searchRequest,
                 Map<String, List<String>> correlatedFindings,
                 String detectorType,
                 List<String> correlationRules,
                 Finding orphanFinding) {
+            withLogTypes(
+                    logTypes -> {
+                        if (correlatedFindings != null) {
+                            if (correlatedFindings.isEmpty()) {
+                                vectorEmbeddingsEngine.insertOrphanFindings(
+                                        detectorType, request.getFinding(), timestampFeature, logTypes);
+                            }
+                            for (Map.Entry<String, List<String>> correlatedFinding :
+                                    correlatedFindings.entrySet()) {
+                                vectorEmbeddingsEngine.insertCorrelatedFindings(
+                                        detectorType,
+                                        request.getFinding(),
+                                        correlatedFinding.getKey(),
+                                        correlatedFinding.getValue(),
+                                        timestampFeature,
+                                        correlationRules,
+                                        logTypes);
+                            }
+                        } else {
+                            vectorEmbeddingsEngine.insertOrphanFindings(
+                                    detectorType, orphanFinding, timestampFeature, logTypes);
+                        }
+                    });
+        }
+
+        /**
+         * Calls {@code onLogTypes} with the cached log type list if a fresh entry is available,
+         * otherwise issues the size-10000 search against {@link LogTypeService#LOG_TYPE_INDEX},
+         * populates the cache, and then invokes the consumer.
+         */
+        private void withLogTypes(Consumer<Map<String, CustomLogType>> onLogTypes) {
+            Optional<Map<String, CustomLogType>> cached = logTypeListCache.get();
+            if (cached.isPresent()) {
+                onLogTypes.accept(cached.get());
+                return;
+            }
             client.search(
-                    searchRequest,
+                    getSearchLogTypeIndexRequest(),
                     ActionListener.wrap(
                             response -> {
                                 if (response.isTimedOut()) {
                                     onFailures(
                                             new OpenSearchStatusException(
                                                     "Search request timed out", RestStatus.REQUEST_TIMEOUT));
+                                    return;
                                 }
-
-                                SearchHit[] hits = response.getHits().getHits();
-                                Map<String, CustomLogType> logTypes = buildLogTypes(hits);
-
-                                if (correlatedFindings != null) {
-                                    if (correlatedFindings.isEmpty()) {
-                                        vectorEmbeddingsEngine.insertOrphanFindings(
-                                                detectorType, request.getFinding(), timestampFeature, logTypes);
-                                    }
-                                    for (Map.Entry<String, List<String>> correlatedFinding :
-                                            correlatedFindings.entrySet()) {
-                                        vectorEmbeddingsEngine.insertCorrelatedFindings(
-                                                detectorType,
-                                                request.getFinding(),
-                                                correlatedFinding.getKey(),
-                                                correlatedFinding.getValue(),
-                                                timestampFeature,
-                                                correlationRules,
-                                                logTypes);
-                                    }
-                                } else {
-                                    vectorEmbeddingsEngine.insertOrphanFindings(
-                                            detectorType, orphanFinding, timestampFeature, logTypes);
-                                }
+                                Map<String, CustomLogType> logTypes = buildLogTypes(response.getHits().getHits());
+                                logTypeListCache.put(logTypes);
+                                onLogTypes.accept(logTypes);
                             },
                             this::onFailures));
         }
@@ -861,6 +904,9 @@ public class TransportCorrelateFindingAction
         public void onOperation() {
             this.response.set(RestStatus.OK);
             if (counter.compareAndSet(false, true)) {
+                if (permitAcquired) {
+                    releasePermitAndDrain();
+                }
                 finishHim(null);
             }
         }
@@ -872,6 +918,9 @@ public class TransportCorrelateFindingAction
                     request.getFinding().getId(),
                     t);
             if (counter.compareAndSet(false, true)) {
+                if (permitAcquired) {
+                    releasePermitAndDrain();
+                }
                 finishHim(t);
             }
         }

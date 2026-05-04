@@ -276,11 +276,22 @@ public class WazuhEnrichedFindingService implements Closeable {
 
         List<DocLevelQuery> queries = finding.getDocLevelQueries();
         if (queries.isEmpty()) {
-            for (int i = 0; i < docIds.size(); i++) {
-                this.buildAndIndex(
-                        finding, categories.get(i), eventSources.get(i), docIds.get(i), null, Map.of());
+            try {
+                for (int i = 0; i < docIds.size(); i++) {
+                    try {
+                        this.buildAndIndex(
+                                finding, categories.get(i), eventSources.get(i), docIds.get(i), null, Map.of());
+                    } catch (Exception e) {
+                        log.warn(
+                                "Failed to build enriched finding for finding {} doc {} (no queries)",
+                                finding.getId(),
+                                docIds.get(i),
+                                e);
+                    }
+                }
+            } finally {
+                this.enrichmentComplete();
             }
-            this.enrichmentComplete();
             return;
         }
 
@@ -334,22 +345,46 @@ public class WazuhEnrichedFindingService implements Closeable {
                         }));
     }
 
-    /** Generates and indexes M×N enriched findings (one per doc–rule combination). */
+    /**
+     * Generates and indexes M×N enriched findings (one per doc–rule combination).
+     *
+     * <p>Wrapped in try/finally so {@link #enrichmentComplete()} always runs, even if {@link
+     * #buildAndIndex} throws synchronously. Each iteration is also guarded so a single bad event does
+     * not strand the in-flight permit and stall {@link #findingsQueue} for the rest of the process's
+     * lifetime.
+     */
     private void buildAllFindingsAndComplete(
             Finding finding,
             List<String> docIds,
             List<Map<String, Object>> eventSources,
             List<String> categories,
             List<DocLevelQuery> queries) {
-        for (int i = 0; i < docIds.size(); i++) {
-            for (DocLevelQuery query : queries) {
-                Map<String, Object> ruleMetadata =
-                        this.ruleMetadataCache.getOrDefault(query.getId(), Map.of());
-                this.buildAndIndex(
-                        finding, categories.get(i), eventSources.get(i), docIds.get(i), query, ruleMetadata);
+        try {
+            for (int i = 0; i < docIds.size(); i++) {
+                for (DocLevelQuery query : queries) {
+                    try {
+                        Map<String, Object> ruleMetadata =
+                                this.ruleMetadataCache.getOrDefault(query.getId(), Map.of());
+                        this.buildAndIndex(
+                                finding,
+                                categories.get(i),
+                                eventSources.get(i),
+                                docIds.get(i),
+                                query,
+                                ruleMetadata);
+                    } catch (Exception e) {
+                        log.warn(
+                                "Failed to build enriched finding for finding {} doc {} rule {}",
+                                finding.getId(),
+                                docIds.get(i),
+                                query.getId(),
+                                e);
+                    }
+                }
             }
+        } finally {
+            this.enrichmentComplete();
         }
-        this.enrichmentComplete();
     }
 
     // ── Step 3: assemble the enriched document ───────────────────────────────
