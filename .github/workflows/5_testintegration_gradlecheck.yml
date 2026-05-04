@@ -127,6 +127,14 @@ jobs:
           revision: '0'
           reference: ${{ github.ref }}
 
+      - name: Publish commons library to mavenLocal
+        run: |
+          PROJECT_VERSION=$(jq -r '.version' VERSION.json)
+          cd commons
+          ../gradlew publishToMavenLocal -x check \
+          -Dversion=$PROJECT_VERSION \
+          -Drevision=0
+
       - name: Run Gradle check
         run: ./gradlew check "-Dversion=${{ needs.get-version.outputs.version }}" "-Drevision=0"
         shell: bash
