@@ -1096,7 +1096,7 @@ public class TransportIndexDetectorAction
             String id = query.getLeft();
 
             Rule rule = query.getRight();
-            String name = rule.getTitle();
+            String name = rule.getMetadata().getTitle();
             String actualQuery = rule.getQueries().get(0).getValue();
 
             List<String> tags = new ArrayList<>();
@@ -1498,7 +1498,7 @@ public class TransportIndexDetectorAction
                             BucketLevelTrigger bucketLevelTrigger =
                                     new BucketLevelTrigger(
                                             rule.getId(),
-                                            rule.getTitle(),
+                                            rule.getMetadata().getTitle(),
                                             rule.getLevel(),
                                             aggregationQueries.getCondition(),
                                             Collections.emptyList());

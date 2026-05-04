@@ -1,15 +1,27 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.action;
 
 import org.opensearch.core.action.ActionResponse;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
+import org.opensearch.core.rest.RestStatus;
 import org.opensearch.core.xcontent.ToXContentObject;
 import org.opensearch.core.xcontent.XContentBuilder;
-import org.opensearch.core.rest.RestStatus;
 import org.opensearch.securityanalytics.model.Detector;
 import org.opensearch.securityanalytics.model.Rule;
 
@@ -20,24 +32,16 @@ import static org.opensearch.securityanalytics.util.RestHandlerUtils._VERSION;
 
 public class IndexRuleResponse extends ActionResponse implements ToXContentObject {
 
-    /**
-     * the id of the created/updated rule
-     */
+    /** the id of the created/updated rule */
     private String id;
 
-    /**
-     * the version of the created/updated rule
-     */
+    /** the version of the created/updated rule */
     private Long version;
 
-    /**
-     * REST method for the request PUT/POST
-     */
+    /** REST method for the request PUT/POST */
     private RestStatus status;
 
-    /**
-     * the Rule object of security-analytics
-     */
+    /** the Rule object of security-analytics */
     private Rule rule;
 
     public IndexRuleResponse(String id, Long version, RestStatus status, Rule rule) {
@@ -49,10 +53,7 @@ public class IndexRuleResponse extends ActionResponse implements ToXContentObjec
     }
 
     public IndexRuleResponse(StreamInput sin) throws IOException {
-        this(sin.readString(),
-             sin.readLong(),
-             sin.readEnum(RestStatus.class),
-             Rule.readFrom(sin));
+        this(sin.readString(), sin.readLong(), sin.readEnum(RestStatus.class), Rule.readFrom(sin));
     }
 
     @Override
@@ -65,24 +66,20 @@ public class IndexRuleResponse extends ActionResponse implements ToXContentObjec
 
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
-        builder.startObject()
-            .field(_ID, id)
-            .field(_VERSION, version);
+        builder.startObject().field(_ID, id).field(_VERSION, version);
 
-        builder.startObject("rule")
-            .field(Rule.CATEGORY, rule.getCategory())
-            .field(Rule.TITLE, rule.getTitle())
-            .field(Rule.LOG_SOURCE, rule.getLogSource())
-            .field(Rule.DESCRIPTION, rule.getDescription())
-            .field(Rule.TAGS, rule.getTags())
-            .field(Rule.REFERENCES, rule.getReferences())
-            .field(Rule.LEVEL, rule.getLevel())
-            .field(Rule.FALSE_POSITIVES, rule.getFalsePositives())
-            .field(Rule.AUTHOR, rule.getAuthor())
-            .field(Rule.STATUS, rule.getStatus())
-            .field(Detector.LAST_UPDATE_TIME_FIELD, rule.getDate())
-            .field(Rule.RULE, rule.getRule())
-            .endObject();
+        builder
+                .startObject("rule")
+                .field(Rule.CATEGORY, rule.getCategory())
+                .field(Rule.LOG_SOURCE, rule.getLogSource())
+                .field(Rule.TAGS, rule.getTags())
+                .field(Rule.REFERENCES, rule.getReferences())
+                .field(Rule.LEVEL, rule.getLevel())
+                .field(Rule.FALSE_POSITIVES, rule.getFalsePositives())
+                .field(Rule.STATUS, rule.getStatus())
+                .field(Detector.LAST_UPDATE_TIME_FIELD, rule.getDate())
+                .field(Rule.RULE, rule.getRule())
+                .endObject();
 
         return builder.endObject();
     }
