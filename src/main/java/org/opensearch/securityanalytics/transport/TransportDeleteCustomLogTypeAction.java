@@ -209,7 +209,7 @@ public class TransportDeleteCustomLogTypeAction
             // TODO: Remove this check when we load our Integrations and Rules as pre-packaged.
             String enabledPrepackaged = System.getProperty("default_rules.enabled");
             if (enabledPrepackaged != null && enabledPrepackaged.equals("true")) {
-                if (logType.getSpace().equals("Sigma")) {
+                if (logType.getSpace().equals("standard")) {
                     onFailures(
                             new OpenSearchStatusException(
                                     String.format(
