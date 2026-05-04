@@ -25,12 +25,16 @@ import org.opensearch.cluster.ClusterState;
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.settings.ClusterSettings;
 import org.opensearch.common.settings.Settings;
+import org.opensearch.common.unit.TimeValue;
 import org.opensearch.common.util.concurrent.ThreadContext;
 import org.opensearch.commons.alerting.action.PublishFindingsRequest;
 import org.opensearch.commons.alerting.action.SubscribeFindingsResponse;
 import org.opensearch.commons.alerting.model.Finding;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.xcontent.NamedXContentRegistry;
+import org.opensearch.securityanalytics.correlation.CorrelationRulesCache;
+import org.opensearch.securityanalytics.correlation.DetectorLookupCache;
+import org.opensearch.securityanalytics.correlation.LogTypeListCache;
 import org.opensearch.securityanalytics.correlation.alert.CorrelationAlertService;
 import org.opensearch.securityanalytics.correlation.alert.notifications.NotificationService;
 import org.opensearch.securityanalytics.enrichment.WazuhEnrichedFindingService;
@@ -150,7 +154,10 @@ public class TransportCorrelateFindingActionTests extends OpenSearchTestCase {
                                         SecurityAnalyticsSettings.INDEX_TIMEOUT,
                                         SecurityAnalyticsSettings.CORRELATION_TIME_WINDOW,
                                         SecurityAnalyticsSettings.ENABLE_AUTO_CORRELATIONS,
-                                        SecurityAnalyticsSettings.ENRICHED_FINDINGS_ENABLED)));
+                                        SecurityAnalyticsSettings.ENRICHED_FINDINGS_ENABLED,
+                                        SecurityAnalyticsSettings.CORRELATION_DETECTOR_CACHE_TTL,
+                                        SecurityAnalyticsSettings.CORRELATION_MAX_IN_FLIGHT_FINDINGS,
+                                        SecurityAnalyticsSettings.CORRELATION_METADATA_CACHE_TTL)));
         when(clusterService.getClusterSettings()).thenReturn(clusterSettings);
         when(clusterService.state()).thenReturn(ClusterState.builder(new ClusterName("test")).build());
         when(s.detectorIndices.getThreadPool()).thenReturn(s.threadPool);
@@ -182,7 +189,10 @@ public class TransportCorrelateFindingActionTests extends OpenSearchTestCase {
                         new ActionFilters(Collections.emptySet()),
                         mock(CorrelationAlertService.class),
                         mock(NotificationService.class),
-                        mock(WazuhEnrichedFindingService.class));
+                        mock(WazuhEnrichedFindingService.class),
+                        new DetectorLookupCache(TimeValue.ZERO),
+                        new LogTypeListCache(TimeValue.ZERO),
+                        new CorrelationRulesCache(TimeValue.ZERO));
         return s;
     }
 
