@@ -1572,6 +1572,41 @@ public class QueryBackendTests extends OpenSearchTestCase {
         Assert.assertEquals("(_exists_: fieldA) OR (mappedB: \"valueB\")", queries.get(0).toString());
     }
 
+    public void testConvertNotSelectorWithExistsTrueDeMorgans()
+            throws IOException, SigmaError, CompositeSigmaErrors {
+        OSQueryBackend queryBackend = testBackend();
+        List<Object> queries =
+                queryBackend.convertRule(
+                        SigmaRule.fromYaml(
+                                "            title: Test\n"
+                                        + "            id: 3f6d3370-e447-4aa9-a3eb-6ad6d4c5ecab\n"
+                                        + "            status: test\n"
+                                        + "            level: critical\n"
+                                        + "            description: Test De Morgan with exists true\n"
+                                        + "            author: Test\n"
+                                        + "            date: 2024/01/01\n"
+                                        + "            logsource:\n"
+                                        + "                category: test_category\n"
+                                        + "                product: test_product\n"
+                                        + "            detection:\n"
+                                        + "                selection:\n"
+                                        + "                    process.executable: KeePass.exe\n"
+                                        + "                sub_processes:\n"
+                                        + "                    process.parent.command_line|exists: true\n"
+                                        + "                condition: selection and not sub_processes",
+                                false));
+
+        Assert.assertEquals(
+                "(process.executable: \"KeePass.exe\") AND ((NOT _exists_: process.parent.command_line))",
+                queries.get(0).toString());
+        Assert.assertFalse(
+                queries
+                        .get(0)
+                        .toString()
+                        .contains(
+                                "NOT _exists_: process.parent.command_line AND _exists_: process.parent.command_line"));
+    }
+
     private OSQueryBackend testBackend() throws IOException {
         return new OSQueryBackend(testFieldMapping, false, true);
     }

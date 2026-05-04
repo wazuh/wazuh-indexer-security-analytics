@@ -138,6 +138,9 @@ public abstract class QueryBackend {
 
     public String convertConditionFieldEqValNot(ConditionType conditionType, boolean isConditionNot, boolean applyDeMorgans) throws SigmaValueError {
         String baseString = this.convertConditionFieldEqVal(conditionType.getEqualsValueExpression(), isConditionNot, applyDeMorgans).toString();
+        if (conditionType.getEqualsValueExpression().getValue() instanceof SigmaExists) {
+            return baseString;
+        }
         String addExists = this.convertExistsField(conditionType.getEqualsValueExpression()).toString();
         return String.format(Locale.getDefault(), ("%s" + "%s"), baseString, addExists);
     }
