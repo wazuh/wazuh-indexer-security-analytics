@@ -43,19 +43,40 @@ public class DetectorFactory {
      * Creates a Detector object configured for the specified integration.
      *
      * <p>The detector is created with the following configuration: - Name: lowercase integration name
-     * - Description: "Detector for {integration} integration" - Data stream:
+     * - Description: "Detector for {integration} integration" - Deffect Data stream:
      * "wazuh-events-v5-{category}" (lowercase) - Schedule: 2-minute interval - Enabled: true
      *
      * @param integration the integration name (e.g., "apache", "nginx")
      * @param category the log category used for data stream naming
      * @param detectorRules list of rule IDs to associate with the detector
+     * @param dataStream list of sources in the detector
+     * @param interval the execution interval in minutes
+     * @param isEnabled the initial state of the detector
      * @return a new {@link Detector} instance configured for the integration
      */
     public static Detector createDetector(
             String integration,
             String category,
             List<String> detectorRules,
-            List<String> sources,
+            List<String> dataStream,
+            int interval,
+            boolean isEnabled) {
+        return createDetector(
+                integration,
+                category,
+                detectorRules,
+                Detector.STANDARD_SOURCE,
+                dataStream,
+                interval,
+                isEnabled);
+    }
+
+    public static Detector createDetector(
+            String integration,
+            String category,
+            List<String> detectorRules,
+            String source,
+            List<String> dataStream,
             int interval,
             boolean isEnabled) {
 
@@ -66,8 +87,8 @@ public class DetectorFactory {
         String name = integration.toLowerCase(Locale.ROOT);
         String description = "Detector for " + integration + " integration";
         List<String> inputs =
-                (sources != null && !sources.isEmpty())
-                        ? sources
+                (dataStream != null && !dataStream.isEmpty())
+                        ? dataStream
                         : List.of("wazuh-events-v5-" + category.toLowerCase(Locale.ROOT));
         IntervalSchedule schedule = new IntervalSchedule(interval, ChronoUnit.MINUTES, null);
         DetectorInput detectorInput = new DetectorInput(description, inputs, new ArrayList<>(), rules);
@@ -94,6 +115,6 @@ public class DetectorFactory {
                 null,
                 null,
                 false,
-                null);
+                source);
     }
 }
