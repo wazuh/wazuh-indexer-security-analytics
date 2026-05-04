@@ -21,6 +21,7 @@ import org.opensearch.securityanalytics.rules.objects.SigmaRule;
 import org.opensearch.securityanalytics.rules.types.SigmaBool;
 import org.opensearch.securityanalytics.rules.types.SigmaCIDRExpression;
 import org.opensearch.securityanalytics.rules.types.SigmaCompareExpression;
+import org.opensearch.securityanalytics.rules.types.SigmaExists;
 import org.opensearch.securityanalytics.rules.types.SigmaExpansion;
 import org.opensearch.securityanalytics.rules.types.SigmaNull;
 import org.opensearch.securityanalytics.rules.types.SigmaNumber;
@@ -137,6 +138,9 @@ public abstract class QueryBackend {
 
     public String convertConditionFieldEqValNot(ConditionType conditionType, boolean isConditionNot, boolean applyDeMorgans) throws SigmaValueError {
         String baseString = this.convertConditionFieldEqVal(conditionType.getEqualsValueExpression(), isConditionNot, applyDeMorgans).toString();
+        if (conditionType.getEqualsValueExpression().getValue() instanceof SigmaExists) {
+            return baseString;
+        }
         String addExists = this.convertExistsField(conditionType.getEqualsValueExpression()).toString();
         return String.format(Locale.getDefault(), ("%s" + "%s"), baseString, addExists);
     }
@@ -208,6 +212,8 @@ public abstract class QueryBackend {
             return this.convertConditionFieldEqValOpVal(condition, applyDeMorgans);
         } else if (condition.getValue() instanceof SigmaNull) {
             return this.convertConditionFieldEqValNull(condition, applyDeMorgans);
+        } else if (condition.getValue() instanceof SigmaExists) {
+            return this.convertConditionFieldEqValExists(condition, isConditionNot, applyDeMorgans);
         }/* TODO: below methods will be supported when Sigma Expand Modifier is supported.
         else if (condition.getValue() instanceof SigmaQueryExpression) {
             return this.convertConditionFieldEqValQueryExpr(condition);
@@ -231,6 +237,8 @@ public abstract class QueryBackend {
    public abstract Object convertConditionFieldEqValOpVal(ConditionFieldEqualsValueExpression condition, boolean applyDeMorgans);
 
     public abstract Object convertConditionFieldEqValNull(ConditionFieldEqualsValueExpression condition, boolean applyDeMorgans);
+
+    public abstract Object convertConditionFieldEqValExists(ConditionFieldEqualsValueExpression condition, boolean isConditionNot, boolean applyDeMorgans);
 
     public abstract Object convertExistsField(ConditionFieldEqualsValueExpression condition);
 

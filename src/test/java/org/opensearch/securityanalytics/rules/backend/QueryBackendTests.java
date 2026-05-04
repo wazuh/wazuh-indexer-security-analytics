@@ -1395,6 +1395,218 @@ public class QueryBackendTests extends OpenSearchTestCase {
                 });
     }
 
+    // -------------------------------------------------------------------------
+    // exists modifier backend tests
+    // -------------------------------------------------------------------------
+
+    public void testConvertExistsTrue() throws IOException, SigmaError, CompositeSigmaErrors {
+        OSQueryBackend queryBackend = testBackend();
+        List<Object> queries =
+                queryBackend.convertRule(
+                        SigmaRule.fromYaml(
+                                "            title: Test\n"
+                                        + "            id: 39f919f3-980b-4e6f-a975-8af7e507ef2b\n"
+                                        + "            status: test\n"
+                                        + "            level: critical\n"
+                                        + "            description: Test exists modifier with true\n"
+                                        + "            author: Test\n"
+                                        + "            date: 2024/01/01\n"
+                                        + "            logsource:\n"
+                                        + "                category: test_category\n"
+                                        + "                product: test_product\n"
+                                        + "            detection:\n"
+                                        + "                sel:\n"
+                                        + "                    fieldA|exists: true\n"
+                                        + "                condition: sel",
+                                false));
+        Assert.assertEquals("_exists_: fieldA", queries.get(0).toString());
+    }
+
+    public void testConvertExistsFalse() throws IOException, SigmaError, CompositeSigmaErrors {
+        OSQueryBackend queryBackend = testBackend();
+        List<Object> queries =
+                queryBackend.convertRule(
+                        SigmaRule.fromYaml(
+                                "            title: Test\n"
+                                        + "            id: 39f919f3-980b-4e6f-a975-8af7e507ef2b\n"
+                                        + "            status: test\n"
+                                        + "            level: critical\n"
+                                        + "            description: Test exists modifier with false\n"
+                                        + "            author: Test\n"
+                                        + "            date: 2024/01/01\n"
+                                        + "            logsource:\n"
+                                        + "                category: test_category\n"
+                                        + "                product: test_product\n"
+                                        + "            detection:\n"
+                                        + "                sel:\n"
+                                        + "                    fieldA|exists: false\n"
+                                        + "                condition: sel",
+                                false));
+        Assert.assertEquals("NOT _exists_: fieldA", queries.get(0).toString());
+    }
+
+    public void testConvertExistsTrueWithFieldMapping()
+            throws IOException, SigmaError, CompositeSigmaErrors {
+        OSQueryBackend queryBackend = testBackend();
+        List<Object> queries =
+                queryBackend.convertRule(
+                        SigmaRule.fromYaml(
+                                "            title: Test\n"
+                                        + "            id: 39f919f3-980b-4e6f-a975-8af7e507ef2b\n"
+                                        + "            status: test\n"
+                                        + "            level: critical\n"
+                                        + "            description: Test exists modifier true with field mapping\n"
+                                        + "            author: Test\n"
+                                        + "            date: 2024/01/01\n"
+                                        + "            logsource:\n"
+                                        + "                category: test_category\n"
+                                        + "                product: test_product\n"
+                                        + "            detection:\n"
+                                        + "                sel:\n"
+                                        + "                    fieldA1|exists: true\n"
+                                        + "                condition: sel",
+                                false));
+        // fieldA1 is mapped to mappedA
+        Assert.assertEquals("_exists_: mappedA", queries.get(0).toString());
+    }
+
+    public void testConvertExistsFalseWithFieldMapping()
+            throws IOException, SigmaError, CompositeSigmaErrors {
+        OSQueryBackend queryBackend = testBackend();
+        List<Object> queries =
+                queryBackend.convertRule(
+                        SigmaRule.fromYaml(
+                                "            title: Test\n"
+                                        + "            id: 39f919f3-980b-4e6f-a975-8af7e507ef2b\n"
+                                        + "            status: test\n"
+                                        + "            level: critical\n"
+                                        + "            description: Test exists modifier false with field mapping\n"
+                                        + "            author: Test\n"
+                                        + "            date: 2024/01/01\n"
+                                        + "            logsource:\n"
+                                        + "                category: test_category\n"
+                                        + "                product: test_product\n"
+                                        + "            detection:\n"
+                                        + "                sel:\n"
+                                        + "                    fieldA1|exists: false\n"
+                                        + "                condition: sel",
+                                false));
+        // fieldA1 is mapped to mappedA
+        Assert.assertEquals("NOT _exists_: mappedA", queries.get(0).toString());
+    }
+
+    public void testConvertExistsTrueCombinedWithOtherCondition()
+            throws IOException, SigmaError, CompositeSigmaErrors {
+        OSQueryBackend queryBackend = testBackend();
+        List<Object> queries =
+                queryBackend.convertRule(
+                        SigmaRule.fromYaml(
+                                "            title: Test\n"
+                                        + "            id: 39f919f3-980b-4e6f-a975-8af7e507ef2b\n"
+                                        + "            status: test\n"
+                                        + "            level: critical\n"
+                                        + "            description: Test exists true combined with other fields\n"
+                                        + "            author: Test\n"
+                                        + "            date: 2024/01/01\n"
+                                        + "            logsource:\n"
+                                        + "                category: test_category\n"
+                                        + "                product: test_product\n"
+                                        + "            detection:\n"
+                                        + "                sel:\n"
+                                        + "                    fieldA|exists: true\n"
+                                        + "                    fieldB: valueB\n"
+                                        + "                condition: sel",
+                                false));
+        Assert.assertEquals("(_exists_: fieldA) AND (mappedB: \"valueB\")", queries.get(0).toString());
+    }
+
+    public void testConvertExistsFalseCombinedWithOtherCondition()
+            throws IOException, SigmaError, CompositeSigmaErrors {
+        OSQueryBackend queryBackend = testBackend();
+        List<Object> queries =
+                queryBackend.convertRule(
+                        SigmaRule.fromYaml(
+                                "            title: Test\n"
+                                        + "            id: 39f919f3-980b-4e6f-a975-8af7e507ef2b\n"
+                                        + "            status: test\n"
+                                        + "            level: critical\n"
+                                        + "            description: Test exists false combined with other fields\n"
+                                        + "            author: Test\n"
+                                        + "            date: 2024/01/01\n"
+                                        + "            logsource:\n"
+                                        + "                category: test_category\n"
+                                        + "                product: test_product\n"
+                                        + "            detection:\n"
+                                        + "                sel:\n"
+                                        + "                    fieldA|exists: false\n"
+                                        + "                    fieldB: valueB\n"
+                                        + "                condition: sel",
+                                false));
+        Assert.assertEquals(
+                "(NOT _exists_: fieldA) AND (mappedB: \"valueB\")", queries.get(0).toString());
+    }
+
+    public void testConvertExistsTrueInOrExpression()
+            throws IOException, SigmaError, CompositeSigmaErrors {
+        OSQueryBackend queryBackend = testBackend();
+        List<Object> queries =
+                queryBackend.convertRule(
+                        SigmaRule.fromYaml(
+                                "            title: Test\n"
+                                        + "            id: 39f919f3-980b-4e6f-a975-8af7e507ef2b\n"
+                                        + "            status: test\n"
+                                        + "            level: critical\n"
+                                        + "            description: Test exists true in OR expression\n"
+                                        + "            author: Test\n"
+                                        + "            date: 2024/01/01\n"
+                                        + "            logsource:\n"
+                                        + "                category: test_category\n"
+                                        + "                product: test_product\n"
+                                        + "            detection:\n"
+                                        + "                sel1:\n"
+                                        + "                    fieldA|exists: true\n"
+                                        + "                sel2:\n"
+                                        + "                    fieldB: valueB\n"
+                                        + "                condition: sel1 or sel2",
+                                false));
+        Assert.assertEquals("(_exists_: fieldA) OR (mappedB: \"valueB\")", queries.get(0).toString());
+    }
+
+    public void testConvertNotSelectorWithExistsTrueDeMorgans()
+            throws IOException, SigmaError, CompositeSigmaErrors {
+        OSQueryBackend queryBackend = testBackend();
+        List<Object> queries =
+                queryBackend.convertRule(
+                        SigmaRule.fromYaml(
+                                "            title: Test\n"
+                                        + "            id: 3f6d3370-e447-4aa9-a3eb-6ad6d4c5ecab\n"
+                                        + "            status: test\n"
+                                        + "            level: critical\n"
+                                        + "            description: Test De Morgan with exists true\n"
+                                        + "            author: Test\n"
+                                        + "            date: 2024/01/01\n"
+                                        + "            logsource:\n"
+                                        + "                category: test_category\n"
+                                        + "                product: test_product\n"
+                                        + "            detection:\n"
+                                        + "                selection:\n"
+                                        + "                    process.executable: KeePass.exe\n"
+                                        + "                sub_processes:\n"
+                                        + "                    process.parent.command_line|exists: true\n"
+                                        + "                condition: selection and not sub_processes",
+                                false));
+
+        Assert.assertEquals(
+                "(process.executable: \"KeePass.exe\") AND ((NOT _exists_: process.parent.command_line))",
+                queries.get(0).toString());
+        Assert.assertFalse(
+                queries
+                        .get(0)
+                        .toString()
+                        .contains(
+                                "NOT _exists_: process.parent.command_line AND _exists_: process.parent.command_line"));
+    }
+
     private OSQueryBackend testBackend() throws IOException {
         return new OSQueryBackend(testFieldMapping, false, true);
     }
