@@ -321,7 +321,7 @@ public class WTransportIndexDetectorAction
      * Classifies rule hits by their source index and space field.
      *
      * <p>Rules from the pre-packaged index are accepted as-is. Rules from the custom index must have
-     * {@code space} equal to "Custom" (case-insensitive); otherwise they are flagged as invalid.
+     * {@code space} equal to "custom" (case-insensitive); otherwise they are flagged as invalid.
      *
      * @param hits list of (index, docId, space) tuples representing search hits
      * @return classification result with sets of pre-packaged, custom, invalid, and found rule IDs
@@ -338,7 +338,7 @@ public class WTransportIndexDetectorAction
             if (Rule.PRE_PACKAGED_RULES_INDEX.equals(hit.index)) {
                 prePackagedRuleIds.add(hit.docId);
             } else {
-                if ("Custom".equalsIgnoreCase(hit.space)) {
+                if ("custom".equalsIgnoreCase(hit.space)) {
                     customRuleIds.add(hit.docId);
                 } else {
                     invalidCustomRules.add(hit.docId);
@@ -360,7 +360,7 @@ public class WTransportIndexDetectorAction
     static String validateClassificationResult(RuleClassificationResult result, String logTypeName) {
         if (!result.invalidCustomRules.isEmpty()) {
             return String.format(
-                    "Cannot create [%s] detector. Custom rules %s are not in \"Custom\" space.",
+                    "Cannot create [%s] detector. Custom rules %s are not in \"custom\" space.",
                     logTypeName, result.invalidCustomRules);
         }
         if (!result.prePackagedRuleIds.isEmpty() && !result.customRuleIds.isEmpty()) {

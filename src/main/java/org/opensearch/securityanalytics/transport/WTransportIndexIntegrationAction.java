@@ -103,7 +103,7 @@ public class WTransportIndexIntegrationAction
         Integration integration = request.getIntegration();
 
         // Custom integration / log type.
-        if (!Objects.equals(integration.getSpace(), "Sigma")) {
+        if (!Objects.equals(integration.getSpace(), "standard")) {
             try {
                 String integrationId = integration.getDocumentId();
                 String sapId = integrationId == null ? UUID.randomUUID().toString() : integrationId;

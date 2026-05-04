@@ -1,6 +1,18 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.rules.types;
 
@@ -34,7 +46,7 @@ public class SigmaString implements SigmaType {
         if (s == null) {
             s = "";
         }
-//        s = s.replace(" ", "_ws_");
+        //        s = s.replace(" ", "_ws_");
 
         this.original = s;
         int sLen = s.length();
@@ -44,8 +56,9 @@ public class SigmaString implements SigmaType {
         boolean escaped = false;
         for (int i = 0; i < sLen; i++) {
             if (escaped) {
-                if (s.charAt(i) == SpecialChars.WILDCARD_MULTI || s.charAt(i) == SpecialChars.WILDCARD_SINGLE
-                    || s.charAt(i) == SpecialChars.ESCAPE_CHAR) {
+                if (s.charAt(i) == SpecialChars.WILDCARD_MULTI
+                        || s.charAt(i) == SpecialChars.WILDCARD_SINGLE
+                        || s.charAt(i) == SpecialChars.ESCAPE_CHAR) {
                     acc.append(s.charAt(i));
                 } else {
                     acc.append(SpecialChars.ESCAPE_CHAR).append(s.charAt(i));
@@ -54,7 +67,8 @@ public class SigmaString implements SigmaType {
             } else if (s.charAt(i) == SpecialChars.ESCAPE_CHAR) {
                 escaped = true;
             } else {
-                if (s.charAt(i) == SpecialChars.WILDCARD_MULTI || s.charAt(i) == SpecialChars.WILDCARD_SINGLE) {
+                if (s.charAt(i) == SpecialChars.WILDCARD_MULTI
+                        || s.charAt(i) == SpecialChars.WILDCARD_SINGLE) {
                     if (!acc.toString().equals("")) {
                         r.add(AnyOneOf.leftVal(acc.toString()));
                     }
@@ -89,8 +103,10 @@ public class SigmaString implements SigmaType {
         int size = this.sOpt.size();
         for (int i = 0; i < size; ++i) {
             int mSize = mergedOpts.size();
-            if (mSize > 0 && mergedOpts.get(mSize-1).isLeft() && this.sOpt.get(i).isLeft()) {
-                mergedOpts.set(mSize-1, AnyOneOf.leftVal(mergedOpts.get(mSize-1).getLeft() + this.sOpt.get(i).getLeft()));
+            if (mSize > 0 && mergedOpts.get(mSize - 1).isLeft() && this.sOpt.get(i).isLeft()) {
+                mergedOpts.set(
+                        mSize - 1,
+                        AnyOneOf.leftVal(mergedOpts.get(mSize - 1).getLeft() + this.sOpt.get(i).getLeft()));
             } else {
                 mergedOpts.add(this.sOpt.get(i));
             }
@@ -112,7 +128,7 @@ public class SigmaString implements SigmaType {
 
     public int length() {
         int sum = 0;
-        for (AnyOneOf<String, Character, Placeholder> sOptElem: sOpt) {
+        for (AnyOneOf<String, Character, Placeholder> sOptElem : sOpt) {
             if (sOptElem.isLeft()) {
                 sum += sOptElem.getLeft().length();
             } else {
@@ -133,7 +149,7 @@ public class SigmaString implements SigmaType {
     }
 
     public boolean endsWith(Either<String, Character> val) {
-        AnyOneOf<String, Character, Placeholder> c = this.sOpt.get(this.sOpt.size()-1);
+        AnyOneOf<String, Character, Placeholder> c = this.sOpt.get(this.sOpt.size() - 1);
         if (val.isLeft()) {
             return c.isLeft() && c.getLeft().endsWith(val.getLeft());
         } else if (val.isRight()) {
@@ -147,9 +163,11 @@ public class SigmaString implements SigmaType {
     }
 
     public boolean containsSpecial() {
-        for (AnyOneOf<String, Character, Placeholder> sOptElem: sOpt) {
-            if (sOptElem.isMiddle() && (sOptElem.getMiddle() == SpecialChars.ESCAPE_CHAR || sOptElem.getMiddle() == SpecialChars.WILDCARD_MULTI
-                || sOptElem.getMiddle() == SpecialChars.WILDCARD_SINGLE)) {
+        for (AnyOneOf<String, Character, Placeholder> sOptElem : sOpt) {
+            if (sOptElem.isMiddle()
+                    && (sOptElem.getMiddle() == SpecialChars.ESCAPE_CHAR
+                            || sOptElem.getMiddle() == SpecialChars.WILDCARD_MULTI
+                            || sOptElem.getMiddle() == SpecialChars.WILDCARD_SINGLE)) {
                 return true;
             }
         }
@@ -157,36 +175,44 @@ public class SigmaString implements SigmaType {
     }
 
     public boolean containsWildcard() {
-        for (AnyOneOf<String, Character, Placeholder> sOptElem: sOpt) {
-            if (sOptElem.isMiddle() && (sOptElem.getMiddle() == SpecialChars.WILDCARD_MULTI
-                    || sOptElem.getMiddle() == SpecialChars.WILDCARD_SINGLE)) {
+        for (AnyOneOf<String, Character, Placeholder> sOptElem : sOpt) {
+            if (sOptElem.isMiddle()
+                    && (sOptElem.getMiddle() == SpecialChars.WILDCARD_MULTI
+                            || sOptElem.getMiddle() == SpecialChars.WILDCARD_SINGLE)) {
                 return true;
             }
         }
         return false;
     }
 
-    public String convert(String escapeChar, String wildcardMulti, String wildcardSingle, String addEscaped, String addReserved, String filterChars) throws SigmaValueError {
+    public String convert(
+            String escapeChar,
+            String wildcardMulti,
+            String wildcardSingle,
+            String addEscaped,
+            String addReserved,
+            String filterChars)
+            throws SigmaValueError {
         StringBuilder s = new StringBuilder();
         Set<Character> escapedChars = new HashSet<>();
 
         if (wildcardMulti != null) {
-            for (Character c: wildcardMulti.toCharArray()) {
+            for (Character c : wildcardMulti.toCharArray()) {
                 escapedChars.add(c);
             }
         }
         if (wildcardSingle != null) {
-            for (Character c: wildcardSingle.toCharArray()) {
+            for (Character c : wildcardSingle.toCharArray()) {
                 escapedChars.add(c);
             }
         }
         if (addEscaped != null) {
-            for (Character c: addEscaped.toCharArray()) {
+            for (Character c : addEscaped.toCharArray()) {
                 escapedChars.add(c);
             }
         }
 
-        for (AnyOneOf<String, Character, Placeholder> sOptElem: sOpt) {
+        for (AnyOneOf<String, Character, Placeholder> sOptElem : sOpt) {
             if (sOptElem.isLeft()) {
                 if (Arrays.stream(addReserved.split(" ")).anyMatch(s1 -> s1.equals(sOptElem.getLeft()))) {
                     s.append(escapeChar);
@@ -219,13 +245,24 @@ public class SigmaString implements SigmaType {
                 }
             }
         }
-        return s.toString().replace(" ", "_ws_");
+        String result = s.toString();
+        if (this.containsWildcard()) {
+            // Wildcard queries bypass the analyzer pipeline, so the _ws_ char_filter
+            // won't convert _ws_ back to spaces. Instead, escape spaces with backslash
+            // so the query_string parser treats them as literal space characters.
+            result = result.replace(" ", escapeChar + " ");
+        } else {
+            // Non-wildcard (quoted) queries go through the rule_analyzer which has a
+            // char_filter that converts _ws_ back to spaces at analysis time.
+            result = result.replace(" ", "_ws_");
+        }
+        return result;
     }
 
     public SigmaString replaceWithPlaceholder(Pattern regex, String placeholderName) {
         List<AnyOneOf<String, Character, Placeholder>> result = new ArrayList<>();
 
-        for (AnyOneOf<String, Character, Placeholder> elem: this.sOpt) {
+        for (AnyOneOf<String, Character, Placeholder> elem : this.sOpt) {
             if (elem.isLeft()) {
                 String elemStr = elem.getLeft();
                 boolean matched = false;
@@ -262,16 +299,18 @@ public class SigmaString implements SigmaType {
     }
 
     public boolean containsPlaceholder(List<String> include, List<String> exclude) {
-        for (AnyOneOf<String, Character, Placeholder> elem: this.sOpt) {
-            if (elem.isRight() && (include == null || include.contains(elem.get().getName())) &&
-                    (exclude == null || !exclude.contains(elem.get().getName()))) {
+        for (AnyOneOf<String, Character, Placeholder> elem : this.sOpt) {
+            if (elem.isRight()
+                    && (include == null || include.contains(elem.get().getName()))
+                    && (exclude == null || !exclude.contains(elem.get().getName()))) {
                 return true;
             }
         }
         return false;
     }
 
-    public List<SigmaString> replacePlaceholders(Function<Placeholder, List<AnyOneOf<String, Character, Placeholder>>> callback) {
+    public List<SigmaString> replacePlaceholders(
+            Function<Placeholder, List<AnyOneOf<String, Character, Placeholder>>> callback) {
         if (!this.containsPlaceholder(null, null)) {
             return List.of(this);
         }
@@ -299,8 +338,8 @@ public class SigmaString implements SigmaType {
                 }
                 suffix.setsOpt(sufsOpt);
 
-                for (SigmaString resultSuffix: suffix.replacePlaceholders(callback)) {
-                    for (AnyOneOf<String, Character, Placeholder> replacement: callback.apply(placeholder)) {
+                for (SigmaString resultSuffix : suffix.replacePlaceholders(callback)) {
+                    for (AnyOneOf<String, Character, Placeholder> replacement : callback.apply(placeholder)) {
                         SigmaString tempSuffix = new SigmaString(null);
                         tempSuffix.setsOpt(resultSuffix.getsOpt());
 
@@ -321,7 +360,7 @@ public class SigmaString implements SigmaType {
 
     public void setsOpt(List<AnyOneOf<String, Character, Placeholder>> sOpt) {
         this.sOpt = new ArrayList<>();
-        for (AnyOneOf<String, Character, Placeholder> sOptElem: sOpt) {
+        for (AnyOneOf<String, Character, Placeholder> sOptElem : sOpt) {
             if (sOptElem.isLeft()) {
                 this.sOpt.add(AnyOneOf.leftVal(sOptElem.getLeft()));
             } else if (sOptElem.isMiddle()) {
@@ -347,9 +386,9 @@ public class SigmaString implements SigmaType {
         }
 
         for (int idx = 0; idx < sOpt.size(); ++idx) {
-            if ((sOpt.get(idx).isLeft() && !that.sOpt.get(idx).isLeft()) ||
-                    (sOpt.get(idx).isMiddle() && !that.sOpt.get(idx).isMiddle()) ||
-                    (sOpt.get(idx).isRight() && !that.sOpt.get(idx).isRight())) {
+            if ((sOpt.get(idx).isLeft() && !that.sOpt.get(idx).isLeft())
+                    || (sOpt.get(idx).isMiddle() && !that.sOpt.get(idx).isMiddle())
+                    || (sOpt.get(idx).isRight() && !that.sOpt.get(idx).isRight())) {
                 return false;
             }
         }
@@ -359,7 +398,7 @@ public class SigmaString implements SigmaType {
     @Override
     public String toString() {
         StringBuilder sb = new StringBuilder();
-        for (AnyOneOf<String, Character, Placeholder> sOptElem: sOpt) {
+        for (AnyOneOf<String, Character, Placeholder> sOptElem : sOpt) {
             if (sOptElem.isLeft()) {
                 sb.append(sOptElem.getLeft());
             } else if (sOptElem.isMiddle()) {
