@@ -271,7 +271,7 @@ public class TransportIndexCustomLogTypeAction
             // TODO: Remove this check when we load our Integrations and Rules as pre-packaged.
             String enabledPrepackaged = System.getProperty("default_rules.enabled");
             if (enabledPrepackaged != null && enabledPrepackaged.equals("true")) {
-                if (space.equals("Sigma")) {
+                if (space.equals("standard")) {
                     onFailures(
                             new OpenSearchStatusException(
                                     String.format(
@@ -316,7 +316,7 @@ public class TransportIndexCustomLogTypeAction
 
                                 // TODO: Remove this check when we load our Integrations and Rules as pre-packaged.
                                 if (enabledPrepackaged != null && enabledPrepackaged.equals("true")) {
-                                    if (existingLogType.getSpace().equals("Sigma")) {
+                                    if (existingLogType.getSpace().equals("standard")) {
                                         onFailures(
                                                 new OpenSearchStatusException(
                                                         String.format(
