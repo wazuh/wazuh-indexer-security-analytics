@@ -33,8 +33,8 @@ public class WTransportIndexDetectorActionTests extends OpenSearchTestCase {
     public void testClassifyRuleHits_allPrePackaged() {
         List<RuleHit> hits =
                 List.of(
-                        new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "rule-1", "Sigma"),
-                        new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "rule-2", "Sigma"));
+                        new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "rule-1", "standard"),
+                        new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "rule-2", "standard"));
 
         RuleClassificationResult result = WTransportIndexDetectorAction.classifyRuleHits(hits);
 
@@ -49,7 +49,7 @@ public class WTransportIndexDetectorActionTests extends OpenSearchTestCase {
     public void testClassifyRuleHits_allCustomWithCustomSpace() {
         List<RuleHit> hits =
                 List.of(
-                        new RuleHit(Rule.CUSTOM_RULES_INDEX, "rule-1", "Custom"),
+                        new RuleHit(Rule.CUSTOM_RULES_INDEX, "rule-1", "custom"),
                         new RuleHit(Rule.CUSTOM_RULES_INDEX, "rule-2", "custom"));
 
         RuleClassificationResult result = WTransportIndexDetectorAction.classifyRuleHits(hits);
@@ -60,7 +60,7 @@ public class WTransportIndexDetectorActionTests extends OpenSearchTestCase {
     }
 
     public void testClassifyRuleHits_customRuleWithDraftSpace_invalid() {
-        List<RuleHit> hits = List.of(new RuleHit(Rule.CUSTOM_RULES_INDEX, "rule-1", "Draft"));
+        List<RuleHit> hits = List.of(new RuleHit(Rule.CUSTOM_RULES_INDEX, "rule-1", "draft"));
 
         RuleClassificationResult result = WTransportIndexDetectorAction.classifyRuleHits(hits);
 
@@ -71,7 +71,7 @@ public class WTransportIndexDetectorActionTests extends OpenSearchTestCase {
     }
 
     public void testClassifyRuleHits_customRuleWithTestSpace_invalid() {
-        List<RuleHit> hits = List.of(new RuleHit(Rule.CUSTOM_RULES_INDEX, "rule-1", "Test"));
+        List<RuleHit> hits = List.of(new RuleHit(Rule.CUSTOM_RULES_INDEX, "rule-1", "test"));
 
         RuleClassificationResult result = WTransportIndexDetectorAction.classifyRuleHits(hits);
 
@@ -91,8 +91,8 @@ public class WTransportIndexDetectorActionTests extends OpenSearchTestCase {
     public void testClassifyRuleHits_mixedPrePackagedAndCustom() {
         List<RuleHit> hits =
                 List.of(
-                        new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "rule-std", "Sigma"),
-                        new RuleHit(Rule.CUSTOM_RULES_INDEX, "rule-cust", "Custom"));
+                        new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "rule-std", "standard"),
+                        new RuleHit(Rule.CUSTOM_RULES_INDEX, "rule-cust", "custom"));
 
         RuleClassificationResult result = WTransportIndexDetectorAction.classifyRuleHits(hits);
 
@@ -116,7 +116,7 @@ public class WTransportIndexDetectorActionTests extends OpenSearchTestCase {
         // Pre-packaged rules are accepted regardless of their space value
         List<RuleHit> hits =
                 List.of(
-                        new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "rule-1", "Sigma"),
+                        new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "rule-1", "standard"),
                         new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "rule-2", null),
                         new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "rule-3", "SomeOther"));
 
@@ -144,8 +144,8 @@ public class WTransportIndexDetectorActionTests extends OpenSearchTestCase {
         RuleClassificationResult result =
                 WTransportIndexDetectorAction.classifyRuleHits(
                         List.of(
-                                new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "r1", "Sigma"),
-                                new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "r2", "Sigma")));
+                                new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "r1", "standard"),
+                                new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "r2", "standard")));
 
         assertNull(WTransportIndexDetectorAction.validateClassificationResult(result, "test-type"));
     }
@@ -154,8 +154,8 @@ public class WTransportIndexDetectorActionTests extends OpenSearchTestCase {
         RuleClassificationResult result =
                 WTransportIndexDetectorAction.classifyRuleHits(
                         List.of(
-                                new RuleHit(Rule.CUSTOM_RULES_INDEX, "r1", "Custom"),
-                                new RuleHit(Rule.CUSTOM_RULES_INDEX, "r2", "Custom")));
+                                new RuleHit(Rule.CUSTOM_RULES_INDEX, "r1", "custom"),
+                                new RuleHit(Rule.CUSTOM_RULES_INDEX, "r2", "custom")));
 
         assertNull(WTransportIndexDetectorAction.validateClassificationResult(result, "test-type"));
     }
@@ -164,8 +164,8 @@ public class WTransportIndexDetectorActionTests extends OpenSearchTestCase {
         RuleClassificationResult result =
                 WTransportIndexDetectorAction.classifyRuleHits(
                         List.of(
-                                new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "r-std", "Sigma"),
-                                new RuleHit(Rule.CUSTOM_RULES_INDEX, "r-cust", "Custom")));
+                                new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "r-std", "standard"),
+                                new RuleHit(Rule.CUSTOM_RULES_INDEX, "r-cust", "custom")));
 
         String error =
                 WTransportIndexDetectorAction.validateClassificationResult(result, "my-integration");
@@ -178,13 +178,13 @@ public class WTransportIndexDetectorActionTests extends OpenSearchTestCase {
     public void testValidate_invalidCustomSpace_returnsError() {
         RuleClassificationResult result =
                 WTransportIndexDetectorAction.classifyRuleHits(
-                        List.of(new RuleHit(Rule.CUSTOM_RULES_INDEX, "r-draft", "Draft")));
+                        List.of(new RuleHit(Rule.CUSTOM_RULES_INDEX, "r-draft", "draft")));
 
         String error = WTransportIndexDetectorAction.validateClassificationResult(result, "my-type");
 
         assertNotNull(error);
         assertTrue(error.contains("my-type"));
-        assertTrue(error.contains("not in \"Custom\" space"));
+        assertTrue(error.contains("not in \"custom\" space"));
         assertTrue(error.contains("r-draft"));
     }
 
@@ -194,13 +194,13 @@ public class WTransportIndexDetectorActionTests extends OpenSearchTestCase {
         RuleClassificationResult result =
                 WTransportIndexDetectorAction.classifyRuleHits(
                         List.of(
-                                new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "r-std", "Sigma"),
-                                new RuleHit(Rule.CUSTOM_RULES_INDEX, "r-draft", "Draft")));
+                                new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "r-std", "standard"),
+                                new RuleHit(Rule.CUSTOM_RULES_INDEX, "r-draft", "draft")));
 
         String error = WTransportIndexDetectorAction.validateClassificationResult(result, "test");
 
         assertNotNull(error);
-        assertTrue(error.contains("not in \"Custom\" space"));
+        assertTrue(error.contains("not in \"custom\" space"));
     }
 
     public void testValidate_empty_returnsNull() {
@@ -213,7 +213,7 @@ public class WTransportIndexDetectorActionTests extends OpenSearchTestCase {
     public void testValidate_singlePrePackaged_returnsNull() {
         RuleClassificationResult result =
                 WTransportIndexDetectorAction.classifyRuleHits(
-                        List.of(new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "only-rule", "Sigma")));
+                        List.of(new RuleHit(Rule.PRE_PACKAGED_RULES_INDEX, "only-rule", "standard")));
 
         assertNull(WTransportIndexDetectorAction.validateClassificationResult(result, "test"));
     }
@@ -221,7 +221,7 @@ public class WTransportIndexDetectorActionTests extends OpenSearchTestCase {
     public void testValidate_singleCustom_returnsNull() {
         RuleClassificationResult result =
                 WTransportIndexDetectorAction.classifyRuleHits(
-                        List.of(new RuleHit(Rule.CUSTOM_RULES_INDEX, "only-rule", "Custom")));
+                        List.of(new RuleHit(Rule.CUSTOM_RULES_INDEX, "only-rule", "custom")));
 
         assertNull(WTransportIndexDetectorAction.validateClassificationResult(result, "test"));
     }
@@ -230,8 +230,8 @@ public class WTransportIndexDetectorActionTests extends OpenSearchTestCase {
         RuleClassificationResult result =
                 WTransportIndexDetectorAction.classifyRuleHits(
                         List.of(
-                                new RuleHit(Rule.CUSTOM_RULES_INDEX, "r-draft", "Draft"),
-                                new RuleHit(Rule.CUSTOM_RULES_INDEX, "r-test", "Test")));
+                                new RuleHit(Rule.CUSTOM_RULES_INDEX, "r-draft", "draft"),
+                                new RuleHit(Rule.CUSTOM_RULES_INDEX, "r-test", "test")));
 
         String error = WTransportIndexDetectorAction.validateClassificationResult(result, "my-type");
 
