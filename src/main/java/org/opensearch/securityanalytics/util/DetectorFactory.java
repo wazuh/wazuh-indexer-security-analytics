@@ -53,7 +53,7 @@ public class DetectorFactory {
      */
     public static Detector createDetector(
             String integration, String category, List<String> detectorRules) {
-        return createDetector(integration, category, detectorRules, Detector.SIGMA_SOURCE);
+        return createDetector(integration, category, detectorRules, Detector.STANDARD_SOURCE);
     }
 
     public static Detector createDetector(

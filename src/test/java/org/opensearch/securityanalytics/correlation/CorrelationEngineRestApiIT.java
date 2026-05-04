@@ -1168,7 +1168,7 @@ public class CorrelationEngineRestApiIT extends SecurityAnalyticsRestTestCase {
         String vpcFlowMonitorId = createVpcFlowDetector(indices.vpcFlowsIndex);
         String index = createTestIndex(randomIndex(), windowsIndexMapping());
 
-        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "Custom");
+        CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "custom");
         Response createResponse =
                 makeRequest(
                         client(),
