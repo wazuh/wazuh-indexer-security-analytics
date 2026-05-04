@@ -398,6 +398,8 @@ public class TransportCorrelateFindingAction
                                                 } catch (Exception ex) {
                                                     correlateFindingAction.onFailures(ex);
                                                 }
+                                            } else {
+                                                correlateFindingAction.start();
                                             }
                                             if (!correlationIndices.correlationAlertIndexExists()) {
                                                 try {
@@ -734,7 +736,17 @@ public class TransportCorrelateFindingAction
                                             onFailures(e);
                                         }
                                     },
-                                    this::onFailures));
+                                    e -> {
+                                        if (ExceptionsHelper.unwrapCause(e) instanceof ResourceAlreadyExistsException) {
+                                            log.debug(
+                                                    "Correlation metadata index already exists, proceeding with existing index");
+                                            IndexUtils.correlationMetadataIndexUpdated();
+                                            getTimestampFeature(
+                                                    detectorType, correlatedFindings, orphanFinding, correlationRules);
+                                        } else {
+                                            onFailures(e);
+                                        }
+                                    }));
                 } else {
                     long findingTimestamp = this.request.getFinding().getTimestamp().toEpochMilli();
                     SearchRequest searchMetadataIndexRequest = getSearchMetadataIndexRequest();
