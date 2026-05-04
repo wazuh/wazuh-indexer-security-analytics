@@ -64,6 +64,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Fix stale detector references after rule deletion [(#152)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/152)
 - Fix race condition and missing else branch on correlation metadata index creation [(#148)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/184)
 - Fix contains conditions using white spaces [(#162)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/162)
+- Fix enrichment dispatch coupling that dropped findings on correlation failure [(#193)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/193)
 
 ### Security
 -
