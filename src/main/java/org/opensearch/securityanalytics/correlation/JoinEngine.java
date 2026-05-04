@@ -146,7 +146,7 @@ public class JoinEngine {
         Set<String> validIntrusionSets =
                 AutoCorrelationsRepo.validIntrusionSets(autoCorrelations, tags);
 
-        MatchQueryBuilder queryBuilder = QueryBuilders.matchQuery("space", "Sigma");
+        MatchQueryBuilder queryBuilder = QueryBuilders.matchQuery("space", "standard");
 
         SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
         searchSourceBuilder.query(queryBuilder);

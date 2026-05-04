@@ -25,6 +25,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Validate single rule space per detector [(#130)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/130)
 - Add revert bump functionality to repository bumper workflow [(#154)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/154)
 - Add Exists Sigma Modifier [(#185)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/185)
+- Add support for case-insensitive Sigma operators [(#183)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/183)
 
 ### Dependencies
 - Update to JDK 25 [(#49)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/49)
@@ -44,6 +45,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Optimize findings enrichment [(#93)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/93)
 - Limit number of rules per detector [(#111)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/111)
 - Disable standard threat detectors modification [(#121)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/121)
+- Remove duplicated metadata fields for rules [(#163)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/163)
+- Normalize space values to lowercase across SAP [(#174)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/174)
 
 ### Deprecated
 -
@@ -60,6 +63,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Fix race condition on findings correlation [(#106)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/106) [(#132)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/132)
 - Fix codeql issues [(#113)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/113)
 - Fix stale detector references after rule deletion [(#152)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/152)
+- Fix race condition and missing else branch on correlation metadata index creation [(#148)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/184)
 - Fix contains conditions using white spaces [(#162)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/162)
 
 ### Security
