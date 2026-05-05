@@ -1,6 +1,18 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.rules.modifiers;
 
@@ -32,10 +44,14 @@ public class SigmaModifierFacade {
         modifierMap.put("lte", SigmaLessThanEqualModifier.class);
         modifierMap.put("gt", SigmaGreaterThanModifier.class);
         modifierMap.put("gte", SigmaGreaterThanEqualModifier.class);
+        modifierMap.put("exists", SigmaExistsModifier.class);
     }
 
-    public static SigmaModifier sigmaModifier(Class<? extends SigmaModifier> clazz, SigmaDetectionItem detectionItem,
-                                              List<Class<? extends SigmaModifier>> appliedModifiers) throws SigmaModifierError {
+    public static SigmaModifier sigmaModifier(
+            Class<? extends SigmaModifier> clazz,
+            SigmaDetectionItem detectionItem,
+            List<Class<? extends SigmaModifier>> appliedModifiers)
+            throws SigmaModifierError {
         if (modifierFacade == null) {
             modifierFacade = new SigmaModifierFacade();
         }
@@ -60,7 +76,7 @@ public class SigmaModifierFacade {
             return new SigmaCIDRModifier(detectionItem, appliedModifiers);
         } else if (clazz.equals(SigmaAllModifier.class)) {
             return new SigmaAllModifier(detectionItem, appliedModifiers);
-        }  else if (clazz.equals(SigmaLessThanModifier.class)) {
+        } else if (clazz.equals(SigmaLessThanModifier.class)) {
             return new SigmaLessThanModifier(detectionItem, appliedModifiers);
         } else if (clazz.equals(SigmaLessThanEqualModifier.class)) {
             return new SigmaLessThanEqualModifier(detectionItem, appliedModifiers);
@@ -68,6 +84,8 @@ public class SigmaModifierFacade {
             return new SigmaGreaterThanModifier(detectionItem, appliedModifiers);
         } else if (clazz.equals(SigmaGreaterThanEqualModifier.class)) {
             return new SigmaGreaterThanEqualModifier(detectionItem, appliedModifiers);
+        } else if (clazz.equals(SigmaExistsModifier.class)) {
+            return new SigmaExistsModifier(detectionItem, appliedModifiers);
         }
         throw new SigmaModifierError("modifier not found-" + clazz.getName());
     }
@@ -78,7 +96,8 @@ public class SigmaModifierFacade {
         }
 
         Map<String, String> reverseModifierMap = new HashMap<>();
-        for (Map.Entry<String, Class<? extends SigmaModifier>> modifier: modifierFacade.modifierMap.entrySet()) {
+        for (Map.Entry<String, Class<? extends SigmaModifier>> modifier :
+                modifierFacade.modifierMap.entrySet()) {
             reverseModifierMap.put(modifier.getValue().getName(), modifier.getKey());
         }
 
