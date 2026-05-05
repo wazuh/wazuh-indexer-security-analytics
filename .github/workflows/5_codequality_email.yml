@@ -7,7 +7,7 @@ jobs:
   # Checks if the email domain is @wazuh.com, if not the workflow will fail
   verify-email:
     if: github.repository == 'wazuh/wazuh-indexer-security-analytics'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: wazuh/wazuh-indexer/.github/actions/5_codeanalysis_emailchecker@main
         with:
