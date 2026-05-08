@@ -361,7 +361,7 @@ public class WTransportDeleteSpaceResourcesAction
      * otherwise propagates the failure. Callers pass the empty result that matches their listener's
      * type (e.g. {@code 0} for {@code Integer}, {@code Collections.emptyList()} for {@code List}).
      */
-    private static <T> void resolveOrFail(Exception e, T emptyValue, ActionListener<T> listener) {
+    static <T> void resolveOrFail(Exception e, T emptyValue, ActionListener<T> listener) {
         if (e instanceof IndexNotFoundException
                 || (e.getCause() != null && e.getCause() instanceof IndexNotFoundException)) {
             listener.onResponse(emptyValue);
