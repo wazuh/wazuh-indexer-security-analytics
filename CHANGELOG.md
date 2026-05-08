@@ -24,6 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Add Wazuh Alerting plugin to the build process [(#114)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/114)
 - Validate single rule space per detector [(#130)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/130)
 - Add revert bump functionality to repository bumper workflow [(#154)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/154)
+- Add dynamic interpolation of rule fields [(#189)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/189)
 - Add Exists Sigma Modifier [(#185)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/185)
 - Add support for case-insensitive Sigma operators [(#183)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/183)
 
@@ -66,6 +67,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Fix stale detector references after rule deletion [(#152)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/152)
 - Fix race condition and missing else branch on correlation metadata index creation [(#148)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/184)
 - Fix contains conditions using white spaces [(#162)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/162)
+- Fix ClassCastException in WTransportDeleteSpaceResourcesAction [(#205)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/205)
 
 ### Security
 -

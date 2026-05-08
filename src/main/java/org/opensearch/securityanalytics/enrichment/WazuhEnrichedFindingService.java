@@ -387,7 +387,7 @@ public class WazuhEnrichedFindingService implements Closeable {
             if (existingWazuh instanceof Map) {
                 wazuhObj.putAll((Map<String, Object>) existingWazuh);
             }
-            wazuhObj.put("rule", this.buildRuleObject(primaryQuery, ruleMetadata));
+            wazuhObj.put("rule", this.buildRuleObject(primaryQuery, ruleMetadata,eventSource));
             doc.put("wazuh", wazuhObj);
         }
 
@@ -396,12 +396,14 @@ public class WazuhEnrichedFindingService implements Closeable {
 
     @SuppressWarnings("unchecked")
     private Map<String, Object> buildRuleObject(
-            DocLevelQuery query, Map<String, Object> ruleMetadata) {
+            DocLevelQuery query, Map<String, Object> ruleMetadata, Map<String, Object> eventSource) {
         Map<String, Object> rule = new HashMap<>();
         rule.put("id", query.getId());
-        rule.put("title", query.getName());
-        rule.put("tags", query.getTags());
         rule.put("sigma_id", query.getId());
+
+        // Interpolate title and tags against the triggering event
+        rule.put("title", TemplateInterpolator.interpolate(query.getName(), eventSource));
+        rule.put("tags", TemplateInterpolator.interpolateList(query.getTags(), eventSource));
 
         // The pre-packaged rules index stores each doc as {"rule": {...}}.
         Map<String, Object> nested = ruleMetadata;
@@ -419,14 +421,23 @@ public class WazuhEnrichedFindingService implements Closeable {
             rule.put("status", status.toString());
         }
 
+        // Interpolate compliance and mitre maps against the triggering event
         Object compliance = nested.get("compliance");
-        if (compliance != null) {
-            rule.put("compliance", compliance);
+        if (compliance instanceof Map) {
+            Map<String, List<String>> interpolated =
+                    TemplateInterpolator.interpolateMapOfLists((Map<String, ?>) compliance, eventSource);
+            if (interpolated != null && !interpolated.isEmpty()) {
+                rule.put("compliance", interpolated);
+            }
         }
 
         Object mitre = nested.get("mitre");
-        if (mitre != null) {
-            rule.put("mitre", mitre);
+        if (mitre instanceof Map) {
+            Map<String, List<String>> interpolated =
+                    TemplateInterpolator.interpolateMapOfLists((Map<String, ?>) mitre, eventSource);
+            if (interpolated != null && !interpolated.isEmpty()) {
+                rule.put("mitre", interpolated);
+            }
         }
 
         return rule;
