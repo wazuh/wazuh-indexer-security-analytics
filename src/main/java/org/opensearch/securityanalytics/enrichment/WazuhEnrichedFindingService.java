@@ -387,7 +387,7 @@ public class WazuhEnrichedFindingService implements Closeable {
             if (existingWazuh instanceof Map) {
                 wazuhObj.putAll((Map<String, Object>) existingWazuh);
             }
-            wazuhObj.put("rule", this.buildRuleObject(primaryQuery, ruleMetadata,eventSource));
+            wazuhObj.put("rule", this.buildRuleObject(primaryQuery, ruleMetadata, eventSource));
             doc.put("wazuh", wazuhObj);
         }
 
