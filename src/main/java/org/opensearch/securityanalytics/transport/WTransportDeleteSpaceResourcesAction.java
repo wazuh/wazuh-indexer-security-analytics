@@ -42,6 +42,7 @@ import org.opensearch.transport.TransportService;
 import org.opensearch.transport.client.Client;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -197,7 +198,7 @@ public class WTransportDeleteSpaceResourcesAction
                             this.deleteDetectorsSequentially(
                                     ids.iterator(), refreshPolicy, new AtomicInteger(0), listener);
                         },
-                        e -> resolveOrFail(e, listener)));
+                        e -> resolveOrFail(e, 0, listener)));
     }
 
     private void deleteDetectorsSequentially(
@@ -270,7 +271,7 @@ public class WTransportDeleteSpaceResourcesAction
                 new SearchRequest(ruleIndex).source(source),
                 ActionListener.wrap(
                         response -> listener.onResponse(collectIds(response)),
-                        e -> resolveOrFail(e, listener)));
+                        e -> resolveOrFail(e, Collections.emptyList(), listener)));
     }
 
     /**
@@ -311,7 +312,7 @@ public class WTransportDeleteSpaceResourcesAction
                             }
                             listener.onResponse(result);
                         },
-                        e -> resolveOrFail(e, listener)));
+                        e -> resolveOrFail(e, Collections.emptyList(), listener)));
     }
 
     /**
@@ -356,19 +357,14 @@ public class WTransportDeleteSpaceResourcesAction
     }
 
     /**
-     * If the exception is an {@link IndexNotFoundException}, resolves with an empty result; otherwise
-     * propagates the failure.
+     * If the exception is an {@link IndexNotFoundException}, resolves with the supplied empty value;
+     * otherwise propagates the failure. Callers pass the empty result that matches their listener's
+     * type (e.g. {@code 0} for {@code Integer}, {@code Collections.emptyList()} for {@code List}).
      */
-    @SuppressWarnings("unchecked")
-    private static <T> void resolveOrFail(Exception e, ActionListener<T> listener) {
+    static <T> void resolveOrFail(Exception e, T emptyValue, ActionListener<T> listener) {
         if (e instanceof IndexNotFoundException
                 || (e.getCause() != null && e.getCause() instanceof IndexNotFoundException)) {
-            // Index does not exist — nothing to delete / return empty list.
-            try {
-                listener.onResponse((T) new ArrayList<>());
-            } catch (ClassCastException cce) {
-                listener.onResponse((T) Integer.valueOf(0));
-            }
+            listener.onResponse(emptyValue);
         } else {
             listener.onFailure(e);
         }
