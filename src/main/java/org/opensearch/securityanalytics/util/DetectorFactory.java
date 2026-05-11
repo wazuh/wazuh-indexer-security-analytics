@@ -94,6 +94,6 @@ public class DetectorFactory {
                 null,
                 null,
                 false,
-                null); // TODO capture source: standard, custom
+                Detector.STANDARD_SOURCE);
     }
 }
