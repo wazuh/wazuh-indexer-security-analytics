@@ -52,12 +52,6 @@ public class DetectorFactory {
      * @return a new {@link Detector} instance configured for the integration
      */
     public static Detector createDetector(
-            String integration, String category, List<String> detectorRules) {
-        return createDetector(integration, category, detectorRules, Detector.STANDARD_SOURCE);
-    }
-
-    public static Detector createDetector(
-            String integration, String category, List<String> detectorRules, String source) {
             String integration,
             String category,
             List<String> detectorRules,
@@ -87,7 +81,7 @@ public class DetectorFactory {
                 Instant.now(),
                 Instant.now(),
                 integration,
-                null,
+                null, // TODO capture user
                 List.of(detectorInput),
                 new ArrayList<>(),
                 null,
@@ -100,6 +94,6 @@ public class DetectorFactory {
                 null,
                 null,
                 false,
-                null);
+                null); // TODO capture source: standard, custom
     }
 }
