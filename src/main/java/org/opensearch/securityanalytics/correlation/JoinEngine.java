@@ -94,6 +94,8 @@ public class JoinEngine {
 
     private final User user;
 
+    private final CorrelationRulesCache correlationRulesCache;
+
     public JoinEngine(
             Client client,
             PublishFindingsRequest request,
@@ -105,7 +107,8 @@ public class JoinEngine {
             boolean enableAutoCorrelations,
             CorrelationAlertService correlationAlertService,
             NotificationService notificationService,
-            User user) {
+            User user,
+            CorrelationRulesCache correlationRulesCache) {
         this.client = client;
         this.request = request;
         this.xContentRegistry = xContentRegistry;
@@ -117,6 +120,7 @@ public class JoinEngine {
         this.correlationAlertService = correlationAlertService;
         this.notificationService = notificationService;
         this.user = user;
+        this.correlationRulesCache = correlationRulesCache;
     }
 
     public void onSearchDetectorResponse(Detector detector, Finding finding) {
@@ -272,6 +276,13 @@ public class JoinEngine {
         List<String> indices = detector.getInputs().get(0).getIndices();
         List<String> relatedDocIds = finding.getCorrelatedDocIds();
 
+        Optional<List<CorrelationRule>> cachedRules = correlationRulesCache.get(detectorType);
+        if (cachedRules.isPresent()) {
+            this.getValidDocuments(
+                    detectorType, indices, cachedRules.get(), relatedDocIds, autoCorrelations);
+            return;
+        }
+
         NestedQueryBuilder queryBuilder =
                 QueryBuilders.nestedQuery(
                         "correlate",
@@ -314,6 +325,7 @@ public class JoinEngine {
                                 CorrelationRule rule = CorrelationRule.parse(xcp, hit.getId(), hit.getVersion());
                                 correlationRules.add(rule);
                             }
+                            correlationRulesCache.put(detectorType, correlationRules);
                             this.getValidDocuments(
                                     detectorType, indices, correlationRules, relatedDocIds, autoCorrelations);
                         },

@@ -81,6 +81,9 @@ import org.opensearch.securityanalytics.action.SearchDetectorAction;
 import org.opensearch.securityanalytics.action.SearchRuleAction;
 import org.opensearch.securityanalytics.action.UpdateIndexMappingsAction;
 import org.opensearch.securityanalytics.action.ValidateRulesAction;
+import org.opensearch.securityanalytics.correlation.CorrelationRulesCache;
+import org.opensearch.securityanalytics.correlation.DetectorLookupCache;
+import org.opensearch.securityanalytics.correlation.LogTypeListCache;
 import org.opensearch.securityanalytics.correlation.alert.CorrelationAlertService;
 import org.opensearch.securityanalytics.correlation.alert.notifications.NotificationService;
 import org.opensearch.securityanalytics.correlation.index.codec.CorrelationCodecService;
@@ -314,6 +317,15 @@ public class SecurityAnalyticsPlugin extends Plugin
                         SecurityAnalyticsSettings.ENRICHED_FINDINGS_ENABLED.get(environment.settings()),
                         SecurityAnalyticsSettings.INDEX_TIMEOUT.get(environment.settings()),
                         threadPool);
+        DetectorLookupCache detectorLookupCache =
+                new DetectorLookupCache(
+                        SecurityAnalyticsSettings.CORRELATION_DETECTOR_CACHE_TTL.get(environment.settings()));
+        LogTypeListCache logTypeListCache =
+                new LogTypeListCache(
+                        SecurityAnalyticsSettings.CORRELATION_METADATA_CACHE_TTL.get(environment.settings()));
+        CorrelationRulesCache correlationRulesCache =
+                new CorrelationRulesCache(
+                        SecurityAnalyticsSettings.CORRELATION_METADATA_CACHE_TTL.get(environment.settings()));
 
         // Initialize WCS field validator from cluster index mappings
         SecurityAnalyticsPlugin.initWCSFieldValidator(clusterService);
@@ -330,7 +342,10 @@ public class SecurityAnalyticsPlugin extends Plugin
                 this.builtinLogTypeLoader,
                 correlationAlertService,
                 notificationService,
-                enrichedFindingService);
+                enrichedFindingService,
+                detectorLookupCache,
+                logTypeListCache,
+                correlationRulesCache);
     }
 
     /**
@@ -481,7 +496,10 @@ public class SecurityAnalyticsPlugin extends Plugin
                 SecurityAnalyticsSettings.IOC_MAX_INDICES_PER_INDEX_PATTERN,
                 SecurityAnalyticsSettings.IOC_SCAN_MAX_TERMS_COUNT,
                 SecurityAnalyticsSettings.ENABLE_DETECTORS_WITH_DEDICATED_QUERY_INDICES,
-                SecurityAnalyticsSettings.ENRICHED_FINDINGS_ENABLED);
+                SecurityAnalyticsSettings.ENRICHED_FINDINGS_ENABLED,
+                SecurityAnalyticsSettings.CORRELATION_DETECTOR_CACHE_TTL,
+                SecurityAnalyticsSettings.CORRELATION_MAX_IN_FLIGHT_FINDINGS,
+                SecurityAnalyticsSettings.CORRELATION_METADATA_CACHE_TTL);
     }
 
     @Override
