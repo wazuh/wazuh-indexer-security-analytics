@@ -125,6 +125,7 @@ import org.opensearch.transport.client.node.NodeClient;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -413,6 +414,18 @@ public class TransportIndexDetectorAction
                 request.getDetector().getInputs().stream()
                         .flatMap(detectorInput -> detectorInput.getIndices().stream())
                         .toArray(String[]::new);
+
+        boolean hasInvalidSource =
+                Arrays.stream(detectorIndices).anyMatch(index -> !index.startsWith("wazuh-events-v5"));
+
+        if (hasInvalidSource) {
+            listener.onFailure(
+                    new OpenSearchStatusException(
+                            "Threat detectors can only be created for `wazuh-events-v5` data sources.",
+                            RestStatus.BAD_REQUEST));
+            return;
+        }
+
         SearchRequest searchRequest =
                 new SearchRequest(detectorIndices)
                         .source(
