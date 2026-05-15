@@ -27,6 +27,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Add dynamic interpolation of rule fields [(#189)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/189)
 - Add Exists Sigma Modifier [(#185)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/185)
 - Add support for case-insensitive Sigma operators [(#183)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/183)
+- Restrict thread detectors sources to wazuh-events-v5 [(#209)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/209)
 
 ### Dependencies
 - Update to JDK 25 [(#49)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/49)

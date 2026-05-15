@@ -404,6 +404,13 @@ public class TransportIndexDetectorAction
         return null;
     }
 
+    /**
+     * Validates detector input data sources before detector creation/update.
+     *
+     * <p>Threat detectors can only be created for data sources whose names start with {@code
+     * wazuh-events-v5}. If any source does not match this prefix, the request is rejected with {@code
+     * 400 Bad Request}.
+     */
     private void checkIndicesAndExecute(
             Task task,
             IndexDetectorRequest request,

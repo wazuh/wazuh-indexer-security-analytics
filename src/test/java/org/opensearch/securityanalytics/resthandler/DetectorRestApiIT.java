@@ -596,7 +596,7 @@ public class DetectorRestApiIT extends SecurityAnalyticsRestTestCase {
 
     // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
     @AwaitsFix(bugUrl = "")
-    public void testCreatingADetectorWithIndexNotExists() throws IOException {
+    public void testCreatingADetectorWithInvalidDataSourcePrefix() throws IOException {
         Detector detector =
                 randomDetectorWithTriggers(
                         getRandomPrePackagedRules(),
@@ -619,8 +619,40 @@ public class DetectorRestApiIT extends SecurityAnalyticsRestTestCase {
                     SecurityAnalyticsPlugin.DETECTOR_BASE_URI,
                     Collections.emptyMap(),
                     toHttpEntity(detector));
+            fail("create detector call should have failed");
+        } catch (ResponseException ex) {
+            Assert.assertEquals(400, ex.getResponse().getStatusLine().getStatusCode());
+            assertTrue(
+                    ex.getMessage()
+                            .contains(
+                                    "Threat detectors can only be created for `wazuh-events-v5` data sources."));
+        }
+    }
+
+    // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
+    @AwaitsFix(bugUrl = "")
+    public void testCreatingADetectorWithWazuhEventsV5IndexNotExists() throws IOException {
+        DetectorInput input =
+                new DetectorInput(
+                        "windows detector for security analytics",
+                        List.of("wazuh-events-v5-missing"),
+                        List.of(),
+                        getRandomPrePackagedRules().stream()
+                                .map(DetectorRule::new)
+                                .collect(Collectors.toList()));
+        Detector detector = randomDetectorWithInputs(List.of(input));
+
+        try {
+            makeRequest(
+                    client(),
+                    "POST",
+                    SecurityAnalyticsPlugin.DETECTOR_BASE_URI,
+                    Collections.emptyMap(),
+                    toHttpEntity(detector));
+            fail("create detector call should have failed");
         } catch (ResponseException ex) {
             Assert.assertEquals(404, ex.getResponse().getStatusLine().getStatusCode());
+            assertTrue(ex.getMessage().contains("Indices not found wazuh-events-v5-missing"));
         }
     }
 
@@ -1429,7 +1461,7 @@ public class DetectorRestApiIT extends SecurityAnalyticsRestTestCase {
         DetectorInput input =
                 new DetectorInput(
                         "windows detector for security analytics",
-                        List.of("windows"),
+                        List.of("wazuh-events-v5-missing"),
                         List.of(),
                         getRandomPrePackagedRules().stream()
                                 .map(DetectorRule::new)
@@ -1443,8 +1475,10 @@ public class DetectorRestApiIT extends SecurityAnalyticsRestTestCase {
                     SecurityAnalyticsPlugin.DETECTOR_BASE_URI + "/" + java.util.UUID.randomUUID(),
                     Collections.emptyMap(),
                     toHttpEntity(updatedDetector));
+            fail("update detector call should have failed");
         } catch (ResponseException ex) {
             Assert.assertEquals(404, ex.getResponse().getStatusLine().getStatusCode());
+            assertTrue(ex.getMessage().contains("Indices not found wazuh-events-v5-missing"));
         }
     }
 
