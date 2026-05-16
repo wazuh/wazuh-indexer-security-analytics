@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   branches:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     outputs:
       common_utils_ref: ${{ steps.resolve.outputs.wazuh_indexer_common_utils_branch }}
       alerting_ref: ${{ steps.resolve.outputs.wazuh_indexer_alerting_branch }}
@@ -37,7 +37,7 @@ jobs:
           echo "Notifications branch: ${{ steps.resolve.outputs.wazuh_indexer_notifications_branch }}"
 
   get-version:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -47,7 +47,7 @@ jobs:
         run: echo "version=$(jq -r .version<VERSION.json)" >> "$GITHUB_OUTPUT"
 
   publish-common-utils:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: [branches, get-version]
     steps:
       - name: Publish common-utils to Maven Local
@@ -63,7 +63,7 @@ jobs:
           key: ${{ github.run_id }}-common-utils
 
   publish-notifications:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: [branches, get-version, publish-common-utils]
     steps:
       - name: Restore Maven Local cache (common-utils)
@@ -84,7 +84,7 @@ jobs:
           key: ${{ github.run_id }}-notifications
 
   publish-alerting:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: [branches, get-version, publish-notifications]
     steps:
       - name: Restore Maven Local cache (notifications)
@@ -105,7 +105,7 @@ jobs:
           key: ${{ github.run_id }}-alerting
 
   call-test-workflow:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: [get-version, publish-common-utils, publish-notifications, publish-alerting]
     steps:
       - uses: actions/checkout@v6

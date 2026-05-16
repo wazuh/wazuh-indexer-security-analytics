@@ -18,7 +18,7 @@ on:
 
 jobs:
   branches:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     outputs:
       common_utils_plugin_ref: ${{ steps.branches.outputs.wazuh_indexer_common_utils_branch }}
       common_utils_sha: ${{ steps.common-utils-sha.outputs.sha }}
@@ -36,7 +36,7 @@ jobs:
           echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
 
   get-version:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: branches
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -51,7 +51,7 @@ jobs:
         run: echo "version=$(jq -r .version<VERSION.json)" >> "$GITHUB_OUTPUT"
 
   publish-common-utils:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     needs: [ branches, get-version ]
     steps:
       - name: Restore Maven Local Cache
@@ -84,7 +84,7 @@ jobs:
     #   - https://gh.io/using-larger-runners
     # Consider using larger runners for possible analysis time improvements.
     needs: [ branches, get-version, publish-common-utils ]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 360
     permissions:
       actions: read
