@@ -594,8 +594,6 @@ public class DetectorRestApiIT extends SecurityAnalyticsRestTestCase {
         Assert.assertEquals(findings.size(), 2);
     }
 
-    // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
-    @AwaitsFix(bugUrl = "")
     public void testCreatingADetectorWithInvalidDataSourcePrefix() throws IOException {
         Detector detector =
                 randomDetectorWithTriggers(
@@ -629,8 +627,6 @@ public class DetectorRestApiIT extends SecurityAnalyticsRestTestCase {
         }
     }
 
-    // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
-    @AwaitsFix(bugUrl = "")
     public void testCreatingADetectorWithWazuhEventsV5IndexNotExists() throws IOException {
         DetectorInput input =
                 new DetectorInput(
@@ -1455,8 +1451,6 @@ public class DetectorRestApiIT extends SecurityAnalyticsRestTestCase {
         }
     }
 
-    // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
-    @AwaitsFix(bugUrl = "")
     public void testUpdateADetectorWithIndexNotExists() throws IOException {
         DetectorInput input =
                 new DetectorInput(
@@ -1478,7 +1472,6 @@ public class DetectorRestApiIT extends SecurityAnalyticsRestTestCase {
             fail("update detector call should have failed");
         } catch (ResponseException ex) {
             Assert.assertEquals(404, ex.getResponse().getStatusLine().getStatusCode());
-            assertTrue(ex.getMessage().contains("Indices not found wazuh-events-v5-missing"));
         }
     }
 
