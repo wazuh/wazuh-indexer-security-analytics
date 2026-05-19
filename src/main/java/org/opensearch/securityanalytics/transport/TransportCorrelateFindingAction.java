@@ -325,19 +325,11 @@ public class TransportCorrelateFindingAction
         try {
             PublishFindingsRequest transformedRequest = transformRequest(request);
 
-            // Dispatch enrichment up front, completely outside the correlation throttle. The
-            // throttle's pendingStarts queue and per-pipeline permit are exposed to permit
-            // leaks if any async chain in JoinEngine/VectorEmbeddingsEngine fails to reach a
-            // terminal callback (e.g. under search-pool rejection). Decoupling enrichment
-            // here guarantees every published finding produces an enrichment dispatch.
-            try {
-                enrichedFindingService.enrich(transformedRequest.getFinding());
-            } catch (Exception e) {
-                log.warn(
-                        "Enrichment dispatch failed for finding {}",
-                        transformedRequest.getFinding().getId(),
-                        e);
-            }
+            // Enrichment is dispatched later, inside AsyncCorrelateFindingAction.doStart(),
+            // only after the finding's monitor is confirmed to belong to a SAP threat detector.
+            // This prevents non-detector monitors (e.g. user-created doc-level monitors that
+            // watch wazuh-findings-v5*, or Active Response monitors) from re-entering the
+            // enrichment pipeline and producing an infinite loop.
 
             AsyncCorrelateFindingAction correlateFindingAction =
                     new AsyncCorrelateFindingAction(
@@ -514,6 +506,19 @@ public class TransportCorrelateFindingAction
             this.permitAcquired = true;
         }
 
+        /**
+         * Fires enrichment for a finding whose monitor has just been confirmed to belong to a SAP
+         * threat detector. Failures are swallowed and logged so a misbehaving enrichment cannot block
+         * correlation.
+         */
+        private void dispatchEnrichment(Finding finding) {
+            try {
+                enrichedFindingService.enrich(finding);
+            } catch (Exception e) {
+                log.warn("Enrichment dispatch failed for finding {}", finding.getId(), e);
+            }
+        }
+
         /** Body of {@code start()}; only invoked once a permit has been acquired. */
         void doStart() {
             TransportCorrelateFindingAction.this.threadPool.getThreadContext().stashContext();
@@ -534,6 +539,7 @@ public class TransportCorrelateFindingAction
 
             Optional<Detector> cached = detectorLookupCache.get(monitorId);
             if (cached.isPresent()) {
+                dispatchEnrichment(finding);
                 try {
                     joinEngine.onSearchDetectorResponse(cached.get(), finding);
                 } catch (Exception e) {
@@ -582,16 +588,22 @@ public class TransportCorrelateFindingAction
                                                                 hit.getSourceAsString());
                                         Detector detector = Detector.docParse(xcp, hit.getId(), hit.getVersion());
                                         detectorLookupCache.put(monitorId, detector);
+                                        dispatchEnrichment(finding);
                                         joinEngine.onSearchDetectorResponse(detector, finding);
                                     } catch (Exception e) {
                                         log.error("Exception for request {}", searchRequest, e);
                                         onFailures(e);
                                     }
                                 } else {
-                                    onFailures(
-                                            new OpenSearchStatusException(
-                                                    "detector not found given monitor id " + request.getMonitorId(),
-                                                    RestStatus.INTERNAL_SERVER_ERROR));
+                                    // Finding's monitor is not owned by a SAP threat detector
+                                    // (e.g. user-created doc-level monitor, Active Response monitor).
+                                    // Correlation and enrichment are SAP-only concerns, so this is a
+                                    // legitimate no-op rather than an error: complete the request
+                                    // successfully and release the in-flight permit.
+                                    log.debug(
+                                            "No detector found for monitor id {}; skipping correlation and enrichment",
+                                            request.getMonitorId());
+                                    onOperation();
                                 }
                             },
                             this::onFailures));
