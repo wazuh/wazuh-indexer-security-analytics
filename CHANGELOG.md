@@ -15,7 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Add new action to create custom rules [(#31)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/31)
 - Add Unclassified log category for integrations and custom log types [(#42)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/42)
 - Implement finding enrichment [(#58)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/58)
-- Implement extended sigma rules sintax [(#55)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/55)
+- Implement extended sigma rules syntax [(#55)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/55)
 - Modify rule and log type creation logic to enable them to have a lifecycle support [(#69)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/69)
 - Implement spotless configuration from Wazuh Indexer Plugins repository [(#70)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/70)
 - Add logs to detect problems with detectors creation [(#83)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/83)
@@ -28,6 +28,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Add Exists Sigma Modifier [(#185)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/185)
 - Add support for case-insensitive Sigma operators [(#183)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/183)
 - Restrict thread detectors sources to wazuh-events-v5 [(#209)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/209)
+- Add new Transport action to delete space resources [(#104)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/104)
+- Add support for dynamic configuration of threat detectors [(#206)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/206)
 
 ### Dependencies
 - Update to JDK 25 [(#49)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/49)
@@ -46,10 +48,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Change SAP logic to use findings indices [(#76)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/76)
 - Optimize findings enrichment [(#93)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/93)
 - Limit number of rules per detector [(#111)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/111)
-- Disable standard threat detectors modification [(#121)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/121)
+- Prevent modification of standard threat detectors [(#121)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/121)
 - Remove duplicated metadata fields for rules [(#163)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/163)
 - Normalize space values to lowercase across SAP [(#174)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/174)
-- Nest rule under wazuh object [(#204)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/204)
+- Nest `rule` under `wazuh` object [(#204)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/204)
 
 ### Deprecated
 -
@@ -57,21 +59,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 ### Removed
 - Disable pre-packaged rules [(#9)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/9)
 - Remove Job Scheduler and IOCs stuff from the plugin [(#12)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/12)
+- Disable Rules and Log Types actions [(#81)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/81)
 
 ### Fixed
 - Fix typo in revision variable [(#4)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/4)
 - Fix link-checker workflow [(#50)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/50)
-- Fix CodeQL autobuild failure using manual compilation [(#71)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/71)
+- Fix CodeQL auto-build failure using manual compilation [(#71)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/71)
 - Fix detector creation to query custom rules by `document.id`[(#97)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/97)
-- Fix race condition on findings correlation [(#106)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/106) [(#132)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/132)
-- Fix codeql issues [(#113)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/113)
+- Fix race condition on findings' correlation [(#106)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/106) [(#132)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/132)
+- Fix CodeQL issues [(#113)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/113)
 - Fix stale detector references after rule deletion [(#152)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/152)
 - Fix race condition and missing else branch on correlation metadata index creation [(#148)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/184)
 - Fix contains conditions using white spaces [(#162)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/162)
 - Fix enrichment dispatch coupling that dropped findings on correlation failure [(#193)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/193)
-- Fix ClassCastException in WTransportDeleteSpaceResourcesAction [(#205)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/205)
+- Fix `ClassCastException` in `WTransportDeleteSpaceResourcesAction` [(#205)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/205)
 
 ### Security
 -
 
-[Unreleased 5.0.x]: https://github.com/wazuh/wazuh-indexer-security-analytics/compare/1435464d84e284d514817616c3b957228f1c5518...main
+[Unreleased 5.0.x]: https://github.com/wazuh/wazuh-indexer-security-analytics/compare/8a02985a924640048d98b71faee9c310a8333701...main
