@@ -400,8 +400,8 @@ public class WazuhEnrichedFindingService implements Closeable {
 
         Map<String, Object> doc = new HashMap<>(eventSource);
 
-        // Top-level finding metadata
-        doc.put("@timestamp", finding.getTimestamp());
+        // Top-level finding metadata — use the original event's timestamp
+        doc.put("@timestamp", eventSource.get("@timestamp"));
 
         // event.* — merge existing event fields, then overlay doc_id and index
         Map<String, Object> eventObj = new HashMap<>();
@@ -411,7 +411,6 @@ public class WazuhEnrichedFindingService implements Closeable {
         }
         eventObj.put("doc_id", docId);
         eventObj.put("index", finding.getIndex());
-        eventObj.put("ingested", eventSource.get("@timestamp"));
         doc.put("event", eventObj);
 
         // wazuh.rule — merge into existing wazuh map (defensive copy: eventSource's
