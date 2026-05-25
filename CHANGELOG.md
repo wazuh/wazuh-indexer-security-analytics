@@ -50,6 +50,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Remove duplicated metadata fields for rules [(#163)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/163)
 - Normalize space values to lowercase across SAP [(#174)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/174)
 - Nest rule under wazuh object [(#204)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/204)
+- Improve time correlation between events and findings [(#216)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/216)
 
 ### Deprecated
 -
