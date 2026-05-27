@@ -72,6 +72,7 @@ public class Rule implements Writeable, ToXContentObject {
     public static final String MITRE = "mitre";
     public static final String COMPLIANCE = "compliance";
     public static final String METADATA = "metadata";
+    public static final String DOCUMENT = "document";
 
     public static final String PRE_PACKAGED_RULES_INDEX = ".opensearch-sap-pre-packaged-rules-config";
     public static final String CUSTOM_RULES_INDEX = ".opensearch-sap-custom-rules-config";
@@ -375,7 +376,7 @@ public class Rule implements Writeable, ToXContentObject {
         }
 
         if (this.documentId != null) {
-            builder.field(DOCUMENT_ID_FIELD, this.documentId);
+            builder.startObject(DOCUMENT).field("id", this.documentId).endObject();
         }
         if (this.space != null) {
             builder.field(SPACE_FIELD, this.space);
@@ -507,8 +508,16 @@ public class Rule implements Writeable, ToXContentObject {
                 case METADATA:
                     metadata = RuleMetadata.parse(xcp);
                     break;
-                case DOCUMENT_ID_FIELD:
-                    documentId = xcp.textOrNull();
+                case DOCUMENT:
+                    XContentParserUtils.ensureExpectedToken(
+                            XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
+                    while (xcp.nextToken() != XContentParser.Token.END_OBJECT) {
+                        if (xcp.currentToken() == XContentParser.Token.FIELD_NAME
+                                && "id".equals(xcp.currentName())) {
+                            xcp.nextToken();
+                            documentId = xcp.textOrNull();
+                        }
+                    }
                     break;
                 case SPACE_FIELD:
                     space = xcp.textOrNull();
