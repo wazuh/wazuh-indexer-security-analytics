@@ -198,7 +198,8 @@ public class WTransportIndexDetectorAction
 
         SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
 
-        sourceBuilder.query(QueryBuilders.termsQuery("rule.document.id", expectedRuleIds));
+        sourceBuilder.query(
+                QueryBuilders.termsQuery(Rule.RULE + "." + Rule.DOCUMENT_ID_FIELD, expectedRuleIds));
 
         sourceBuilder.size(Math.min(expectedRuleIds.size(), 10000));
         searchRequest.source(sourceBuilder);

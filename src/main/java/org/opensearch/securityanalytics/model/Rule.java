@@ -73,6 +73,7 @@ public class Rule implements Writeable, ToXContentObject {
     public static final String COMPLIANCE = "compliance";
     public static final String METADATA = "metadata";
     public static final String DOCUMENT = "document";
+    public static final String ID_FIELD = "id";
 
     public static final String PRE_PACKAGED_RULES_INDEX = ".opensearch-sap-pre-packaged-rules-config";
     public static final String CUSTOM_RULES_INDEX = ".opensearch-sap-custom-rules-config";
@@ -376,7 +377,7 @@ public class Rule implements Writeable, ToXContentObject {
         }
 
         if (this.documentId != null) {
-            builder.startObject(DOCUMENT).field("id", this.documentId).endObject();
+            builder.startObject(DOCUMENT).field(ID_FIELD, this.documentId).endObject();
         }
         if (this.space != null) {
             builder.field(SPACE_FIELD, this.space);
