@@ -210,7 +210,7 @@ configurations {
 dependencies {
     javaRestTestImplementation project.sourceSets.main.runtimeClasspath
     implementation group: 'org.apache.commons', name: 'commons-lang3', version: "${versions.commonslang}"
-    compileOnly "org.antlr:antlr4-runtime:4.10.1"
+    compileOnly "org.antlr:antlr4-runtime:4.13.1"
     compileOnly "com.cronutils:cron-utils:9.1.7"
     compileOnly "com.wazuh:wazuh-indexer-common-utils:${common_utils_version}@jar"
     compileOnly "org.opensearch.client:opensearch-rest-client:${opensearch_version}"
