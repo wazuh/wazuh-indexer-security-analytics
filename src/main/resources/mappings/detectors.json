@@ -106,6 +106,9 @@
         "monitor_id": {
           "type": "keyword"
         },
+        "source": {
+          "type": "keyword"
+        },
         "schedule": {
           "properties": {
             "period": {

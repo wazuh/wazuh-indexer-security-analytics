@@ -192,6 +192,8 @@ public class TransportIndexDetectorAction
 
     private volatile Boolean enableDetectorWithDedicatedQueryIndices;
 
+    private volatile int maxDetectors;
+
     private final Settings settings;
 
     private final NamedWriteableRegistry namedWriteableRegistry;
@@ -239,8 +241,9 @@ public class TransportIndexDetectorAction
         this.enabledWorkflowUsage = SecurityAnalyticsSettings.ENABLE_WORKFLOW_USAGE.get(this.settings);
         this.enableDetectorWithDedicatedQueryIndices =
                 SecurityAnalyticsSettings.ENABLE_DETECTORS_WITH_DEDICATED_QUERY_INDICES.get(this.settings);
+        this.maxDetectors = SecurityAnalyticsSettings.MAX_DETECTORS.get(this.settings);
         this.monitorService = new MonitorService(client);
-        this.workflowService = new WorkflowService(client, monitorService);
+        this.workflowService = new WorkflowService(client, this.monitorService);
 
         this.clusterService
                 .getClusterSettings()
@@ -255,15 +258,19 @@ public class TransportIndexDetectorAction
                 .addSettingsUpdateConsumer(
                         SecurityAnalyticsSettings.ENABLE_DETECTORS_WITH_DEDICATED_QUERY_INDICES,
                         this::setEnabledDetectorsWithDedicatedQueryIndices);
+        this.clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        SecurityAnalyticsSettings.MAX_DETECTORS, maxVal -> this.maxDetectors = maxVal);
         this.exceptionChecker = exceptionChecker;
     }
 
     @Override
     protected void doExecute(
             Task task, IndexDetectorRequest request, ActionListener<IndexDetectorResponse> listener) {
-        User user = readUserFromThreadContext(this.threadPool);
+        User user = this.readUserFromThreadContext(this.threadPool);
 
-        String validateBackendRoleMessage = validateUserBackendRoles(user, this.filterByEnabled);
+        String validateBackendRoleMessage = this.validateUserBackendRoles(user, this.filterByEnabled);
         if (!"".equals(validateBackendRoleMessage)) {
             listener.onFailure(
                     SecurityAnalyticsException.wrap(
@@ -272,7 +279,7 @@ public class TransportIndexDetectorAction
         }
 
         // Prevent detection of detectors with more than 100 rules.
-        String ruleCountError = validateRuleCount(request.getDetector());
+        String ruleCountError = TransportIndexDetectorAction.validateRuleCount(request.getDetector());
         if (ruleCountError != null) {
             listener.onFailure(
                     SecurityAnalyticsException.wrap(
@@ -281,7 +288,9 @@ public class TransportIndexDetectorAction
         }
 
         // Prevent modification of standard detectors
-        boolean isInternalCaller = isInternalCaller();
+        // Use the flag from the request object — thread context headers don't survive
+        // cross-action client.execute() calls (context is stashed by the transport layer).
+        boolean isInternalCaller = request.isInternalCaller();
         // For non-internal callers, force source to custom
         if (!isInternalCaller) {
             request.getDetector().setSource(Detector.DEFAULT_SOURCE);
@@ -290,20 +299,73 @@ public class TransportIndexDetectorAction
         if (request.getMethod() == RestRequest.Method.PUT && !isInternalCaller) {
             // On update, check if the existing detector is a standard detector.
             // If so, only the enabled field can be changed by users.
-            validateStandardDetectorUpdate(
-                    request, listener, () -> checkIndicesAndExecute(task, request, listener, user));
+            this.validateStandardDetectorUpdate(
+                    request, listener, () -> this.checkIndicesAndExecute(task, request, listener, user));
+        } else if (request.getMethod() == RestRequest.Method.POST && !isInternalCaller) {
+            // On create, enforce the max detectors limit for user-created detectors.
+            this.validateMaxDetectors(
+                    listener, () -> this.checkIndicesAndExecute(task, request, listener, user));
         } else {
-            checkIndicesAndExecute(task, request, listener, user);
+            this.checkIndicesAndExecute(task, request, listener, user);
         }
     }
 
     /**
-     * Returns true if the current request originates from Content Manager plugin (Used the transport
-     * action) as indicated by a thread context header.
+     * Validates that creating a new detector would not exceed the configured maximum number of
+     * user-created detectors ({@code plugins.security_analytics.max_detectors}). Standard detectors
+     * (source = "standard") are excluded from the count.
+     *
+     * @param listener the action listener to notify on failure
+     * @param onSuccess the continuation to run if the limit is not exceeded
      */
-    private boolean isInternalCaller() {
-        String caller = this.threadPool.getThreadContext().getHeader(WAZUH_INTERNAL_CALLER_HEADER);
-        return "content-manager".equals(caller);
+    private void validateMaxDetectors(
+            ActionListener<IndexDetectorResponse> listener, Runnable onSuccess) {
+        SearchRequest searchRequest = new SearchRequest(Detector.DETECTORS_INDEX);
+        SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+        searchSourceBuilder.query(
+                QueryBuilders.boolQuery()
+                        .mustNot(
+                                QueryBuilders.nestedQuery(
+                                        "detector",
+                                        QueryBuilders.termQuery(
+                                                "detector." + Detector.SOURCE_FIELD, Detector.STANDARD_SOURCE),
+                                        org.apache.lucene.search.join.ScoreMode.None)));
+        searchSourceBuilder.size(0);
+        searchSourceBuilder.trackTotalHits(true);
+        searchRequest.source(searchSourceBuilder);
+
+        this.client.search(
+                searchRequest,
+                new ActionListener<>() {
+                    @Override
+                    public void onResponse(SearchResponse response) {
+                        long count =
+                                response.getHits().getTotalHits() != null
+                                        ? response.getHits().getTotalHits().value()
+                                        : 0;
+                        if (count >= TransportIndexDetectorAction.this.maxDetectors) {
+                            log.info(
+                                    "This request would create more than the allowed detectors [{}].",
+                                    TransportIndexDetectorAction.this.maxDetectors);
+                            listener.onFailure(
+                                    SecurityAnalyticsException.wrap(
+                                            new OpenSearchStatusException(
+                                                    "This request would create more than the allowed detectors ["
+                                                            + TransportIndexDetectorAction.this.maxDetectors
+                                                            + "].",
+                                                    RestStatus.BAD_REQUEST)));
+                        } else {
+                            onSuccess.run();
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(Exception e) {
+                        // If the detectors index does not exist yet, there are no detectors.
+                        log.warn("Failed to count existing detectors for limit check", e);
+                        onSuccess.run();
+                    }
+                });
     }
 
     /**
@@ -330,7 +392,7 @@ public class TransportIndexDetectorAction
             Runnable onValid) {
         String detectorId = request.getDetectorId();
         GetRequest getRequest = new GetRequest(Detector.DETECTORS_INDEX, detectorId);
-        client.get(
+        this.client.get(
                 getRequest,
                 new ActionListener<>() {
                     @Override
@@ -342,7 +404,7 @@ public class TransportIndexDetectorAction
                         try {
                             XContentParser xcp =
                                     XContentHelper.createParser(
-                                            xContentRegistry,
+                                            TransportIndexDetectorAction.this.xContentRegistry,
                                             LoggingDeprecationHandler.INSTANCE,
                                             response.getSourceAsBytesRef(),
                                             XContentType.JSON);
@@ -352,7 +414,7 @@ public class TransportIndexDetectorAction
                                 // For standard detectors, users can only toggle enabled.
                                 // Reject if any other user-visible field was changed.
                                 Detector incoming = request.getDetector();
-                                if (!isOnlyEnabledChange(existingDetector, incoming)) {
+                                if (!TransportIndexDetectorAction.isOnlyEnabledChange(existingDetector, incoming)) {
                                     listener.onFailure(
                                             new OpenSearchStatusException(
                                                     "Standard detectors cannot be modified by users. "
@@ -438,7 +500,7 @@ public class TransportIndexDetectorAction
                         .source(
                                 SearchSourceBuilder.searchSource().size(1).query(QueryBuilders.matchAllQuery()));
         searchRequest.setCancelAfterTimeInterval(TimeValue.timeValueSeconds(30));
-        client.search(
+        this.client.search(
                 searchRequest,
                 new ActionListener<>() {
                     @Override
@@ -494,7 +556,7 @@ public class TransportIndexDetectorAction
                         .filter(it -> it.getRight().isAggregationRule())
                         .collect(Collectors.toList());
 
-        addThreatIntelBasedDocLevelQueries(
+        this.addThreatIntelBasedDocLevelQueries(
                 detector,
                 new ActionListener<>() {
                     @Override
@@ -504,7 +566,7 @@ public class TransportIndexDetectorAction
 
                             if (!docLevelRules.isEmpty() || detector.getThreatIntelEnabled()) {
                                 monitorRequests.add(
-                                        createDocLevelMonitorRequest(
+                                        TransportIndexDetectorAction.this.createDocLevelMonitorRequest(
                                                 docLevelRules,
                                                 dlqs != null ? dlqs : List.of(),
                                                 detector,
@@ -517,7 +579,7 @@ public class TransportIndexDetectorAction
                             if (!bucketLevelRules.isEmpty()) {
                                 StepListener<List<IndexMonitorRequest>> bucketLevelMonitorRequests =
                                         new StepListener<>();
-                                buildBucketLevelMonitorRequests(
+                                TransportIndexDetectorAction.this.buildBucketLevelMonitorRequests(
                                         bucketLevelRules,
                                         detector,
                                         refreshPolicy,
@@ -541,9 +603,9 @@ public class TransportIndexDetectorAction
                                             // from alerting
                                             // https://github.com/opensearch-project/alerting/issues/646
                                             AlertingPluginInterface.INSTANCE.indexMonitor(
-                                                    (NodeClient) client,
+                                                    (NodeClient) TransportIndexDetectorAction.this.client,
                                                     monitorRequests.get(0),
-                                                    namedWriteableRegistry,
+                                                    TransportIndexDetectorAction.this.namedWriteableRegistry,
                                                     addFirstMonitorStep);
                                             addFirstMonitorStep.whenComplete(
                                                     addedFirstMonitorResponse -> {
@@ -557,7 +619,7 @@ public class TransportIndexDetectorAction
                                                                 new StepListener<>();
                                                         indexMonitorsStep.whenComplete(
                                                                 indexMonitorResponses ->
-                                                                        saveWorkflow(
+                                                                        TransportIndexDetectorAction.this.saveWorkflow(
                                                                                 rulesById,
                                                                                 detector,
                                                                                 indexMonitorResponses,
@@ -570,11 +632,11 @@ public class TransportIndexDetectorAction
 
                                                         int numberOfUnprocessedResponses = monitorRequests.size() - 1;
                                                         if (numberOfUnprocessedResponses == 0) {
-                                                            saveWorkflow(
+                                                            TransportIndexDetectorAction.this.saveWorkflow(
                                                                     rulesById, detector, monitorResponses, refreshPolicy, listener);
                                                         } else {
                                                             // Saves the rest of the monitors and saves the workflow if supported
-                                                            saveMonitors(
+                                                            TransportIndexDetectorAction.this.saveMonitors(
                                                                     monitorRequests,
                                                                     monitorResponses,
                                                                     numberOfUnprocessedResponses,
@@ -606,21 +668,22 @@ public class TransportIndexDetectorAction
                                 // alerting
                                 // https://github.com/opensearch-project/alerting/issues/646
                                 AlertingPluginInterface.INSTANCE.indexMonitor(
-                                        (NodeClient) client,
+                                        (NodeClient) TransportIndexDetectorAction.this.client,
                                         monitorRequests.get(0),
-                                        namedWriteableRegistry,
+                                        TransportIndexDetectorAction.this.namedWriteableRegistry,
                                         indexDocLevelMonitorStep);
                                 indexDocLevelMonitorStep.whenComplete(
                                         addedFirstMonitorResponse -> {
                                             monitorResponses.add(addedFirstMonitorResponse);
-                                            saveWorkflow(rulesById, detector, monitorResponses, refreshPolicy, listener);
+                                            TransportIndexDetectorAction.this.saveWorkflow(
+                                                    rulesById, detector, monitorResponses, refreshPolicy, listener);
                                         },
                                         e -> {
                                             listener.onFailure(e);
                                         });
                             }
                         } catch (Exception ex) {
-                            onFailure(ex);
+                            this.onFailure(ex);
                         }
                     }
 
@@ -660,9 +723,9 @@ public class TransportIndexDetectorAction
 
         for (int i = 1; i < monitorRequests.size(); i++) {
             AlertingPluginInterface.INSTANCE.indexMonitor(
-                    (NodeClient) client,
+                    (NodeClient) this.client,
                     monitorRequests.get(i),
-                    namedWriteableRegistry,
+                    this.namedWriteableRegistry,
                     monitorResponseListener);
         }
     }
@@ -683,8 +746,8 @@ public class TransportIndexDetectorAction
             List<IndexMonitorResponse> monitorResponses,
             RefreshPolicy refreshPolicy,
             ActionListener<List<IndexMonitorResponse>> actionListener) {
-        if (enabledWorkflowUsage) {
-            workflowService.upsertWorkflow(
+        if (this.enabledWorkflowUsage) {
+            this.workflowService.upsertWorkflow(
                     rulesById,
                     monitorResponses,
                     null,
@@ -725,7 +788,7 @@ public class TransportIndexDetectorAction
                         .filter(it -> it.getRight().isAggregationRule())
                         .collect(Collectors.toList());
 
-        addThreatIntelBasedDocLevelQueries(
+        this.addThreatIntelBasedDocLevelQueries(
                 detector,
                 new ActionListener<>() {
                     @Override
@@ -733,7 +796,7 @@ public class TransportIndexDetectorAction
                         List<IndexMonitorRequest> monitorsToBeAdded = new ArrayList<>();
                         // Process bucket level monitors
                         if (!bucketLevelRules.isEmpty()) {
-                            logTypeService.getRuleFieldMappings(
+                            TransportIndexDetectorAction.this.logTypeService.getRuleFieldMappings(
                                     new ActionListener<>() {
                                         @Override
                                         public void onResponse(Map<String, Map<String, String>> ruleFieldMappings) {
@@ -766,29 +829,33 @@ public class TransportIndexDetectorAction
                                                                                     detector
                                                                                             .getRuleIdMonitorIdMap()
                                                                                             .get(CHAINED_FINDINGS_MONITOR_STRING);
-                                                                            if (shouldAddChainedFindingDocMonitor(
-                                                                                    indexMonitorRequests.isEmpty(), rulesById)) {
+                                                                            if (TransportIndexDetectorAction.this
+                                                                                    .shouldAddChainedFindingDocMonitor(
+                                                                                            indexMonitorRequests.isEmpty(), rulesById)) {
                                                                                 monitorsToBeUpdated.add(
-                                                                                        createDocLevelMonitorMatchAllRequest(
-                                                                                                detector,
-                                                                                                RefreshPolicy.IMMEDIATE,
-                                                                                                cmfId,
-                                                                                                Method.PUT,
-                                                                                                rulesById));
+                                                                                        TransportIndexDetectorAction.this
+                                                                                                .createDocLevelMonitorMatchAllRequest(
+                                                                                                        detector,
+                                                                                                        RefreshPolicy.IMMEDIATE,
+                                                                                                        cmfId,
+                                                                                                        Method.PUT,
+                                                                                                        rulesById));
                                                                             }
                                                                         } else {
-                                                                            if (shouldAddChainedFindingDocMonitor(
-                                                                                    indexMonitorRequests.isEmpty(), rulesById)) {
+                                                                            if (TransportIndexDetectorAction.this
+                                                                                    .shouldAddChainedFindingDocMonitor(
+                                                                                            indexMonitorRequests.isEmpty(), rulesById)) {
                                                                                 monitorsToBeAdded.add(
-                                                                                        createDocLevelMonitorMatchAllRequest(
-                                                                                                detector,
-                                                                                                RefreshPolicy.IMMEDIATE,
-                                                                                                detector.getId() + "_chained_findings",
-                                                                                                Method.POST,
-                                                                                                rulesById));
+                                                                                        TransportIndexDetectorAction.this
+                                                                                                .createDocLevelMonitorMatchAllRequest(
+                                                                                                        detector,
+                                                                                                        RefreshPolicy.IMMEDIATE,
+                                                                                                        detector.getId() + "_chained_findings",
+                                                                                                        Method.POST,
+                                                                                                        rulesById));
                                                                             }
                                                                         }
-                                                                        onIndexMonitorRequestCreation(
+                                                                        TransportIndexDetectorAction.this.onIndexMonitorRequestCreation(
                                                                                 monitorsToBeUpdated,
                                                                                 monitorsToBeAdded,
                                                                                 rulesById,
@@ -811,7 +878,7 @@ public class TransportIndexDetectorAction
                                                         // Detect if the monitor should be added or updated
                                                         if (monitorPerRule.containsKey(rule.getId())) {
                                                             String monitorId = monitorPerRule.get(rule.getId());
-                                                            createBucketLevelMonitorRequest(
+                                                            TransportIndexDetectorAction.this.createBucketLevelMonitorRequest(
                                                                     query.getRight(),
                                                                     detector,
                                                                     refreshPolicy,
@@ -835,7 +902,7 @@ public class TransportIndexDetectorAction
                                                                         }
                                                                     });
                                                         } else {
-                                                            createBucketLevelMonitorRequest(
+                                                            TransportIndexDetectorAction.this.createBucketLevelMonitorRequest(
                                                                     query.getRight(),
                                                                     detector,
                                                                     refreshPolicy,
@@ -873,7 +940,7 @@ public class TransportIndexDetectorAction
                                         }
                                     });
                         } else {
-                            onIndexMonitorRequestCreation(
+                            TransportIndexDetectorAction.this.onIndexMonitorRequestCreation(
                                     monitorsToBeUpdated,
                                     monitorsToBeAdded,
                                     rulesById,
@@ -894,7 +961,7 @@ public class TransportIndexDetectorAction
 
     private boolean shouldAddChainedFindingDocMonitor(
             boolean bucketLevelMonitorsExist, List<Pair<String, Rule>> rulesById) {
-        return enabledWorkflowUsage
+        return this.enabledWorkflowUsage
                 && !bucketLevelMonitorsExist
                 && rulesById.stream().anyMatch(it -> it.getRight().isAggregationRule());
     }
@@ -917,7 +984,7 @@ public class TransportIndexDetectorAction
         if (!docLevelRules.isEmpty() || detector.getThreatIntelEnabled()) {
             if (detector.getDocLevelMonitorId() == null) {
                 monitorsToBeAdded.add(
-                        createDocLevelMonitorRequest(
+                        this.createDocLevelMonitorRequest(
                                 docLevelRules,
                                 docLevelQueries != null ? docLevelQueries : List.of(),
                                 detector,
@@ -927,7 +994,7 @@ public class TransportIndexDetectorAction
                                 queryFieldNames));
             } else {
                 monitorsToBeUpdated.add(
-                        createDocLevelMonitorRequest(
+                        this.createDocLevelMonitorRequest(
                                 docLevelRules,
                                 docLevelQueries != null ? docLevelQueries : List.of(),
                                 detector,
@@ -945,7 +1012,7 @@ public class TransportIndexDetectorAction
                         .map(IndexMonitorRequest::getMonitorId)
                         .collect(Collectors.toList()));
 
-        updateAlertingMonitors(
+        this.updateAlertingMonitors(
                 rulesById,
                 detector,
                 monitorsToBeAdded,
@@ -978,7 +1045,7 @@ public class TransportIndexDetectorAction
 
         // Update monitor steps
         StepListener<List<IndexMonitorResponse>> addNewMonitorsStep = new StepListener();
-        executeMonitorActionRequest(monitorsToBeAdded, addNewMonitorsStep);
+        this.executeMonitorActionRequest(monitorsToBeAdded, addNewMonitorsStep);
         // 1. Add new alerting monitors (for the rules that didn't exist previously)
         addNewMonitorsStep.whenComplete(
                 addNewMonitorsResponse -> {
@@ -986,15 +1053,15 @@ public class TransportIndexDetectorAction
                         updatedMonitors.addAll(addNewMonitorsResponse);
                     }
                     StepListener<List<IndexMonitorResponse>> updateMonitorsStep = new StepListener<>();
-                    executeMonitorActionRequest(monitorsToBeUpdated, updateMonitorsStep);
+                    this.executeMonitorActionRequest(monitorsToBeUpdated, updateMonitorsStep);
                     // 2. Update existing alerting monitors (based on the common rules)
                     updateMonitorsStep.whenComplete(
                             updateMonitorResponse -> {
                                 if (updateMonitorResponse != null && !updateMonitorResponse.isEmpty()) {
                                     updatedMonitors.addAll(updateMonitorResponse);
                                 }
-                                if (detector.isWorkflowSupported() && enabledWorkflowUsage) {
-                                    updateWorkflowStep(
+                                if (detector.isWorkflowSupported() && this.enabledWorkflowUsage) {
+                                    this.updateWorkflowStep(
                                             rulesById,
                                             detector,
                                             monitorsToBeDeleted,
@@ -1004,7 +1071,8 @@ public class TransportIndexDetectorAction
                                             addNewMonitorsResponse,
                                             updateMonitorResponse);
                                 } else {
-                                    deleteMonitorStep(monitorsToBeDeleted, refreshPolicy, updatedMonitors, listener);
+                                    this.deleteMonitorStep(
+                                            monitorsToBeDeleted, refreshPolicy, updatedMonitors, listener);
                                 }
                             },
                             // Handle update monitor failed (step 2)
@@ -1019,7 +1087,7 @@ public class TransportIndexDetectorAction
             RefreshPolicy refreshPolicy,
             List<IndexMonitorResponse> updatedMonitors,
             ActionListener<List<IndexMonitorResponse>> listener) {
-        monitorService.deleteAlertingMonitors(
+        this.monitorService.deleteAlertingMonitors(
                 monitorsToBeDeleted,
                 refreshPolicy,
                 new ActionListener<>() {
@@ -1059,13 +1127,14 @@ public class TransportIndexDetectorAction
         // part of the workflow
         // which means that the workflow should be removed
         if (addedMonitorIds.isEmpty() && updatedMonitorIds.isEmpty()) {
-            workflowService.deleteWorkflow(
+            this.workflowService.deleteWorkflow(
                     detector.getWorkflowIds().get(0),
                     new ActionListener<>() {
                         @Override
                         public void onResponse(DeleteWorkflowResponse deleteWorkflowResponse) {
                             detector.setWorkflowIds(Collections.emptyList());
-                            deleteMonitorStep(monitorsToBeDeleted, refreshPolicy, updatedMonitors, listener);
+                            TransportIndexDetectorAction.this.deleteMonitorStep(
+                                    monitorsToBeDeleted, refreshPolicy, updatedMonitors, listener);
                         }
 
                         @Override
@@ -1077,7 +1146,7 @@ public class TransportIndexDetectorAction
 
         } else {
             // Update workflow and delete the monitors
-            workflowService.upsertWorkflow(
+            this.workflowService.upsertWorkflow(
                     rulesById,
                     addNewMonitorsResponse,
                     updateMonitorResponse,
@@ -1088,12 +1157,13 @@ public class TransportIndexDetectorAction
                     new ActionListener<>() {
                         @Override
                         public void onResponse(IndexWorkflowResponse workflowResponse) {
-                            deleteMonitorStep(monitorsToBeDeleted, refreshPolicy, updatedMonitors, listener);
+                            TransportIndexDetectorAction.this.deleteMonitorStep(
+                                    monitorsToBeDeleted, refreshPolicy, updatedMonitors, listener);
                         }
 
                         @Override
                         public void onFailure(Exception e) {
-                            handleUpsertWorkflowFailure(
+                            TransportIndexDetectorAction.this.handleUpsertWorkflowFailure(
                                     e, listener, detector, monitorsToBeDeleted, refreshPolicy, updatedMonitors);
                         }
                     });
@@ -1171,7 +1241,7 @@ public class TransportIndexDetectorAction
                                 detector.getAlertsHistoryIndexPattern(),
                                 DetectorMonitorConfig.getRuleIndexMappingsByType(),
                                 true),
-                        enableDetectorWithDedicatedQueryIndices,
+                        this.enableDetectorWithDedicatedQueryIndices,
                         null,
                         PLUGIN_OWNER_FIELD);
 
@@ -1182,7 +1252,8 @@ public class TransportIndexDetectorAction
                 refreshPolicy,
                 restMethod,
                 monitor,
-                null);
+                null,
+                true);
     }
 
     private void handleUpsertWorkflowFailure(
@@ -1192,7 +1263,7 @@ public class TransportIndexDetectorAction
             final List<String> monitorsToBeDeleted,
             final RefreshPolicy refreshPolicy,
             final List<IndexMonitorResponse> updatedMonitors) {
-        if (exceptionChecker.doesGroupedActionListenerExceptionMatch(
+        if (this.exceptionChecker.doesGroupedActionListenerExceptionMatch(
                 e, List.of(ThrowableCheckingPredicates.WORKFLOW_NOT_FOUND))) {
             if (detector.getEnabled()) {
                 final String errorMessage =
@@ -1206,7 +1277,7 @@ public class TransportIndexDetectorAction
                 log.error(
                         "Underlying workflow associated with detector {} not found. Proceeding to disable detector.",
                         detector.getName());
-                deleteMonitorStep(monitorsToBeDeleted, refreshPolicy, updatedMonitors, listener);
+                this.deleteMonitorStep(monitorsToBeDeleted, refreshPolicy, updatedMonitors, listener);
             }
         } else {
             log.error("Failed to update the workflow");
@@ -1222,7 +1293,7 @@ public class TransportIndexDetectorAction
                         "threat intel enabled for detector {} . adding threat intel based doc level queries.",
                         detector.getName());
                 List<LogType.IocFields> iocFieldsList =
-                        logTypeService.getIocFieldsList(detector.getDetectorType());
+                        this.logTypeService.getIocFieldsList(detector.getDetectorType());
                 if (iocFieldsList == null || iocFieldsList.isEmpty()) {
                     listener.onResponse(List.of());
                 } else {
@@ -1310,7 +1381,7 @@ public class TransportIndexDetectorAction
                         triggers,
                         Map.of(),
                         new DataSources(
-                                enableDetectorWithDedicatedQueryIndices
+                                this.enableDetectorWithDedicatedQueryIndices
                                         ? detector.getRuleIndex() + "_chained_findings"
                                         : detector.getRuleIndex(),
                                 detector.getFindingsIndex(),
@@ -1320,7 +1391,7 @@ public class TransportIndexDetectorAction
                                 detector.getAlertsHistoryIndexPattern(),
                                 DetectorMonitorConfig.getRuleIndexMappingsByType(),
                                 true),
-                        enableDetectorWithDedicatedQueryIndices,
+                        this.enableDetectorWithDedicatedQueryIndices,
                         true,
                         PLUGIN_OWNER_FIELD);
 
@@ -1331,7 +1402,8 @@ public class TransportIndexDetectorAction
                 refreshPolicy,
                 restMethod,
                 monitor,
-                null);
+                null,
+                true);
     }
 
     private void buildBucketLevelMonitorRequests(
@@ -1344,7 +1416,7 @@ public class TransportIndexDetectorAction
             throws Exception {
         log.debug("bucket level monitor request starting");
         log.debug("get rule field mappings request being made");
-        logTypeService.getRuleFieldMappings(
+        this.logTypeService.getRuleFieldMappings(
                 new ActionListener<>() {
                     @Override
                     public void onResponse(Map<String, Map<String, String>> ruleFieldMappings) {
@@ -1361,7 +1433,7 @@ public class TransportIndexDetectorAction
                             try {
                                 queryBackendMap.put(category, new OSQueryBackend(fieldMappings, true, true));
                             } catch (IOException e) {
-                                logger.error(
+                                TransportIndexDetectorAction.this.logger.error(
                                         "Failed to create OSQueryBackend from field mappings: {}", e.getMessage());
                                 listener.onFailure(e);
                             }
@@ -1376,14 +1448,16 @@ public class TransportIndexDetectorAction
                                                 // if workflow usage enabled, add chained findings monitor request if there
                                                 // are bucket level requests and if the detector triggers have any group by
                                                 // rules configured to trigger
-                                                if (shouldAddChainedFindingDocMonitor(monitorRequests.isEmpty(), queries)) {
+                                                if (TransportIndexDetectorAction.this.shouldAddChainedFindingDocMonitor(
+                                                        monitorRequests.isEmpty(), queries)) {
                                                     monitorRequests.add(
-                                                            createDocLevelMonitorMatchAllRequest(
-                                                                    detector,
-                                                                    RefreshPolicy.IMMEDIATE,
-                                                                    detector.getId() + "_chained_findings",
-                                                                    Method.POST,
-                                                                    queries));
+                                                            TransportIndexDetectorAction.this
+                                                                    .createDocLevelMonitorMatchAllRequest(
+                                                                            detector,
+                                                                            RefreshPolicy.IMMEDIATE,
+                                                                            detector.getId() + "_chained_findings",
+                                                                            Method.POST,
+                                                                            queries));
                                                 }
                                                 listener.onResponse(monitorRequests);
                                             }
@@ -1400,7 +1474,7 @@ public class TransportIndexDetectorAction
                             // Creating bucket level monitor per each aggregation rule
                             if (rule.getAggregationQueries() != null) {
                                 try {
-                                    createBucketLevelMonitorRequest(
+                                    TransportIndexDetectorAction.this.createBucketLevelMonitorRequest(
                                             query.getRight(),
                                             detector,
                                             refreshPolicy,
@@ -1416,7 +1490,7 @@ public class TransportIndexDetectorAction
 
                                                 @Override
                                                 public void onFailure(Exception e) {
-                                                    logger.error(
+                                                    TransportIndexDetectorAction.this.logger.error(
                                                             "Failed to build bucket level monitor requests: {}", e.getMessage());
                                                     bucketLevelMonitorRequestsListener.onFailure(e);
                                                 }
@@ -1466,13 +1540,13 @@ public class TransportIndexDetectorAction
             // index
             String concreteIndex =
                     IndexUtils.getNewIndexByCreationDate(
-                            clusterService.state(),
-                            indexNameExpressionResolver,
+                            this.clusterService.state(),
+                            this.indexNameExpressionResolver,
                             indices.get(
                                     0) // taking first one is fine because we expect that all indices in list share
                             // same mappings
                             );
-            client.execute(
+            this.client.execute(
                     GetIndexMappingsAction.INSTANCE,
                     new GetIndexMappingsRequest(concreteIndex),
                     new ActionListener<GetIndexMappingsResponse>() {
@@ -1484,9 +1558,9 @@ public class TransportIndexDetectorAction
                             try {
                                 pairs = MapperUtils.getAllAliasPathPairs(mappingMetadata);
                             } catch (IOException e) {
-                                logger.debug(
+                                TransportIndexDetectorAction.this.logger.debug(
                                         "Failed to get alias path pairs from mapping metadata: {}", e.getMessage());
-                                onFailure(e);
+                                this.onFailure(e);
                             }
                             boolean timeStampAliasPresent =
                                     pairs.stream()
@@ -1571,7 +1645,8 @@ public class TransportIndexDetectorAction
                                             refreshPolicy,
                                             restMethod,
                                             monitor,
-                                            null));
+                                            null,
+                                            true));
                         }
 
                         @Override
@@ -1628,7 +1703,7 @@ public class TransportIndexDetectorAction
         // Persist monitors sequentially
         for (IndexMonitorRequest req : indexMonitors) {
             AlertingPluginInterface.INSTANCE.indexMonitor(
-                    (NodeClient) client, req, namedWriteableRegistry, monitorResponseListener);
+                    (NodeClient) this.client, req, this.namedWriteableRegistry, monitorResponseListener);
         }
     }
 
@@ -1699,35 +1774,37 @@ public class TransportIndexDetectorAction
         void start() {
             log.debug("stash context");
             TransportIndexDetectorAction.this.threadPool.getThreadContext().stashContext();
-            log.debug("log type check : {}", request.getDetector().getDetectorType());
-            logTypeService.doesLogTypeExist(
-                    request.getDetector().getDetectorType().toLowerCase(Locale.ROOT),
+            log.debug("log type check : {}", this.request.getDetector().getDetectorType());
+            TransportIndexDetectorAction.this.logTypeService.doesLogTypeExist(
+                    this.request.getDetector().getDetectorType().toLowerCase(Locale.ROOT),
                     new ActionListener<>() {
                         @Override
                         public void onResponse(Boolean exist) {
                             if (exist) {
-                                log.debug("log type exists : {}", request.getDetector().getDetectorType());
+                                log.debug(
+                                        "log type exists : {}",
+                                        AsyncIndexDetectorsAction.this.request.getDetector().getDetectorType());
                                 try {
-                                    if (!detectorIndices.detectorIndexExists()) {
+                                    if (!TransportIndexDetectorAction.this.detectorIndices.detectorIndexExists()) {
                                         log.debug("detector index creation");
-                                        detectorIndices.initDetectorIndex(
+                                        TransportIndexDetectorAction.this.detectorIndices.initDetectorIndex(
                                                 new ActionListener<>() {
                                                     @Override
                                                     public void onResponse(CreateIndexResponse response) {
                                                         try {
                                                             log.debug("detector index created in {}");
 
-                                                            onCreateMappingsResponse(response);
-                                                            prepareDetectorIndexing();
+                                                            TransportIndexDetectorAction.this.onCreateMappingsResponse(response);
+                                                            AsyncIndexDetectorsAction.this.prepareDetectorIndexing();
                                                         } catch (Exception e) {
                                                             log.debug("detector index creation failed", e);
-                                                            onFailures(e);
+                                                            AsyncIndexDetectorsAction.this.onFailures(e);
                                                         }
                                                     }
 
                                                     @Override
                                                     public void onFailure(Exception e) {
-                                                        onFailures(e);
+                                                        AsyncIndexDetectorsAction.this.onFailures(e);
                                                     }
                                                 });
                                     } else if (!IndexUtils.detectorIndexUpdated) {
@@ -1735,39 +1812,43 @@ public class TransportIndexDetectorAction
                                         IndexUtils.updateIndexMapping(
                                                 Detector.DETECTORS_INDEX,
                                                 DetectorIndices.detectorMappings(),
-                                                clusterService.state(),
-                                                client.admin().indices(),
+                                                TransportIndexDetectorAction.this.clusterService.state(),
+                                                TransportIndexDetectorAction.this.client.admin().indices(),
                                                 new ActionListener<>() {
                                                     @Override
                                                     public void onResponse(AcknowledgedResponse response) {
                                                         log.debug("detector index mapping updated");
-                                                        onUpdateMappingsResponse(response);
+                                                        TransportIndexDetectorAction.this.onUpdateMappingsResponse(response);
                                                         try {
-                                                            prepareDetectorIndexing();
+                                                            AsyncIndexDetectorsAction.this.prepareDetectorIndexing();
                                                         } catch (Exception e) {
                                                             log.debug("detector index mapping FAILED updation", e);
-                                                            onFailures(e);
+                                                            AsyncIndexDetectorsAction.this.onFailures(e);
                                                         }
                                                     }
 
                                                     @Override
                                                     public void onFailure(Exception e) {
-                                                        onFailures(e);
+                                                        AsyncIndexDetectorsAction.this.onFailures(e);
                                                     }
                                                 },
                                                 false);
                                     } else {
-                                        prepareDetectorIndexing();
+                                        AsyncIndexDetectorsAction.this.prepareDetectorIndexing();
                                     }
                                 } catch (Exception e) {
-                                    onFailures(e);
+                                    AsyncIndexDetectorsAction.this.onFailures(e);
                                 }
                             } else {
-                                onFailures(
+                                AsyncIndexDetectorsAction.this.onFailures(
                                         new OpenSearchStatusException(
                                                 String.format(
                                                         "Detector cannot be created as logtype %s does not exist",
-                                                        request.getDetector().getDetectorType().toLowerCase(Locale.ROOT)),
+                                                        AsyncIndexDetectorsAction.this
+                                                                .request
+                                                                .getDetector()
+                                                                .getDetectorType()
+                                                                .toLowerCase(Locale.ROOT)),
                                                 RestStatus.BAD_REQUEST));
                             }
                         }
@@ -1778,114 +1859,125 @@ public class TransportIndexDetectorAction
         }
 
         void prepareDetectorIndexing() throws Exception {
-            if (request.getMethod() == RestRequest.Method.POST) {
-                createDetector();
-            } else if (request.getMethod() == RestRequest.Method.PUT) {
-                updateDetector();
+            if (this.request.getMethod() == RestRequest.Method.POST) {
+                this.createDetector();
+            } else if (this.request.getMethod() == RestRequest.Method.PUT) {
+                this.updateDetector();
             }
         }
 
         void createDetector() {
-            Detector detector = request.getDetector();
+            Detector detector = this.request.getDetector();
             String ruleTopic = detector.getDetectorType();
 
-            request.getDetector().setAlertsIndex(DetectorMonitorConfig.getAlertsIndex(ruleTopic));
-            request
+            this.request.getDetector().setAlertsIndex(DetectorMonitorConfig.getAlertsIndex(ruleTopic));
+            this.request
                     .getDetector()
                     .setAlertsHistoryIndex(DetectorMonitorConfig.getAlertsHistoryIndex(ruleTopic));
-            request
+            this.request
                     .getDetector()
                     .setAlertsHistoryIndexPattern(
                             DetectorMonitorConfig.getAlertsHistoryIndexPattern(ruleTopic));
-            request.getDetector().setFindingsIndex(DetectorMonitorConfig.getFindingsIndex(ruleTopic));
-            request
+            this.request
+                    .getDetector()
+                    .setFindingsIndex(DetectorMonitorConfig.getFindingsIndex(ruleTopic));
+            this.request
                     .getDetector()
                     .setFindingsIndexPattern(DetectorMonitorConfig.getFindingsIndexPattern(ruleTopic));
 
-            if (enableDetectorWithDedicatedQueryIndices) {
+            if (TransportIndexDetectorAction.this.enableDetectorWithDedicatedQueryIndices) {
                 // disabling the setting after enabling it will mean delete & re-create the detector
-                request.getDetector().setRuleIndex(DetectorMonitorConfig.getRuleIndexOptimized(ruleTopic));
+                this.request
+                        .getDetector()
+                        .setRuleIndex(DetectorMonitorConfig.getRuleIndexOptimized(ruleTopic));
             } else {
-                request.getDetector().setRuleIndex(DetectorMonitorConfig.getRuleIndex(ruleTopic));
+                this.request.getDetector().setRuleIndex(DetectorMonitorConfig.getRuleIndex(ruleTopic));
             }
 
             User originalContextUser = this.user;
             log.debug("user from original context is {}", originalContextUser);
-            request.getDetector().setUser(originalContextUser);
+            this.request.getDetector().setUser(originalContextUser);
 
             if (!detector.getInputs().isEmpty()) {
                 try {
-                    String spaceError = validateSingleRuleSpace(detector);
+                    String spaceError = TransportIndexDetectorAction.validateSingleRuleSpace(detector);
                     if (spaceError != null) {
-                        onFailures(new OpenSearchStatusException(spaceError, RestStatus.BAD_REQUEST));
+                        this.onFailures(new OpenSearchStatusException(spaceError, RestStatus.BAD_REQUEST));
                         return;
                     }
                     log.debug("init rule index template");
-                    ruleTopicIndices.initRuleTopicIndexTemplate(
+                    TransportIndexDetectorAction.this.ruleTopicIndices.initRuleTopicIndexTemplate(
                             new ActionListener<>() {
                                 @Override
                                 public void onResponse(AcknowledgedResponse acknowledgedResponse) {
                                     log.debug("init rule index template ack");
-                                    initRuleIndexAndImportRules(
-                                            request,
+                                    AsyncIndexDetectorsAction.this.initRuleIndexAndImportRules(
+                                            AsyncIndexDetectorsAction.this.request,
                                             new ActionListener<>() {
                                                 @Override
                                                 public void onResponse(List<IndexMonitorResponse> monitorResponses) {
                                                     log.debug("monitors indexed");
-                                                    request.getDetector().setMonitorIds(getMonitorIds(monitorResponses));
-                                                    request
+                                                    AsyncIndexDetectorsAction.this
+                                                            .request
                                                             .getDetector()
-                                                            .setRuleIdMonitorIdMap(mapMonitorIds(monitorResponses));
+                                                            .setMonitorIds(
+                                                                    AsyncIndexDetectorsAction.this.getMonitorIds(monitorResponses));
+                                                    AsyncIndexDetectorsAction.this
+                                                            .request
+                                                            .getDetector()
+                                                            .setRuleIdMonitorIdMap(
+                                                                    AsyncIndexDetectorsAction.this.mapMonitorIds(monitorResponses));
                                                     try {
-                                                        indexDetector();
+                                                        AsyncIndexDetectorsAction.this.indexDetector();
                                                     } catch (Exception e) {
-                                                        logger.debug("create detector failed", e);
-                                                        onFailures(e);
+                                                        TransportIndexDetectorAction.this.logger.debug(
+                                                                "create detector failed", e);
+                                                        AsyncIndexDetectorsAction.this.onFailures(e);
                                                     }
                                                 }
 
                                                 @Override
                                                 public void onFailure(Exception e) {
-                                                    logger.debug("import rules failed", e);
-                                                    onFailures(e);
+                                                    TransportIndexDetectorAction.this.logger.debug("import rules failed", e);
+                                                    AsyncIndexDetectorsAction.this.onFailures(e);
                                                 }
                                             });
                                 }
 
                                 @Override
                                 public void onFailure(Exception e) {
-                                    logger.debug("init rules index failed", e);
-                                    onFailures(e);
+                                    TransportIndexDetectorAction.this.logger.debug("init rules index failed", e);
+                                    AsyncIndexDetectorsAction.this.onFailures(e);
                                 }
                             });
                 } catch (Exception e) {
-                    logger.debug("init rules index failed", e);
-                    onFailures(e);
+                    TransportIndexDetectorAction.this.logger.debug("init rules index failed", e);
+                    this.onFailures(e);
                 }
             }
         }
 
         void updateDetector() {
-            String id = request.getDetectorId();
+            String id = this.request.getDetectorId();
 
             User originalContextUser = this.user;
             log.debug("user from original context is {}", originalContextUser);
 
             GetRequest request = new GetRequest(Detector.DETECTORS_INDEX, id);
-            client.get(
+            TransportIndexDetectorAction.this.client.get(
                     request,
                     new ActionListener<>() {
                         @Override
                         public void onResponse(GetResponse response) {
                             if (!response.isExists()) {
-                                createDetector();
+                                AsyncIndexDetectorsAction.this.createDetector();
                                 return;
                             }
 
                             try {
                                 XContentParser xcp =
                                         XContentHelper.createParser(
-                                                xContentRegistry,
+                                                TransportIndexDetectorAction.this.xContentRegistry,
                                                 LoggingDeprecationHandler.INSTANCE,
                                                 response.getSourceAsBytesRef(),
                                                 XContentType.JSON);
@@ -1893,112 +1985,120 @@ public class TransportIndexDetectorAction
                                 Detector detector = Detector.docParse(xcp, response.getId(), response.getVersion());
 
                                 // security is enabled and filterby is enabled
-                                if (!checkUserPermissionsWithResource(
+                                if (!TransportIndexDetectorAction.this.checkUserPermissionsWithResource(
                                         originalContextUser,
                                         detector.getUser(),
                                         "detector",
                                         detector.getId(),
                                         TransportIndexDetectorAction.this.filterByEnabled)) {
 
-                                    onFailure(
+                                    this.onFailure(
                                             SecurityAnalyticsException.wrap(
                                                     new OpenSearchStatusException(
                                                             "Do not have permissions to resource", RestStatus.FORBIDDEN)));
                                     return;
                                 }
-                                onGetResponse(detector, detector.getUser());
+                                AsyncIndexDetectorsAction.this.onGetResponse(detector, detector.getUser());
                             } catch (Exception e) {
-                                onFailures(e);
+                                AsyncIndexDetectorsAction.this.onFailures(e);
                             }
                         }
 
                         @Override
                         public void onFailure(Exception e) {
-                            onFailures(e);
+                            AsyncIndexDetectorsAction.this.onFailures(e);
                         }
                     });
         }
 
         void onGetResponse(Detector currentDetector, User user) {
-            if (request.getDetector().getEnabled() && currentDetector.getEnabled()) {
-                request.getDetector().setEnabledTime(currentDetector.getEnabledTime());
+            if (this.request.getDetector().getEnabled() && currentDetector.getEnabled()) {
+                this.request.getDetector().setEnabledTime(currentDetector.getEnabledTime());
             }
-            request.getDetector().setMonitorIds(currentDetector.getMonitorIds());
-            request.getDetector().setRuleIdMonitorIdMap(currentDetector.getRuleIdMonitorIdMap());
-            request.getDetector().setWorkflowIds(currentDetector.getWorkflowIds());
-            Detector detector = request.getDetector();
+            this.request.getDetector().setMonitorIds(currentDetector.getMonitorIds());
+            this.request.getDetector().setRuleIdMonitorIdMap(currentDetector.getRuleIdMonitorIdMap());
+            this.request.getDetector().setWorkflowIds(currentDetector.getWorkflowIds());
+            Detector detector = this.request.getDetector();
 
             String ruleTopic = detector.getDetectorType();
 
             log.debug("user in update detector {}", user);
 
-            request.getDetector().setAlertsIndex(DetectorMonitorConfig.getAlertsIndex(ruleTopic));
-            request
+            this.request.getDetector().setAlertsIndex(DetectorMonitorConfig.getAlertsIndex(ruleTopic));
+            this.request
                     .getDetector()
                     .setAlertsHistoryIndex(DetectorMonitorConfig.getAlertsHistoryIndex(ruleTopic));
-            request
+            this.request
                     .getDetector()
                     .setAlertsHistoryIndexPattern(
                             DetectorMonitorConfig.getAlertsHistoryIndexPattern(ruleTopic));
-            request.getDetector().setFindingsIndex(DetectorMonitorConfig.getFindingsIndex(ruleTopic));
-            request
+            this.request
+                    .getDetector()
+                    .setFindingsIndex(DetectorMonitorConfig.getFindingsIndex(ruleTopic));
+            this.request
                     .getDetector()
                     .setFindingsIndexPattern(DetectorMonitorConfig.getFindingsIndexPattern(ruleTopic));
             if (currentDetector.getRuleIndex().contains("optimized")) {
-                request.getDetector().setRuleIndex(currentDetector.getRuleIndex());
+                this.request.getDetector().setRuleIndex(currentDetector.getRuleIndex());
             } else {
-                if (enableDetectorWithDedicatedQueryIndices) {
+                if (TransportIndexDetectorAction.this.enableDetectorWithDedicatedQueryIndices) {
                     // disabling the setting after enabling it will mean delete & re-create the detector
-                    request
+                    this.request
                             .getDetector()
                             .setRuleIndex(DetectorMonitorConfig.getRuleIndexOptimized(ruleTopic));
                 } else {
-                    request.getDetector().setRuleIndex(DetectorMonitorConfig.getRuleIndex(ruleTopic));
+                    this.request.getDetector().setRuleIndex(DetectorMonitorConfig.getRuleIndex(ruleTopic));
                 }
             }
-            request.getDetector().setUser(user);
+            this.request.getDetector().setUser(user);
 
             if (!detector.getInputs().isEmpty()) {
                 try {
-                    String spaceError = validateSingleRuleSpace(detector);
+                    String spaceError = TransportIndexDetectorAction.validateSingleRuleSpace(detector);
                     if (spaceError != null) {
-                        onFailures(new OpenSearchStatusException(spaceError, RestStatus.BAD_REQUEST));
+                        this.onFailures(new OpenSearchStatusException(spaceError, RestStatus.BAD_REQUEST));
                         return;
                     }
-                    ruleTopicIndices.initRuleTopicIndexTemplate(
+                    TransportIndexDetectorAction.this.ruleTopicIndices.initRuleTopicIndexTemplate(
                             new ActionListener<>() {
                                 @Override
                                 public void onResponse(AcknowledgedResponse acknowledgedResponse) {
-                                    initRuleIndexAndImportRules(
-                                            request,
+                                    AsyncIndexDetectorsAction.this.initRuleIndexAndImportRules(
+                                            AsyncIndexDetectorsAction.this.request,
                                             new ActionListener<>() {
                                                 @Override
                                                 public void onResponse(List<IndexMonitorResponse> monitorResponses) {
-                                                    request.getDetector().setMonitorIds(getMonitorIds(monitorResponses));
-                                                    request
+                                                    AsyncIndexDetectorsAction.this
+                                                            .request
                                                             .getDetector()
-                                                            .setRuleIdMonitorIdMap(mapMonitorIds(monitorResponses));
+                                                            .setMonitorIds(
+                                                                    AsyncIndexDetectorsAction.this.getMonitorIds(monitorResponses));
+                                                    AsyncIndexDetectorsAction.this
+                                                            .request
+                                                            .getDetector()
+                                                            .setRuleIdMonitorIdMap(
+                                                                    AsyncIndexDetectorsAction.this.mapMonitorIds(monitorResponses));
                                                     try {
-                                                        indexDetector();
+                                                        AsyncIndexDetectorsAction.this.indexDetector();
                                                     } catch (Exception e) {
-                                                        onFailures(e);
+                                                        AsyncIndexDetectorsAction.this.onFailures(e);
                                                     }
                                                 }
 
                                                 @Override
                                                 public void onFailure(Exception e) {
-                                                    onFailures(e);
+                                                    AsyncIndexDetectorsAction.this.onFailures(e);
                                                 }
                                             });
                                 }
 
                                 @Override
                                 public void onFailure(Exception e) {
-                                    onFailures(e);
+                                    AsyncIndexDetectorsAction.this.onFailures(e);
                                 }
                             });
                 } catch (Exception e) {
-                    onFailures(e);
+                    this.onFailures(e);
                 }
             }
         }
@@ -2012,23 +2112,24 @@ public class TransportIndexDetectorAction
 
             if (enabledPrepackaged != null && enabledPrepackaged.equals("true")) {
                 // Original behavior: delete and reimport rules from filesystem
-                ruleIndices.initPrepackagedRulesIndex(
+                TransportIndexDetectorAction.this.ruleIndices.initPrepackagedRulesIndex(
                         new ActionListener<>() {
                             @Override
                             public void onResponse(CreateIndexResponse response) {
                                 log.debug("prepackaged rule index created");
-                                ruleIndices.onCreateMappingsResponse(response, true);
-                                ruleIndices.importRules(
+                                TransportIndexDetectorAction.this.ruleIndices.onCreateMappingsResponse(
+                                        response, true);
+                                TransportIndexDetectorAction.this.ruleIndices.importRules(
                                         RefreshPolicy.IMMEDIATE,
-                                        indexTimeout,
+                                        TransportIndexDetectorAction.this.indexTimeout,
                                         new ActionListener<>() {
                                             @Override
                                             public void onResponse(BulkResponse response) {
                                                 log.debug("rules imported");
                                                 if (!response.hasFailures()) {
-                                                    importRules(request, listener);
+                                                    AsyncIndexDetectorsAction.this.importRules(request, listener);
                                                 } else {
-                                                    onFailures(
+                                                    AsyncIndexDetectorsAction.this.onFailures(
                                                             new OpenSearchStatusException(
                                                                     response.buildFailureMessage(),
                                                                     RestStatus.INTERNAL_SERVER_ERROR));
@@ -2038,34 +2139,35 @@ public class TransportIndexDetectorAction
                                             @Override
                                             public void onFailure(Exception e) {
                                                 log.debug("failed to import rules", e);
-                                                onFailures(e);
+                                                AsyncIndexDetectorsAction.this.onFailures(e);
                                             }
                                         });
                             }
 
                             @Override
                             public void onFailure(Exception e) {
-                                onFailures(e);
+                                AsyncIndexDetectorsAction.this.onFailures(e);
                             }
                         },
                         new ActionListener<>() {
                             @Override
                             public void onResponse(AcknowledgedResponse response) {
-                                ruleIndices.onUpdateMappingsResponse(response, true);
-                                ruleIndices.deleteRules(
+                                TransportIndexDetectorAction.this.ruleIndices.onUpdateMappingsResponse(
+                                        response, true);
+                                TransportIndexDetectorAction.this.ruleIndices.deleteRules(
                                         new ActionListener<>() {
                                             @Override
                                             public void onResponse(BulkByScrollResponse response) {
-                                                ruleIndices.importRules(
+                                                TransportIndexDetectorAction.this.ruleIndices.importRules(
                                                         WriteRequest.RefreshPolicy.IMMEDIATE,
-                                                        indexTimeout,
+                                                        TransportIndexDetectorAction.this.indexTimeout,
                                                         new ActionListener<>() {
                                                             @Override
                                                             public void onResponse(BulkResponse response) {
                                                                 if (!response.hasFailures()) {
-                                                                    importRules(request, listener);
+                                                                    AsyncIndexDetectorsAction.this.importRules(request, listener);
                                                                 } else {
-                                                                    onFailures(
+                                                                    AsyncIndexDetectorsAction.this.onFailures(
                                                                             new OpenSearchStatusException(
                                                                                     response.buildFailureMessage(),
                                                                                     RestStatus.INTERNAL_SERVER_ERROR));
@@ -2074,44 +2176,44 @@ public class TransportIndexDetectorAction
 
                                                             @Override
                                                             public void onFailure(Exception e) {
-                                                                onFailures(e);
+                                                                AsyncIndexDetectorsAction.this.onFailures(e);
                                                             }
                                                         });
                                             }
 
                                             @Override
                                             public void onFailure(Exception e) {
-                                                onFailures(e);
+                                                AsyncIndexDetectorsAction.this.onFailures(e);
                                             }
                                         });
                             }
 
                             @Override
                             public void onFailure(Exception e) {
-                                onFailures(e);
+                                AsyncIndexDetectorsAction.this.onFailures(e);
                             }
                         },
                         new ActionListener<>() {
                             @Override
                             public void onResponse(SearchResponse response) {
                                 if (response.isTimedOut()) {
-                                    onFailures(
+                                    AsyncIndexDetectorsAction.this.onFailures(
                                             new OpenSearchStatusException(
                                                     "Search request timed out", RestStatus.REQUEST_TIMEOUT));
                                 }
 
                                 long count = response.getHits().getTotalHits().value();
                                 if (count == 0) {
-                                    ruleIndices.importRules(
+                                    TransportIndexDetectorAction.this.ruleIndices.importRules(
                                             WriteRequest.RefreshPolicy.IMMEDIATE,
-                                            indexTimeout,
+                                            TransportIndexDetectorAction.this.indexTimeout,
                                             new ActionListener<>() {
                                                 @Override
                                                 public void onResponse(BulkResponse response) {
                                                     if (!response.hasFailures()) {
-                                                        importRules(request, listener);
+                                                        AsyncIndexDetectorsAction.this.importRules(request, listener);
                                                     } else {
-                                                        onFailures(
+                                                        AsyncIndexDetectorsAction.this.onFailures(
                                                                 new OpenSearchStatusException(
                                                                         response.buildFailureMessage(),
                                                                         RestStatus.INTERNAL_SERVER_ERROR));
@@ -2120,23 +2222,23 @@ public class TransportIndexDetectorAction
 
                                                 @Override
                                                 public void onFailure(Exception e) {
-                                                    onFailures(e);
+                                                    AsyncIndexDetectorsAction.this.onFailures(e);
                                                 }
                                             });
                                 } else {
-                                    importRules(request, listener);
+                                    AsyncIndexDetectorsAction.this.importRules(request, listener);
                                 }
                             }
 
                             @Override
                             public void onFailure(Exception e) {
-                                onFailures(e);
+                                AsyncIndexDetectorsAction.this.onFailures(e);
                             }
                         });
             } else {
                 // Production: Don't delete/reimport rules, just use existing rules from index
                 // Rules are synced externally via CatalogSyncJob's WTransportIndexRuleAction
-                importRules(request, listener);
+                this.importRules(request, listener);
             }
         }
 
@@ -2148,9 +2250,9 @@ public class TransportIndexDetectorAction
             final DetectorInput detectorInput = detector.getInputs().get(0);
             final String logIndex = detectorInput.getIndices().get(0);
 
-            String spaceError = validateSingleRuleSpace(detector);
+            String spaceError = TransportIndexDetectorAction.validateSingleRuleSpace(detector);
             if (spaceError != null) {
-                onFailures(new OpenSearchStatusException(spaceError, RestStatus.BAD_REQUEST));
+                this.onFailures(new OpenSearchStatusException(spaceError, RestStatus.BAD_REQUEST));
                 return;
             }
 
@@ -2176,18 +2278,18 @@ public class TransportIndexDetectorAction
                                             .query(queryBuilder)
                                             .size(10000))
                             .preference(Preference.PRIMARY_FIRST.type());
-            logger.debug("importing prepackaged rules");
-            client.search(
+            TransportIndexDetectorAction.this.logger.debug("importing prepackaged rules");
+            TransportIndexDetectorAction.this.client.search(
                     searchRequest,
                     new ActionListener<>() {
                         @Override
                         public void onResponse(SearchResponse response) {
                             if (response.isTimedOut()) {
-                                onFailures(
+                                AsyncIndexDetectorsAction.this.onFailures(
                                         new OpenSearchStatusException(
                                                 "Search request timed out", RestStatus.REQUEST_TIMEOUT));
                             }
-                            logger.debug("prepackaged rules fetch success");
+                            TransportIndexDetectorAction.this.logger.debug("prepackaged rules fetch success");
 
                             SearchHits hits = response.getHits();
                             List<Pair<String, Rule>> queries = new ArrayList<>();
@@ -2198,7 +2300,7 @@ public class TransportIndexDetectorAction
                                             XContentType.JSON
                                                     .xContent()
                                                     .createParser(
-                                                            xContentRegistry,
+                                                            TransportIndexDetectorAction.this.xContentRegistry,
                                                             LoggingDeprecationHandler.INSTANCE,
                                                             hit.getSourceAsString());
 
@@ -2208,25 +2310,27 @@ public class TransportIndexDetectorAction
                                     queries.add(Pair.of(id, rule));
                                 }
 
-                                if (ruleIndices.ruleIndexExists(false)) {
-                                    importCustomRules(detector, detectorInput, queries, listener);
+                                if (TransportIndexDetectorAction.this.ruleIndices.ruleIndexExists(false)) {
+                                    AsyncIndexDetectorsAction.this.importCustomRules(
+                                            detector, detectorInput, queries, listener);
                                 } else if (detectorInput.getCustomRules().size() > 0) {
-                                    onFailures(
+                                    AsyncIndexDetectorsAction.this.onFailures(
                                             new OpenSearchStatusException(
                                                     "Custom Rule Index not found", RestStatus.NOT_FOUND));
                                 } else {
-                                    resolveRuleFieldNamesAndUpsertMonitorFromQueries(
+                                    AsyncIndexDetectorsAction.this.resolveRuleFieldNamesAndUpsertMonitorFromQueries(
                                             queries, detector, logIndex, listener);
                                 }
                             } catch (Exception e) {
-                                logger.debug("failed to fetch prepackaged rules", e);
-                                onFailures(e);
+                                TransportIndexDetectorAction.this.logger.debug(
+                                        "failed to fetch prepackaged rules", e);
+                                AsyncIndexDetectorsAction.this.onFailures(e);
                             }
                         }
 
                         @Override
                         public void onFailure(Exception e) {
-                            onFailures(e);
+                            AsyncIndexDetectorsAction.this.onFailures(e);
                         }
                     });
         }
@@ -2236,7 +2340,8 @@ public class TransportIndexDetectorAction
                 Detector detector,
                 String logIndex,
                 ActionListener<List<IndexMonitorResponse>> listener) {
-            logger.debug("PERF_DEBUG_SAP: Fetching alias path pairs to construct rule_field_names");
+            TransportIndexDetectorAction.this.logger.debug(
+                    "PERF_DEBUG_SAP: Fetching alias path pairs to construct rule_field_names");
             long start = System.currentTimeMillis();
             Set<String> ruleFieldNames = new HashSet<>();
             for (Pair<String, Rule> query : queries) {
@@ -2246,7 +2351,7 @@ public class TransportIndexDetectorAction
                                 .collect(Collectors.toList());
                 ruleFieldNames.addAll(queryFieldNames);
             }
-            client.execute(
+            TransportIndexDetectorAction.this.client.execute(
                     GetIndexMappingsAction.INSTANCE,
                     new GetIndexMappingsRequest(logIndex),
                     new ActionListener<>() {
@@ -2268,7 +2373,7 @@ public class TransportIndexDetectorAction
                                 log.debug("completed collecting rule_field_names in {} millis", took);
 
                             } catch (Exception e) {
-                                logger.error(
+                                TransportIndexDetectorAction.this.logger.error(
                                         "Failure in parsing rule field names/aliases while " + detector.getId() == null
                                                 ? "creating"
                                                 : "updating"
@@ -2276,7 +2381,8 @@ public class TransportIndexDetectorAction
                                         e);
                                 ruleFieldNames.clear();
                             }
-                            upsertMonitorQueries(queries, detector, listener, ruleFieldNames, logIndex);
+                            AsyncIndexDetectorsAction.this.upsertMonitorQueries(
+                                    queries, detector, listener, ruleFieldNames, logIndex);
                         }
 
                         @Override
@@ -2293,20 +2399,20 @@ public class TransportIndexDetectorAction
                 ActionListener<List<IndexMonitorResponse>> listener,
                 Set<String> ruleFieldNames,
                 String logIndex) {
-            if (request.getMethod() == Method.POST || detector.getMonitorIds().isEmpty()) {
-                createMonitorFromQueries(
+            if (this.request.getMethod() == Method.POST || detector.getMonitorIds().isEmpty()) {
+                TransportIndexDetectorAction.this.createMonitorFromQueries(
                         queries,
                         detector,
                         listener,
-                        request.getRefreshPolicy(),
+                        this.request.getRefreshPolicy(),
                         new ArrayList<>(ruleFieldNames));
-            } else if (request.getMethod() == Method.PUT) {
-                updateMonitorFromQueries(
+            } else if (this.request.getMethod() == Method.PUT) {
+                TransportIndexDetectorAction.this.updateMonitorFromQueries(
                         logIndex,
                         queries,
                         detector,
                         listener,
-                        request.getRefreshPolicy(),
+                        this.request.getRefreshPolicy(),
                         new ArrayList<>(ruleFieldNames));
             }
         }
@@ -2344,22 +2450,23 @@ public class TransportIndexDetectorAction
                                             .query(queryBuilder)
                                             .size(10000))
                             .preference(Preference.PRIMARY_FIRST.type());
-            logger.debug("importing custom rules by document.id with space=custom");
-            client.search(
+            TransportIndexDetectorAction.this.logger.debug(
+                    "importing custom rules by document.id with space=custom");
+            TransportIndexDetectorAction.this.client.search(
                     searchRequest,
                     new ActionListener<>() {
                         @Override
                         public void onResponse(SearchResponse response) {
                             if (response.isTimedOut()) {
-                                onFailures(
+                                AsyncIndexDetectorsAction.this.onFailures(
                                         new OpenSearchStatusException(
                                                 "Search request timed out", RestStatus.REQUEST_TIMEOUT));
                             }
-                            logger.debug("custom rules fetch successful");
+                            TransportIndexDetectorAction.this.logger.debug("custom rules fetch successful");
                             SearchHits hits = response.getHits();
 
                             if (hits.getHits().length == 0 && !ruleIds.isEmpty()) {
-                                onFailures(
+                                AsyncIndexDetectorsAction.this.onFailures(
                                         new OpenSearchStatusException(
                                                 String.format(
                                                         "Detector creation failed. No custom rules found for IDs: %s. Ensure these rules are promoted to the 'custom' space first.",
@@ -2374,7 +2481,7 @@ public class TransportIndexDetectorAction
                                             XContentType.JSON
                                                     .xContent()
                                                     .createParser(
-                                                            xContentRegistry,
+                                                            TransportIndexDetectorAction.this.xContentRegistry,
                                                             LoggingDeprecationHandler.INSTANCE,
                                                             hit.getSourceAsString());
 
@@ -2384,87 +2491,87 @@ public class TransportIndexDetectorAction
                                     queries.add(Pair.of(id, rule));
                                 }
 
-                                resolveRuleFieldNamesAndUpsertMonitorFromQueries(
+                                AsyncIndexDetectorsAction.this.resolveRuleFieldNamesAndUpsertMonitorFromQueries(
                                         queries, detector, logIndex, listener);
                             } catch (Exception ex) {
-                                onFailures(ex);
+                                AsyncIndexDetectorsAction.this.onFailures(ex);
                             }
                         }
 
                         @Override
                         public void onFailure(Exception e) {
-                            onFailures(e);
+                            AsyncIndexDetectorsAction.this.onFailures(e);
                         }
                     });
         }
 
         public void indexDetector() throws Exception {
             IndexRequest indexRequest;
-            if (request.getMethod() == RestRequest.Method.POST) {
+            if (this.request.getMethod() == RestRequest.Method.POST) {
                 indexRequest =
                         new IndexRequest(Detector.DETECTORS_INDEX)
-                                .setRefreshPolicy(request.getRefreshPolicy())
+                                .setRefreshPolicy(this.request.getRefreshPolicy())
                                 .source(
-                                        request
+                                        this.request
                                                 .getDetector()
                                                 .toXContentWithUser(
                                                         XContentFactory.jsonBuilder(),
                                                         new ToXContent.MapParams(Map.of("with_type", "true"))))
-                                .timeout(indexTimeout);
+                                .timeout(TransportIndexDetectorAction.this.indexTimeout);
             } else {
-                request.getDetector().setLastUpdateTime(Instant.now());
+                this.request.getDetector().setLastUpdateTime(Instant.now());
                 indexRequest =
                         new IndexRequest(Detector.DETECTORS_INDEX)
-                                .setRefreshPolicy(request.getRefreshPolicy())
+                                .setRefreshPolicy(this.request.getRefreshPolicy())
                                 .source(
-                                        request
+                                        this.request
                                                 .getDetector()
                                                 .toXContentWithUser(
                                                         XContentFactory.jsonBuilder(),
                                                         new ToXContent.MapParams(Map.of("with_type", "true"))))
-                                .id(request.getDetectorId())
-                                .timeout(indexTimeout);
+                                .id(this.request.getDetectorId())
+                                .timeout(TransportIndexDetectorAction.this.indexTimeout);
             }
             log.debug("indexing detector");
-            client.index(
+            TransportIndexDetectorAction.this.client.index(
                     indexRequest,
                     new ActionListener<>() {
                         @Override
                         public void onResponse(IndexResponse response) {
                             log.debug("detector indexed success.");
-                            Detector responseDetector = request.getDetector();
+                            Detector responseDetector = AsyncIndexDetectorsAction.this.request.getDetector();
                             responseDetector.setId(response.getId());
-                            onOperation(response, responseDetector);
+                            AsyncIndexDetectorsAction.this.onOperation(response, responseDetector);
                         }
 
                         @Override
                         public void onFailure(Exception e) {
                             // Revert the workflow and monitors created in previous steps
-                            workflowService.deleteWorkflow(
-                                    request.getDetector().getWorkflowIds().get(0),
+                            TransportIndexDetectorAction.this.workflowService.deleteWorkflow(
+                                    AsyncIndexDetectorsAction.this.request.getDetector().getWorkflowIds().get(0),
                                     new ActionListener<>() {
                                         @Override
                                         public void onResponse(DeleteWorkflowResponse deleteWorkflowResponse) {
-                                            monitorService.deleteAlertingMonitors(
-                                                    request.getDetector().getMonitorIds(),
-                                                    request.getRefreshPolicy(),
+                                            TransportIndexDetectorAction.this.monitorService.deleteAlertingMonitors(
+                                                    AsyncIndexDetectorsAction.this.request.getDetector().getMonitorIds(),
+                                                    AsyncIndexDetectorsAction.this.request.getRefreshPolicy(),
                                                     new ActionListener<>() {
                                                         @Override
                                                         public void onResponse(
                                                                 List<DeleteMonitorResponse> deleteMonitorResponses) {
-                                                            onFailures(e);
+                                                            AsyncIndexDetectorsAction.this.onFailures(e);
                                                         }
 
                                                         @Override
                                                         public void onFailure(Exception e) {
-                                                            onFailures(e);
+                                                            AsyncIndexDetectorsAction.this.onFailures(e);
                                                         }
                                                     });
                                         }
 
                                         @Override
                                         public void onFailure(Exception e) {
-                                            onFailures(e);
+                                            AsyncIndexDetectorsAction.this.onFailures(e);
                                         }
                                     });
                         }
@@ -2473,23 +2580,24 @@ public class TransportIndexDetectorAction
 
         private void onOperation(IndexResponse response, Detector detector) {
             this.response.set(response);
-            if (counter.compareAndSet(false, true)) {
-                finishHim(detector, null);
+            if (this.counter.compareAndSet(false, true)) {
+                this.finishHim(detector, null);
             }
         }
 
         private void onFailures(Exception t) {
-            if (counter.compareAndSet(false, true)) {
-                finishHim(null, t);
+            if (this.counter.compareAndSet(false, true)) {
+                this.finishHim(null, t);
             }
         }
 
         private void finishHim(Detector detector, Exception t) {
-            threadPool
+            TransportIndexDetectorAction.this
+                    .threadPool
                     .executor(ThreadPool.Names.GENERIC)
                     .execute(
                             ActionRunnable.supply(
-                                    listener,
+                                    this.listener,
                                     () -> {
                                         if (t != null) {
                                             log.error("exception: {}", t.getMessage());
@@ -2501,7 +2609,7 @@ public class TransportIndexDetectorAction
                                             return new IndexDetectorResponse(
                                                     detector.getId(),
                                                     detector.getVersion(),
-                                                    request.getMethod() == RestRequest.Method.POST
+                                                    this.request.getMethod() == RestRequest.Method.POST
                                                             ? RestStatus.CREATED
                                                             : RestStatus.OK,
                                                     detector);
