@@ -94,7 +94,8 @@ public class TransportIndexDetectorActionTests extends OpenSearchTestCase {
                         Arrays.asList(
                                 SecurityAnalyticsSettings.FILTER_BY_BACKEND_ROLES,
                                 SecurityAnalyticsSettings.ENABLE_WORKFLOW_USAGE,
-                                SecurityAnalyticsSettings.ENABLE_DETECTORS_WITH_DEDICATED_QUERY_INDICES));
+                                SecurityAnalyticsSettings.ENABLE_DETECTORS_WITH_DEDICATED_QUERY_INDICES,
+                                SecurityAnalyticsSettings.MAX_DETECTORS));
         when(clusterService.getClusterSettings())
                 .thenReturn(new ClusterSettings(Settings.EMPTY, settings));
         when(detectorIndices.getThreadPool()).thenReturn(threadPool);

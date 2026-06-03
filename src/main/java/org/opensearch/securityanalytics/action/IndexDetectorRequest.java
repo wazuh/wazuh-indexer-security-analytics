@@ -28,24 +28,40 @@ import java.io.IOException;
 
 public class IndexDetectorRequest extends ActionRequest {
 
-    private String detectorId;
+    private final String detectorId;
 
-    private WriteRequest.RefreshPolicy refreshPolicy;
+    private final WriteRequest.RefreshPolicy refreshPolicy;
 
-    private RestRequest.Method method;
+    private final RestRequest.Method method;
 
     private Detector detector;
+
+    /**
+     * When true the request originates from an internal plugin (e.g. Content Manager) and should
+     * bypass the max-detectors limit and preserve the detector source field.
+     */
+    private final boolean internalCaller;
 
     public IndexDetectorRequest(
             String detectorId,
             WriteRequest.RefreshPolicy refreshPolicy,
             RestRequest.Method method,
             Detector detector) {
+        this(detectorId, refreshPolicy, method, detector, false);
+    }
+
+    public IndexDetectorRequest(
+            String detectorId,
+            WriteRequest.RefreshPolicy refreshPolicy,
+            RestRequest.Method method,
+            Detector detector,
+            boolean internalCaller) {
         super();
         this.detectorId = detectorId;
         this.refreshPolicy = refreshPolicy;
         this.method = method;
         this.detector = detector;
+        this.internalCaller = internalCaller;
     }
 
     public IndexDetectorRequest(StreamInput sin) throws IOException {
@@ -53,7 +69,8 @@ public class IndexDetectorRequest extends ActionRequest {
                 sin.readString(),
                 WriteRequest.RefreshPolicy.readFrom(sin),
                 sin.readEnum(RestRequest.Method.class),
-                Detector.readFrom(sin));
+                Detector.readFrom(sin),
+                sin.readBoolean());
     }
 
     @Override
@@ -63,29 +80,34 @@ public class IndexDetectorRequest extends ActionRequest {
 
     @Override
     public void writeTo(StreamOutput out) throws IOException {
-        out.writeString(detectorId);
-        refreshPolicy.writeTo(out);
-        out.writeEnum(method);
-        detector.writeTo(out);
+        out.writeString(this.detectorId);
+        this.refreshPolicy.writeTo(out);
+        out.writeEnum(this.method);
+        this.detector.writeTo(out);
+        out.writeBoolean(this.internalCaller);
     }
 
     public String getDetectorId() {
-        return detectorId;
+        return this.detectorId;
     }
 
     public RestRequest.Method getMethod() {
-        return method;
+        return this.method;
     }
 
     public Detector getDetector() {
-        return detector;
+        return this.detector;
     }
 
     public WriteRequest.RefreshPolicy getRefreshPolicy() {
-        return refreshPolicy;
+        return this.refreshPolicy;
     }
 
     public void setDetector(Detector detector) {
         this.detector = detector;
+    }
+
+    public boolean isInternalCaller() {
+        return this.internalCaller;
     }
 }
