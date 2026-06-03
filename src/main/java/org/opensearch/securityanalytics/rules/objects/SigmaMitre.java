@@ -27,30 +27,61 @@ import java.util.Map;
 /**
  * MITRE ATT&amp;CK block for Wazuh Sigma rules.
  *
- * <p>Parses a top-level {@code mitre} structure containing flat arrays for {@code tactic}, {@code
- * technique}, and {@code subtechnique}.
+ * <p>Parses a top-level {@code mitre} structure where each category ({@code tactic}, {@code
+ * technique}, {@code subtechnique}) is an object containing {@code id} and {@code name} arrays.
+ *
+ * <pre>{@code
+ * mitre:
+ *   tactic:
+ *     id:
+ *       - TA0003
+ *     name:
+ *       - Persistence
+ *   technique:
+ *     id:
+ *       - T1098
+ *     name:
+ *       - Account Manipulation
+ * }</pre>
  */
 public class SigmaMitre {
 
-    private final List<String> tactic;
-    private final List<String> technique;
-    private final List<String> subtechnique;
+    private final List<String> tacticId;
+    private final List<String> tacticName;
+    private final List<String> techniqueId;
+    private final List<String> techniqueName;
+    private final List<String> subtechniqueId;
+    private final List<String> subtechniqueName;
 
     /**
-     * Constructs a new SigmaMitre instance with specified tactics, techniques, and sub-techniques.
+     * Constructs a new SigmaMitre instance.
      *
-     * @param tactic a list of MITRE tactics; if null, an empty list is used
-     * @param technique a list of MITRE techniques; if null, an empty list is used
-     * @param subtechnique a list of MITRE sub-techniques; if null, an empty list is used
+     * @param tacticId list of MITRE tactic IDs; if null, an empty list is used
+     * @param tacticName list of MITRE tactic names; if null, an empty list is used
+     * @param techniqueId list of MITRE technique IDs; if null, an empty list is used
+     * @param techniqueName list of MITRE technique names; if null, an empty list is used
+     * @param subtechniqueId list of MITRE sub-technique IDs; if null, an empty list is used
+     * @param subtechniqueName list of MITRE sub-technique names; if null, an empty list is used
      */
-    public SigmaMitre(List<String> tactic, List<String> technique, List<String> subtechnique) {
-        this.tactic = tactic != null ? tactic : Collections.emptyList();
-        this.technique = technique != null ? technique : Collections.emptyList();
-        this.subtechnique = subtechnique != null ? subtechnique : Collections.emptyList();
+    public SigmaMitre(
+            List<String> tacticId,
+            List<String> tacticName,
+            List<String> techniqueId,
+            List<String> techniqueName,
+            List<String> subtechniqueId,
+            List<String> subtechniqueName) {
+        this.tacticId = tacticId != null ? tacticId : Collections.emptyList();
+        this.tacticName = tacticName != null ? tacticName : Collections.emptyList();
+        this.techniqueId = techniqueId != null ? techniqueId : Collections.emptyList();
+        this.techniqueName = techniqueName != null ? techniqueName : Collections.emptyList();
+        this.subtechniqueId = subtechniqueId != null ? subtechniqueId : Collections.emptyList();
+        this.subtechniqueName = subtechniqueName != null ? subtechniqueName : Collections.emptyList();
     }
 
     /**
-     * Creates a {@link SigmaMitre} instance from a dictionary/map representation.
+     * Creates a {@link SigmaMitre} instance from a dictionary/map representation. Each category
+     * ({@code tactic}, {@code technique}, {@code subtechnique}) is expected to be an object with
+     * {@code id} and {@code name} array fields.
      *
      * @param map the map containing 'tactic', 'technique', and 'subtechnique' keys
      * @return a new SigmaMitre instance, or null if the input map is null
@@ -62,34 +93,84 @@ public class SigmaMitre {
             return null;
         }
 
-        List<String> tactic = toStringList(map.get("tactic"));
-        List<String> technique = toStringList(map.get("technique"));
-        List<String> subtechnique = toStringList(map.get("subtechnique"));
+        List<String> tacticId = Collections.emptyList();
+        List<String> tacticName = Collections.emptyList();
+        List<String> techniqueId = Collections.emptyList();
+        List<String> techniqueName = Collections.emptyList();
+        List<String> subtechniqueId = Collections.emptyList();
+        List<String> subtechniqueName = Collections.emptyList();
 
-        return new SigmaMitre(tactic, technique, subtechnique);
+        Object tacticObj = map.get("tactic");
+        if (tacticObj instanceof Map) {
+            Map<String, Object> tacticMap = (Map<String, Object>) tacticObj;
+            tacticId = toStringList(tacticMap.get("id"));
+            tacticName = toStringList(tacticMap.get("name"));
+        }
+
+        Object techniqueObj = map.get("technique");
+        if (techniqueObj instanceof Map) {
+            Map<String, Object> techniqueMap = (Map<String, Object>) techniqueObj;
+            techniqueId = toStringList(techniqueMap.get("id"));
+            techniqueName = toStringList(techniqueMap.get("name"));
+        }
+
+        Object subtechniqueObj = map.get("subtechnique");
+        if (subtechniqueObj instanceof Map) {
+            Map<String, Object> subtechniqueMap = (Map<String, Object>) subtechniqueObj;
+            subtechniqueId = toStringList(subtechniqueMap.get("id"));
+            subtechniqueName = toStringList(subtechniqueMap.get("name"));
+        }
+
+        return new SigmaMitre(
+                tacticId, tacticName, techniqueId, techniqueName, subtechniqueId, subtechniqueName);
     }
 
     /**
-     * Flattens the MITRE data into a format suitable for WCS indexing. Per the WCS spec,
-     * sub-technique IDs are merged into the technique array.
+     * Builds the MITRE data into the nested format for WCS indexing. Per the WCS spec, sub-technique
+     * IDs and names are merged into the technique arrays.
      *
-     * @return a map representing the flattened MITRE ATT&amp;CK data
+     * @return a map representing the nested MITRE ATT&amp;CK data
      */
     public Map<String, Object> toMitreMap() {
         Map<String, Object> mitreMap = new HashMap<>();
-        if (!this.tactic.isEmpty()) {
-            mitreMap.put("tactic", new ArrayList<>(this.tactic));
+
+        if (!this.tacticId.isEmpty() || !this.tacticName.isEmpty()) {
+            Map<String, Object> tacticMap = new HashMap<>();
+            if (!this.tacticId.isEmpty()) {
+                tacticMap.put("id", new ArrayList<>(this.tacticId));
+            }
+            if (!this.tacticName.isEmpty()) {
+                tacticMap.put("name", new ArrayList<>(this.tacticName));
+            }
+            mitreMap.put("tactic", tacticMap);
         }
 
-        List<String> allTechniques = new ArrayList<>(this.technique);
-        allTechniques.addAll(this.subtechnique);
-        if (!allTechniques.isEmpty()) {
-            mitreMap.put("technique", allTechniques);
+        List<String> allTechniqueIds = new ArrayList<>(this.techniqueId);
+        allTechniqueIds.addAll(this.subtechniqueId);
+        List<String> allTechniqueNames = new ArrayList<>(this.techniqueName);
+        allTechniqueNames.addAll(this.subtechniqueName);
+        if (!allTechniqueIds.isEmpty() || !allTechniqueNames.isEmpty()) {
+            Map<String, Object> techniqueMap = new HashMap<>();
+            if (!allTechniqueIds.isEmpty()) {
+                techniqueMap.put("id", allTechniqueIds);
+            }
+            if (!allTechniqueNames.isEmpty()) {
+                techniqueMap.put("name", allTechniqueNames);
+            }
+            mitreMap.put("technique", techniqueMap);
         }
 
-        if (!this.subtechnique.isEmpty()) {
-            mitreMap.put("subtechnique", new ArrayList<>(this.subtechnique));
+        if (!this.subtechniqueId.isEmpty() || !this.subtechniqueName.isEmpty()) {
+            Map<String, Object> subtechniqueMap = new HashMap<>();
+            if (!this.subtechniqueId.isEmpty()) {
+                subtechniqueMap.put("id", new ArrayList<>(this.subtechniqueId));
+            }
+            if (!this.subtechniqueName.isEmpty()) {
+                subtechniqueMap.put("name", new ArrayList<>(this.subtechniqueName));
+            }
+            mitreMap.put("subtechnique", subtechniqueMap);
         }
+
         return mitreMap;
     }
 
@@ -116,23 +197,44 @@ public class SigmaMitre {
     }
 
     /**
-     * @return the list of tactics
+     * @return the list of tactic IDs
      */
-    public List<String> getTactic() {
-        return this.tactic;
+    public List<String> getTacticId() {
+        return this.tacticId;
     }
 
     /**
-     * @return the list of techniques
+     * @return the list of tactic names
      */
-    public List<String> getTechnique() {
-        return this.technique;
+    public List<String> getTacticName() {
+        return this.tacticName;
     }
 
     /**
-     * @return the list of sub-techniques
+     * @return the list of technique IDs
      */
-    public List<String> getSubtechnique() {
-        return this.subtechnique;
+    public List<String> getTechniqueId() {
+        return this.techniqueId;
+    }
+
+    /**
+     * @return the list of technique names
+     */
+    public List<String> getTechniqueName() {
+        return this.techniqueName;
+    }
+
+    /**
+     * @return the list of sub-technique IDs
+     */
+    public List<String> getSubtechniqueId() {
+        return this.subtechniqueId;
+    }
+
+    /**
+     * @return the list of sub-technique names
+     */
+    public List<String> getSubtechniqueName() {
+        return this.subtechniqueName;
     }
 }

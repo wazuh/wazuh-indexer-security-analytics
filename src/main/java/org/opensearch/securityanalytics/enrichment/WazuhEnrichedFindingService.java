@@ -467,8 +467,8 @@ public class WazuhEnrichedFindingService implements Closeable {
 
         Object mitre = nested.get("mitre");
         if (mitre instanceof Map) {
-            Map<String, List<String>> interpolated =
-                    TemplateInterpolator.interpolateMapOfLists((Map<String, ?>) mitre, eventSource);
+            Map<String, Object> interpolated =
+                    TemplateInterpolator.interpolateNestedMitreMap((Map<String, ?>) mitre, eventSource);
             if (interpolated != null && !interpolated.isEmpty()) {
                 rule.put("mitre", interpolated);
             }
