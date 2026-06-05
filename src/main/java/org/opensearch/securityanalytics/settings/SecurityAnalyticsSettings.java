@@ -303,8 +303,6 @@ public class SecurityAnalyticsSettings {
                     Setting.Property.Dynamic);
 
     /**
-<<<<<<< Updated upstream
-=======
      * Maximum number of rule-metadata entries cached in memory by {@code
      * WazuhEnrichedFindingService}. Bounds heap growth: each entry holds a full rule document
      * (including compliance and MITRE maps). Least-recently-used entries are evicted past this size
@@ -330,7 +328,6 @@ public class SecurityAnalyticsSettings {
                     Setting.Property.Dynamic);
 
     /**
->>>>>>> Stashed changes
      * TTL for the in-memory monitor-id to detector cache consulted by {@code
      * TransportCorrelateFindingAction}. Eliminates the per-finding nested-query lookup against the
      * detectors index when many findings of one fan-out share the same monitor id. Set to zero to

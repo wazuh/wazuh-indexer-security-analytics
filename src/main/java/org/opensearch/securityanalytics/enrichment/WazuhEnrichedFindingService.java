@@ -408,8 +408,8 @@ public class WazuhEnrichedFindingService implements Closeable {
         // Per-doc base, built once and reused across all rules.
         Map<String, Object> doc = new HashMap<>(eventSource);
 
-        // Top-level finding metadata
-        doc.put("@timestamp", finding.getTimestamp());
+        // Top-level finding metadata — use the original event's timestamp
+        doc.put("@timestamp", eventSource.get("@timestamp"));
 
         // event.* — merge existing event fields, then overlay doc_id and index
         Map<String, Object> eventObj = new HashMap<>();
@@ -419,7 +419,6 @@ public class WazuhEnrichedFindingService implements Closeable {
         }
         eventObj.put("doc_id", docId);
         eventObj.put("index", finding.getIndex());
-        eventObj.put("ingested", eventSource.get("@timestamp"));
         doc.put("event", eventObj);
 
         if (queries.isEmpty()) {
@@ -492,8 +491,8 @@ public class WazuhEnrichedFindingService implements Closeable {
 
         Object mitre = nested.get("mitre");
         if (mitre instanceof Map) {
-            Map<String, List<String>> interpolated =
-                    TemplateInterpolator.interpolateMapOfLists((Map<String, ?>) mitre, eventSource);
+            Map<String, Object> interpolated =
+                    TemplateInterpolator.interpolateNestedMitreMap((Map<String, ?>) mitre, eventSource);
             if (interpolated != null && !interpolated.isEmpty()) {
                 rule.put("mitre", interpolated);
             }
