@@ -1,28 +1,30 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.transport;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-
 import org.apache.lucene.search.join.ScoreMode;
 import org.opensearch.commons.ConfigConstants;
 import org.opensearch.commons.authuser.User;
-import org.opensearch.core.action.ActionListener;
-import org.opensearch.securityanalytics.action.IndexCustomLogTypeRequest;
-import org.opensearch.securityanalytics.action.IndexCustomLogTypeResponse;
-import org.opensearch.tasks.Task;
-import org.opensearch.threadpool.ThreadPool;
-import org.opensearch.search.builder.SearchSourceBuilder;
-import org.opensearch.index.query.QueryBuilders;
 import org.opensearch.index.query.BoolQueryBuilder;
-import org.opensearch.index.query.TermQueryBuilder;
-import org.opensearch.index.query.TermsQueryBuilder;
-import org.opensearch.index.query.MatchQueryBuilder;
-
+import org.opensearch.index.query.QueryBuilders;
+import org.opensearch.search.builder.SearchSourceBuilder;
+import org.opensearch.threadpool.ThreadPool;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -30,30 +32,29 @@ import java.util.stream.Collectors;
 /**
  * TransportAction classes extend this interface to add filter-by-backend-roles functionality.
  *
- * 1. If filterBy is enabled
- *      a) Don't allow to create detector (throw error) if the logged-on user has no backend roles configured.
+ * <p>1. If filterBy is enabled a) Don't allow to create detector (throw error) if the logged-on
+ * user has no backend roles configured.
  *
- * 2. If filterBy is enabled and detector are created when filterBy is disabled:
- *      a) If backend_roles are saved with config, results will get filtered and data is shown
- *      b) If backend_roles are not saved with detector config, results will get filtered and no detectors
- *         will be displayed.
- *      c) Users can edit and save the detector to associate their backend_roles.
- *
+ * <p>2. If filterBy is enabled and detector are created when filterBy is disabled: a) If
+ * backend_roles are saved with config, results will get filtered and data is shown b) If
+ * backend_roles are not saved with detector config, results will get filtered and no detectors will
+ * be displayed. c) Users can edit and save the detector to associate their backend_roles.
  */
 public interface SecureTransportAction {
 
     static final Logger log = LogManager.getLogger(SecureTransportAction.class);
 
-    /**
-     *  reads the user from the thread context that is later used to serialize and save in config
-     */
+    /** reads the user from the thread context that is later used to serialize and save in config */
     default User readUserFromThreadContext(ThreadPool threadPool) {
-        String userStr = threadPool.getThreadContext().getTransient(ConfigConstants.OPENSEARCH_SECURITY_USER_INFO_THREAD_CONTEXT);
-        log.info("User and roles string from thread context: {}", userStr);
+        String userStr =
+                threadPool
+                        .getThreadContext()
+                        .getTransient(ConfigConstants.OPENSEARCH_SECURITY_USER_INFO_THREAD_CONTEXT);
+        log.debug("User and roles string from thread context: {}", userStr);
         return User.parse(userStr);
     }
 
-    default boolean doFilterForUser(User user, boolean filterByEnabled ) {
+    default boolean doFilterForUser(User user, boolean filterByEnabled) {
         log.debug("Is filterByEnabled: {} ; Is admin user: {}", filterByEnabled, isAdmin(user));
         if (isAdmin(user)) {
             return false;
@@ -62,14 +63,12 @@ public interface SecureTransportAction {
         }
     }
 
-    /**
-     *  'all_access' role users are treated as admins.
-     */
+    /** 'all_access' role users are treated as admins. */
     default boolean isAdmin(User user) {
         if (user == null) {
             return false;
         }
-        if  (user.getRoles().size() == 0) {
+        if (user.getRoles().size() == 0) {
             return false;
         }
         return user.getRoles().contains("all_access");
@@ -89,42 +88,43 @@ public interface SecureTransportAction {
     }
 
     /**
-     * If FilterBy is enabled, this function verifies that the requester user has FilterBy permissions to access
-     * the resource. If FilterBy is disabled, we will assume the user has permissions and return true.
+     * If FilterBy is enabled, this function verifies that the requester user has FilterBy permissions
+     * to access the resource. If FilterBy is disabled, we will assume the user has permissions and
+     * return true.
      *
-     * This check will later to moved to the security plugin.
+     * <p>This check will later to moved to the security plugin.
      */
-    default boolean  checkUserPermissionsWithResource(
+    default boolean checkUserPermissionsWithResource(
             User requesterUser,
             User resourceUser,
             String resourceType,
             String resourceId,
-            boolean filterByEnabled
-    ) {
+            boolean filterByEnabled) {
 
         if (!doFilterForUser(requesterUser, filterByEnabled)) return true;
 
         List<String> resourceBackendRoles = resourceUser.getBackendRoles();
         List<String> requesterBackendRoles = requesterUser.getBackendRoles();
 
-        if (resourceBackendRoles == null ||requesterBackendRoles == null || isIntersectListsEmpty(resourceBackendRoles, requesterBackendRoles)) {
+        if (resourceBackendRoles == null
+                || requesterBackendRoles == null
+                || isIntersectListsEmpty(resourceBackendRoles, requesterBackendRoles)) {
             return false;
         }
         return true;
     }
 
-
     default boolean isIntersectListsEmpty(List<String> a, List<String> b) {
-        return (a.stream()
-                .distinct()
-                .filter(b::contains)
-                .collect(Collectors.toSet()).size()==0);
+        return (a.stream().distinct().filter(b::contains).collect(Collectors.toSet()).size() == 0);
     }
 
-    default void addFilter(User user,SearchSourceBuilder searchSourceBuilder,String fieldName)  {
+    default void addFilter(User user, SearchSourceBuilder searchSourceBuilder, String fieldName) {
         BoolQueryBuilder boolQueryBuilder = QueryBuilders.boolQuery().must(searchSourceBuilder.query());
-        boolQueryBuilder.filter(QueryBuilders.nestedQuery("detector", QueryBuilders.termsQuery(fieldName, user.getBackendRoles()), ScoreMode.Avg));
+        boolQueryBuilder.filter(
+                QueryBuilders.nestedQuery(
+                        "detector",
+                        QueryBuilders.termsQuery(fieldName, user.getBackendRoles()),
+                        ScoreMode.Avg));
         searchSourceBuilder.query(boolQueryBuilder);
     }
-
 }

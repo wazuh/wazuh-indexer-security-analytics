@@ -303,6 +303,34 @@ public class SecurityAnalyticsSettings {
                     Setting.Property.Dynamic);
 
     /**
+<<<<<<< Updated upstream
+=======
+     * Maximum number of rule-metadata entries cached in memory by {@code
+     * WazuhEnrichedFindingService}. Bounds heap growth: each entry holds a full rule document
+     * (including compliance and MITRE maps). Least-recently-used entries are evicted past this size
+     * and re-fetched on demand.
+     */
+    public static final Setting<Integer> ENRICHED_FINDINGS_RULE_CACHE_MAX_SIZE =
+            Setting.intSetting(
+                    "plugins.security_analytics.enriched_findings_rule_cache_max_size",
+                    10000,
+                    0,
+                    Setting.Property.NodeScope);
+
+    /**
+     * Maximum number of user-created threat detectors allowed. Standard detectors created by the
+     * Content Manager plugin are not counted towards this limit.
+     */
+    public static final Setting<Integer> MAX_DETECTORS =
+            Setting.intSetting(
+                    "plugins.security_analytics.max_detectors",
+                    10,
+                    0,
+                    Setting.Property.NodeScope,
+                    Setting.Property.Dynamic);
+
+    /**
+>>>>>>> Stashed changes
      * TTL for the in-memory monitor-id to detector cache consulted by {@code
      * TransportCorrelateFindingAction}. Eliminates the per-finding nested-query lookup against the
      * detectors index when many findings of one fan-out share the same monitor id. Set to zero to
