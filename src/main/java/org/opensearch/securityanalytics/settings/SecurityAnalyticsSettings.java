@@ -191,6 +191,18 @@ public class SecurityAnalyticsSettings {
                     Setting.Property.Dynamic);
 
     /**
+     * Maximum number of user-created threat detectors allowed. Standard detectors created by the
+     * Content Manager plugin are not counted towards this limit.
+     */
+    public static final Setting<Integer> MAX_DETECTORS =
+            Setting.intSetting(
+                    "plugins.security_analytics.max_detectors",
+                    10,
+                    0,
+                    Setting.Property.NodeScope,
+                    Setting.Property.Dynamic);
+
+    /**
      * TTL for the in-memory monitor-id to detector cache consulted by {@code
      * TransportCorrelateFindingAction}. Eliminates the per-finding nested-query lookup against the
      * detectors index when many findings of one fan-out share the same monitor id. Set to zero to

@@ -87,12 +87,22 @@ public class WazuhExtensionsTests extends OpenSearchTestCase {
                     + "        - wazuh-4.8\n"
                     + "mitre:\n"
                     + "    tactic:\n"
-                    + "        - TA0005\n"
-                    + "        - TA0043\n"
+                    + "        id:\n"
+                    + "            - TA0005\n"
+                    + "            - TA0043\n"
+                    + "        name:\n"
+                    + "            - Defense Evasion\n"
+                    + "            - Reconnaissance\n"
                     + "    technique:\n"
-                    + "        - T1222\n"
+                    + "        id:\n"
+                    + "            - T1222\n"
+                    + "        name:\n"
+                    + "            - File and Directory Permissions Modification\n"
                     + "    subtechnique:\n"
-                    + "        - T1222.002\n"
+                    + "        id:\n"
+                    + "            - T1222.002\n"
+                    + "        name:\n"
+                    + "            - 'File and Directory Permissions Modification: Linux and Mac File and Directory Permissions Modification'\n"
                     + "compliance:\n"
                     + "    pci_dss:\n"
                     + "        - '11.5'\n"
@@ -123,19 +133,32 @@ public class WazuhExtensionsTests extends OpenSearchTestCase {
         // Mitre (updated from Threat)
         SigmaMitre mitre = rule.getMitre();
         Assert.assertNotNull(mitre);
-        Assert.assertEquals(2, mitre.getTactic().size());
-        Assert.assertEquals("TA0005", mitre.getTactic().get(0));
-        Assert.assertEquals("TA0043", mitre.getTactic().get(1));
-        Assert.assertEquals(1, mitre.getTechnique().size());
-        Assert.assertEquals("T1222", mitre.getTechnique().get(0));
-        Assert.assertEquals(1, mitre.getSubtechnique().size());
-        Assert.assertEquals("T1222.002", mitre.getSubtechnique().get(0));
+        Assert.assertEquals(2, mitre.getTacticId().size());
+        Assert.assertEquals("TA0005", mitre.getTacticId().get(0));
+        Assert.assertEquals("TA0043", mitre.getTacticId().get(1));
+        Assert.assertEquals(2, mitre.getTacticName().size());
+        Assert.assertEquals("Defense Evasion", mitre.getTacticName().get(0));
+        Assert.assertEquals("Reconnaissance", mitre.getTacticName().get(1));
+        Assert.assertEquals(1, mitre.getTechniqueId().size());
+        Assert.assertEquals("T1222", mitre.getTechniqueId().get(0));
+        Assert.assertEquals(1, mitre.getTechniqueName().size());
+        Assert.assertEquals(
+                "File and Directory Permissions Modification", mitre.getTechniqueName().get(0));
+        Assert.assertEquals(1, mitre.getSubtechniqueId().size());
+        Assert.assertEquals("T1222.002", mitre.getSubtechniqueId().get(0));
 
-        // Mitre -> WCS map for indexing
+        // Mitre -> WCS map for indexing (nested structure)
         Map<String, Object> mitreMap = mitre.toMitreMap();
-        Assert.assertEquals(List.of("TA0005", "TA0043"), mitreMap.get("tactic"));
-        Assert.assertEquals(List.of("T1222", "T1222.002"), mitreMap.get("technique"));
-        Assert.assertEquals(List.of("T1222.002"), mitreMap.get("subtechnique"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> tacticMap = (Map<String, Object>) mitreMap.get("tactic");
+        Assert.assertEquals(List.of("TA0005", "TA0043"), tacticMap.get("id"));
+        Assert.assertEquals(List.of("Defense Evasion", "Reconnaissance"), tacticMap.get("name"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> techniqueMap = (Map<String, Object>) mitreMap.get("technique");
+        Assert.assertEquals(List.of("T1222", "T1222.002"), techniqueMap.get("id"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> subtechniqueMap = (Map<String, Object>) mitreMap.get("subtechnique");
+        Assert.assertEquals(List.of("T1222.002"), subtechniqueMap.get("id"));
 
         // Compliance
         SigmaCompliance compliance = rule.getCompliance();
@@ -339,9 +362,15 @@ public class WazuhExtensionsTests extends OpenSearchTestCase {
                         + "    condition: selection\n"
                         + "mitre:\n"
                         + "    tactic:\n"
-                        + "        - TA0002\n"
+                        + "        id:\n"
+                        + "            - TA0002\n"
+                        + "        name:\n"
+                        + "            - Execution\n"
                         + "    technique:\n"
-                        + "        - T1059\n";
+                        + "        id:\n"
+                        + "            - T1059\n"
+                        + "        name:\n"
+                        + "            - Command and Scripting Interpreter\n";
 
         SigmaRule rule = SigmaRule.fromYaml(yaml, true);
         Assert.assertTrue(rule.getErrors().getErrors().isEmpty());
@@ -349,8 +378,14 @@ public class WazuhExtensionsTests extends OpenSearchTestCase {
         SigmaMitre mitre = rule.getMitre();
         Assert.assertNotNull(mitre);
         Map<String, Object> mitreMap = mitre.toMitreMap();
-        Assert.assertEquals(List.of("TA0002"), mitreMap.get("tactic"));
-        Assert.assertEquals(List.of("T1059"), mitreMap.get("technique"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> tacticMap = (Map<String, Object>) mitreMap.get("tactic");
+        Assert.assertEquals(List.of("TA0002"), tacticMap.get("id"));
+        Assert.assertEquals(List.of("Execution"), tacticMap.get("name"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> techniqueMap = (Map<String, Object>) mitreMap.get("technique");
+        Assert.assertEquals(List.of("T1059"), techniqueMap.get("id"));
+        Assert.assertEquals(List.of("Command and Scripting Interpreter"), techniqueMap.get("name"));
         Assert.assertFalse(mitreMap.containsKey("subtechnique"));
     }
 }
