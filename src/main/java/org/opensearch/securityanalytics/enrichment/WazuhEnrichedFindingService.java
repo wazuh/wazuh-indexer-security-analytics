@@ -202,53 +202,63 @@ public class WazuhEnrichedFindingService implements Closeable {
             mget.add(new MultiGetRequest.Item(sourceIndex, docId));
         }
 
-        this.client.multiGet(
-                mget,
-                ActionListener.wrap(
-                        response -> {
-                            List<String> validDocIds = new ArrayList<>();
-                            List<Map<String, Object>> validEventSources = new ArrayList<>();
-                            List<String> validCategories = new ArrayList<>();
+        try {
+            this.client.multiGet(
+                    mget,
+                    ActionListener.wrap(
+                            response -> {
+                                List<String> validDocIds = new ArrayList<>();
+                                List<Map<String, Object>> validEventSources = new ArrayList<>();
+                                List<String> validCategories = new ArrayList<>();
 
-                            for (MultiGetItemResponse item : response.getResponses()) {
-                                if (item.isFailed() || !item.getResponse().isExists()) {
-                                    log.warn(
-                                            "Triggering event {}/{} not found for finding {}",
-                                            sourceIndex,
-                                            item.getId(),
-                                            finding.getId());
-                                    continue;
+                                for (MultiGetItemResponse item : response.getResponses()) {
+                                    if (item.isFailed() || !item.getResponse().isExists()) {
+                                        log.warn(
+                                                "Triggering event {}/{} not found for finding {}",
+                                                sourceIndex,
+                                                item.getId(),
+                                                finding.getId());
+                                        continue;
+                                    }
+                                    Map<String, Object> eventSource = item.getResponse().getSourceAsMap();
+                                    String category = WazuhEnrichedFindingService.resolveCategory(eventSource);
+                                    if (category == null) {
+                                        log.warn(
+                                                "No valid wazuh.integration.category in event {}/{} for finding {}, skipping",
+                                                sourceIndex,
+                                                item.getId(),
+                                                finding.getId());
+                                        continue;
+                                    }
+                                    validDocIds.add(item.getId());
+                                    validEventSources.add(eventSource);
+                                    validCategories.add(category);
                                 }
-                                Map<String, Object> eventSource = item.getResponse().getSourceAsMap();
-                                String category = WazuhEnrichedFindingService.resolveCategory(eventSource);
-                                if (category == null) {
-                                    log.warn(
-                                            "No valid wazuh.integration.category in event {}/{} for finding {}, skipping",
-                                            sourceIndex,
-                                            item.getId(),
-                                            finding.getId());
-                                    continue;
-                                }
-                                validDocIds.add(item.getId());
-                                validEventSources.add(eventSource);
-                                validCategories.add(category);
-                            }
 
-                            if (validEventSources.isEmpty()) {
+                                if (validEventSources.isEmpty()) {
+                                    this.enrichmentComplete();
+                                    return;
+                                }
+
+                                this.fetchRuleMetadataAndIndex(
+                                        finding, validDocIds, validEventSources, validCategories);
+                            },
+                            e -> {
+                                log.warn(
+                                        "Failed to fetch triggering events for finding {}, skipping enrichment",
+                                        finding.getId(),
+                                        e);
                                 this.enrichmentComplete();
-                                return;
-                            }
-
-                            this.fetchRuleMetadataAndIndex(
-                                    finding, validDocIds, validEventSources, validCategories);
-                        },
-                        e -> {
-                            log.warn(
-                                    "Failed to fetch triggering events for finding {}, skipping enrichment",
-                                    finding.getId(),
-                                    e);
-                            this.enrichmentComplete();
-                        }));
+                            }));
+        } catch (Exception e) {
+            // Synchronous failure (e.g. thread pool rejection) before the listener is wired in.
+            // Release the in-flight permit so it is not leaked.
+            log.warn(
+                    "Failed to submit triggering-event MultiGet for finding {}, releasing in-flight slot",
+                    finding.getId(),
+                    e);
+            this.enrichmentComplete();
+        }
     }
 
     // ── Category resolution ─────────────────────────────────────────────────
@@ -315,34 +325,49 @@ public class WazuhEnrichedFindingService implements Closeable {
             mget.add(new MultiGetRequest.Item(Rule.CUSTOM_RULES_INDEX, ruleId));
         }
 
-        this.client.multiGet(
-                mget,
-                ActionListener.wrap(
-                        response -> {
-                            // Take the first valid hit per rule ID
-                            Map<String, Map<String, Object>> fetched = new HashMap<>();
-                            for (MultiGetItemResponse item : response.getResponses()) {
-                                String ruleId = item.getId();
-                                if (fetched.containsKey(ruleId)) continue;
-                                if (!item.isFailed() && item.getResponse().isExists()) {
-                                    fetched.put(ruleId, item.getResponse().getSourceAsMap());
+        try {
+            this.client.multiGet(
+                    mget,
+                    ActionListener.wrap(
+                            response -> {
+                                // Take the first valid hit per rule ID
+                                Map<String, Map<String, Object>> fetched = new HashMap<>();
+                                for (MultiGetItemResponse item : response.getResponses()) {
+                                    String ruleId = item.getId();
+                                    if (fetched.containsKey(ruleId)) continue;
+                                    if (!item.isFailed() && item.getResponse().isExists()) {
+                                        fetched.put(ruleId, item.getResponse().getSourceAsMap());
+                                    }
                                 }
-                            }
-                            for (String ruleId : uncachedRuleIds) {
-                                this.ruleMetadataCache.put(ruleId, fetched.getOrDefault(ruleId, Map.of()));
-                            }
-                            this.buildAllFindingsAndComplete(finding, docIds, eventSources, categories, queries);
-                        },
-                        e -> {
-                            log.warn(
-                                    "Failed to fetch rule metadata for finding {}, indexing without rule fields",
-                                    finding.getId(),
-                                    e);
-                            for (String ruleId : uncachedRuleIds) {
-                                this.ruleMetadataCache.putIfAbsent(ruleId, Map.of());
-                            }
-                            this.buildAllFindingsAndComplete(finding, docIds, eventSources, categories, queries);
-                        }));
+                                for (String ruleId : uncachedRuleIds) {
+                                    this.ruleMetadataCache.put(ruleId, fetched.getOrDefault(ruleId, Map.of()));
+                                }
+                                this.buildAllFindingsAndComplete(
+                                        finding, docIds, eventSources, categories, queries);
+                            },
+                            e -> {
+                                log.warn(
+                                        "Failed to fetch rule metadata for finding {}, indexing without rule fields",
+                                        finding.getId(),
+                                        e);
+                                for (String ruleId : uncachedRuleIds) {
+                                    this.ruleMetadataCache.putIfAbsent(ruleId, Map.of());
+                                }
+                                this.buildAllFindingsAndComplete(
+                                        finding, docIds, eventSources, categories, queries);
+                            }));
+        } catch (Exception e) {
+            // Synchronous failure (e.g. thread pool rejection) before the listener is wired in.
+            // Fall back to building without rule metadata so the in-flight permit is not leaked.
+            log.warn(
+                    "Failed to submit rule-metadata MultiGet for finding {}, indexing without rule fields",
+                    finding.getId(),
+                    e);
+            for (String ruleId : uncachedRuleIds) {
+                this.ruleMetadataCache.putIfAbsent(ruleId, Map.of());
+            }
+            this.buildAllFindingsAndComplete(finding, docIds, eventSources, categories, queries);
+        }
     }
 
     /**
@@ -363,27 +388,37 @@ public class WazuhEnrichedFindingService implements Closeable {
             List<Map<String, Object>> eventSources,
             List<String> categories,
             List<DocLevelQuery> queries) {
-        this.threadPool
-                .executor(ThreadPool.Names.GENERIC)
-                .execute(
-                        () -> {
-                            try {
-                                for (int i = 0; i < docIds.size(); i++) {
-                                    try {
-                                        this.buildDocAndIndex(
-                                                finding, categories.get(i), eventSources.get(i), docIds.get(i), queries);
-                                    } catch (Exception e) {
-                                        log.warn(
-                                                "Failed to build enriched finding for finding {} doc {}",
-                                                finding.getId(),
-                                                docIds.get(i),
-                                                e);
+        try {
+            this.threadPool
+                    .executor(ThreadPool.Names.GENERIC)
+                    .execute(
+                            () -> {
+                                try {
+                                    for (int i = 0; i < docIds.size(); i++) {
+                                        try {
+                                            this.buildDocAndIndex(
+                                                    finding, categories.get(i), eventSources.get(i), docIds.get(i), queries);
+                                        } catch (Exception e) {
+                                            log.warn(
+                                                    "Failed to build enriched finding for finding {} doc {}",
+                                                    finding.getId(),
+                                                    docIds.get(i),
+                                                    e);
+                                        }
                                     }
+                                } finally {
+                                    this.enrichmentComplete();
                                 }
-                            } finally {
-                                this.enrichmentComplete();
-                            }
-                        });
+                            });
+        } catch (Exception e) {
+            // Submission was rejected (e.g. thread pool queue full). Release the in-flight permit
+            // here so it is not leaked; otherwise enrichment stalls once MAX_IN_FLIGHT is reached.
+            log.warn(
+                    "Failed to submit enrichment build for finding {}, releasing in-flight slot",
+                    finding.getId(),
+                    e);
+            this.enrichmentComplete();
+        }
     }
 
     // ── Step 3: assemble the enriched document ───────────────────────────────
