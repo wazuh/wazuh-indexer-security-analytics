@@ -4,7 +4,7 @@
   },
   "properties": {
     "rule": {
-      "type": "nested",
+      "type": "object",
       "dynamic": "false",
       "properties": {
         "title": {
@@ -118,8 +118,12 @@
             }
           }
         },
-        "document.id": {
-          "type": "keyword"
+        "document": {
+          "properties": {
+            "id": {
+              "type": "keyword"
+            }
+          }
         },
         "space": {
           "type": "keyword"
