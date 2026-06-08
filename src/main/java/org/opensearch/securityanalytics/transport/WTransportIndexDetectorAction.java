@@ -50,8 +50,6 @@ import com.wazuh.securityanalytics.action.WIndexDetectorAction;
 import com.wazuh.securityanalytics.action.WIndexDetectorRequest;
 import com.wazuh.securityanalytics.action.WIndexDetectorResponse;
 
-import static org.opensearch.securityanalytics.transport.TransportIndexDetectorAction.WAZUH_INTERNAL_CALLER_HEADER;
-
 /**
  * Transport action handler for indexing Wazuh detectors.
  *
@@ -402,17 +400,7 @@ public class WTransportIndexDetectorAction
 
         IndexDetectorRequest indexDetectorRequest =
                 new IndexDetectorRequest(
-                        detector.getId(), request.getRefreshPolicy(), RestRequest.Method.PUT, detector);
-
-        // Mark this request as coming from the Content Manager so that
-        // TransportIndexDetectorAction allows modifications to standard detectors.
-        if (this.client.threadPool().getThreadContext().getHeader(WAZUH_INTERNAL_CALLER_HEADER)
-                == null) {
-            this.client
-                    .threadPool()
-                    .getThreadContext()
-                    .putHeader(WAZUH_INTERNAL_CALLER_HEADER, "content-manager");
-        }
+                        detector.getId(), request.getRefreshPolicy(), RestRequest.Method.PUT, detector, true);
 
         this.client.execute(
                 IndexDetectorAction.INSTANCE,

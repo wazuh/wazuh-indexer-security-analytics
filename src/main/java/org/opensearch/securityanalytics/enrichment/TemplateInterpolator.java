@@ -176,6 +176,38 @@ public final class TemplateInterpolator {
         return result;
     }
 
+    // Nested MITRE map interpolation
+
+    /**
+     * Interpolates a nested MITRE map where each top-level key ({@code tactic}, {@code technique},
+     * {@code subtechnique}) maps to an object containing {@code id} and {@code name} arrays. Applies
+     * list interpolation to each inner array. Categories whose inner map becomes empty after
+     * interpolation are removed.
+     *
+     * @param map the MITRE map to interpolate, may be {@code null}
+     * @param source the event {@code _source} map
+     * @return a new map with interpolated values
+     */
+    @SuppressWarnings("unchecked")
+    public static Map<String, Object> interpolateNestedMitreMap(
+            Map<String, ?> map, Map<String, Object> source) {
+        if (map == null || map.isEmpty()) {
+            return map == null ? null : Map.of();
+        }
+        LinkedHashMap<String, Object> result = new LinkedHashMap<>();
+        for (Map.Entry<String, ?> entry : map.entrySet()) {
+            Object rawValue = entry.getValue();
+            if (rawValue instanceof Map) {
+                Map<String, List<String>> interpolated =
+                        interpolateMapOfLists((Map<String, ?>) rawValue, source);
+                if (interpolated != null && !interpolated.isEmpty()) {
+                    result.put(entry.getKey(), interpolated);
+                }
+            }
+        }
+        return result;
+    }
+
     // Path resolution
 
     /**
