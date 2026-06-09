@@ -465,9 +465,12 @@ public class TransportIndexRuleAction
                 String documentId,
                 String space) {
             QueryBuilder query =
-                    QueryBuilders.boolQuery()
-                            .filter(QueryBuilders.termQuery(Rule.RULE + "." + Rule.DOCUMENT_ID_FIELD, documentId))
-                            .filter(QueryBuilders.termQuery(Rule.RULE + "." + Rule.SPACE_FIELD, space));
+                    QueryBuilders.nestedQuery(
+                            "rule",
+                            QueryBuilders.boolQuery()
+                                    .filter(QueryBuilders.termQuery("rule.document.id", documentId))
+                                    .filter(QueryBuilders.termQuery("rule.space", space)),
+                            ScoreMode.None);
             SearchRequest searchRequest =
                     new SearchRequest(Rule.CUSTOM_RULES_INDEX)
                             .source(new SearchSourceBuilder().query(query).size(1))

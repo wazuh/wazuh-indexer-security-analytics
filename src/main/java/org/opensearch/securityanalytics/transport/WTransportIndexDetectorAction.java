@@ -18,6 +18,7 @@ package org.opensearch.securityanalytics.transport;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.lucene.search.join.ScoreMode;
 import org.opensearch.OpenSearchStatusException;
 import org.opensearch.action.search.SearchRequest;
 import org.opensearch.action.search.SearchResponse;
@@ -197,7 +198,8 @@ public class WTransportIndexDetectorAction
         SearchSourceBuilder sourceBuilder = new SearchSourceBuilder();
 
         sourceBuilder.query(
-                QueryBuilders.termsQuery(Rule.RULE + "." + Rule.DOCUMENT_ID_FIELD, expectedRuleIds));
+                QueryBuilders.nestedQuery(
+                        "rule", QueryBuilders.termsQuery("rule.document.id", expectedRuleIds), ScoreMode.None));
 
         sourceBuilder.size(Math.min(expectedRuleIds.size(), 10000));
         searchRequest.source(sourceBuilder);
@@ -218,10 +220,7 @@ public class WTransportIndexDetectorAction
                             String space = null;
 
                             if (ruleMap != null) {
-                                Object docObj = ruleMap.get("document");
-                                if (docObj instanceof Map) {
-                                    docId = (String) ((Map<?, ?>) docObj).get("id");
-                                }
+                                docId = (String) ruleMap.get("document.id");
                                 space = (String) ruleMap.get("space");
                             }
 

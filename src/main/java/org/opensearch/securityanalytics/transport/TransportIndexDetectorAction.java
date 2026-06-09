@@ -19,6 +19,7 @@ package org.opensearch.securityanalytics.transport;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.lucene.search.join.ScoreMode;
 import org.opensearch.OpenSearchStatusException;
 import org.opensearch.action.ActionRunnable;
 import org.opensearch.action.StepListener;
@@ -2261,9 +2262,12 @@ public class TransportIndexDetectorAction
                             .collect(Collectors.toList());
 
             QueryBuilder queryBuilder =
-                    QueryBuilders.boolQuery()
-                            .must(QueryBuilders.matchQuery("rule.category", ruleTopic))
-                            .must(QueryBuilders.termsQuery("_id", ruleIds.toArray(new String[] {})));
+                    QueryBuilders.nestedQuery(
+                            "rule",
+                            QueryBuilders.boolQuery()
+                                    .must(QueryBuilders.matchQuery("rule.category", ruleTopic))
+                                    .must(QueryBuilders.termsQuery("_id", ruleIds.toArray(new String[] {}))),
+                            ScoreMode.Avg);
 
             SearchRequest searchRequest =
                     new SearchRequest(Rule.PRE_PACKAGED_RULES_INDEX)
@@ -2429,10 +2433,14 @@ public class TransportIndexDetectorAction
             // Querying by _id would fail because the IDs received here are document.id values,
             // not the internal _id of the custom rules index.
             QueryBuilder queryBuilder =
-                    QueryBuilders.boolQuery()
-                            .filter(
-                                    QueryBuilders.termsQuery("rule.document.id", ruleIds.toArray(new String[] {})))
-                            .filter(QueryBuilders.termQuery("rule.space", "custom"));
+                    QueryBuilders.nestedQuery(
+                            "rule",
+                            QueryBuilders.boolQuery()
+                                    .filter(
+                                            QueryBuilders.termsQuery(
+                                                    "rule.document.id", ruleIds.toArray(new String[] {})))
+                                    .filter(QueryBuilders.termQuery("rule.space", "custom")),
+                            ScoreMode.None);
             SearchRequest searchRequest =
                     new SearchRequest(Rule.CUSTOM_RULES_INDEX)
                             .source(

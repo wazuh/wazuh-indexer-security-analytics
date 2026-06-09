@@ -259,7 +259,11 @@ public class WTransportDeleteSpaceResourcesAction
     private void findRuleIds(String ruleIndex, String space, ActionListener<List<String>> listener) {
         SearchSourceBuilder source =
                 new SearchSourceBuilder()
-                        .query(QueryBuilders.termQuery(RULE_NESTED_PATH + "." + Rule.SPACE_FIELD, space))
+                        .query(
+                                QueryBuilders.nestedQuery(
+                                        RULE_NESTED_PATH,
+                                        QueryBuilders.termQuery(RULE_NESTED_PATH + "." + Rule.SPACE_FIELD, space),
+                                        ScoreMode.None))
                         .size(MAX_RESULTS)
                         .fetchSource(false);
 
