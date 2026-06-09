@@ -18,38 +18,44 @@ package org.opensearch.securityanalytics.resthandler;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.opensearch.action.search.SearchRequest;
-import org.opensearch.action.search.SearchResponse;
+import org.opensearch.action.bulk.BulkItemResponse;
+import org.opensearch.action.bulk.BulkRequest;
+import org.opensearch.action.bulk.BulkResponse;
 import org.opensearch.action.update.UpdateRequest;
-import org.opensearch.action.update.UpdateResponse;
+import org.opensearch.common.xcontent.XContentHelper;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.rest.RestStatus;
 import org.opensearch.core.xcontent.MediaTypeRegistry;
-import org.opensearch.index.query.QueryBuilders;
+import org.opensearch.core.xcontent.XContentBuilder;
 import org.opensearch.rest.BaseRestHandler;
 import org.opensearch.rest.BytesRestResponse;
 import org.opensearch.rest.NamedRoute;
 import org.opensearch.rest.RestChannel;
 import org.opensearch.rest.RestRequest;
-import org.opensearch.search.SearchHit;
-import org.opensearch.search.builder.SearchSourceBuilder;
 import org.opensearch.securityanalytics.SecurityAnalyticsPlugin;
 import org.opensearch.transport.client.node.NodeClient;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
 /**
- * PUT /_plugins/_security_analytics/findings/{finding_id}/case
+ * PUT /_plugins/_security_analytics/findings/_update
  *
- * <p>Updates case management fields on a finding document that lives inside a data stream. Resolves
- * the backing index via a _search (since GET doesn't resolve data stream wildcards), then targets
- * _update directly on the backing index.
+ * <p>Accepts a JSON object with a {@code findings} array. Each element must contain {@code _id},
+ * {@code _index}, and a {@code case} object with the case-management fields to set.
  */
 public class RestUpdateFindingsAction extends BaseRestHandler {
     private static final Logger log = LogManager.getLogger(RestUpdateFindingsAction.class);
 
-    private static final String FINDINGS_PATTERN = "wazuh-findings-v5-*";
+    private static final String FIELD_FINDINGS = "findings";
+    private static final String FIELD_ID = "_id";
+    private static final String FIELD_INDEX = "_index";
+    private static final String FIELD_CASE = "case";
+    private static final String FIELD_WAZUH = "wazuh";
+    private static final String FIELD_MESSAGE = "message";
+    private static final String FIELD_STATUS = "status";
+    private static final int MAX_BULK_ITEMS = 50;
 
     @Override
     public String getName() {
@@ -68,106 +74,142 @@ public class RestUpdateFindingsAction extends BaseRestHandler {
 
     @Override
     protected RestChannelConsumer prepareRequest(RestRequest request, NodeClient client) {
-        String findingId = request.param("finding_id");
-        String body = request.content().utf8ToString();
+        Map<String, Object> parsed;
+        try {
+            parsed = XContentHelper.convertToMap(request.content(), false, MediaTypeRegistry.JSON).v2();
+        } catch (Exception e) {
+            return channel ->
+                    this.sendError(channel, RestStatus.BAD_REQUEST, "Invalid JSON body: " + e.getMessage());
+        }
+
+        Object findingsObj = parsed.get(FIELD_FINDINGS);
+        if (!(findingsObj instanceof List)) {
+            return channel ->
+                    this.sendError(
+                            channel,
+                            RestStatus.BAD_REQUEST,
+                            "Request body must contain a \"" + FIELD_FINDINGS + "\" array");
+        }
+
+        @SuppressWarnings("unchecked")
+        List<Object> items = (List<Object>) findingsObj;
 
         return channel -> {
-            // Step 1: Search for the doc by _id to resolve the backing index
-            SearchRequest searchRequest = new SearchRequest(FINDINGS_PATTERN);
-            searchRequest.source(
-                    new SearchSourceBuilder().query(QueryBuilders.idsQuery().addIds(findingId)).size(1));
+            if (items.isEmpty()) {
+                this.sendError(channel, RestStatus.BAD_REQUEST, "Findings array is empty");
+                return;
+            }
 
-            client.search(
-                    searchRequest,
+            if (items.size() > MAX_BULK_ITEMS) {
+                this.sendError(
+                        channel,
+                        RestStatus.BAD_REQUEST,
+                        "Cannot update more than " + MAX_BULK_ITEMS + " findings at once");
+                return;
+            }
+
+            BulkRequest bulkRequest = new BulkRequest();
+
+            for (int i = 0; i < items.size(); i++) {
+                Object item = items.get(i);
+                if (!(item instanceof Map)) {
+                    this.sendError(
+                            channel, RestStatus.BAD_REQUEST, "Element at index " + i + " is not a JSON object");
+                    return;
+                }
+
+                @SuppressWarnings("unchecked")
+                Map<String, Object> entry = (Map<String, Object>) item;
+                String id = (String) entry.get(FIELD_ID);
+                String index = (String) entry.get(FIELD_INDEX);
+                Object caseObj = entry.get(FIELD_CASE);
+
+                if (id == null || id.isBlank()) {
+                    this.sendError(
+                            channel, RestStatus.BAD_REQUEST, "Element at index " + i + " is missing " + FIELD_ID);
+                    return;
+                }
+                if (index == null || index.isBlank()) {
+                    this.sendError(
+                            channel,
+                            RestStatus.BAD_REQUEST,
+                            "Element at index " + i + " is missing " + FIELD_INDEX);
+                    return;
+                }
+                if (!(caseObj instanceof Map)) {
+                    this.sendError(
+                            channel,
+                            RestStatus.BAD_REQUEST,
+                            "Element at index " + i + " is missing or invalid " + FIELD_CASE + " object");
+                    return;
+                }
+
+                Map<String, Object> updateDoc = Map.of(FIELD_WAZUH, Map.of(FIELD_CASE, caseObj));
+                UpdateRequest updateRequest =
+                        new UpdateRequest(index, id).doc(updateDoc, MediaTypeRegistry.JSON);
+                bulkRequest.add(updateRequest);
+            }
+
+            client.bulk(
+                    bulkRequest,
                     new ActionListener<>() {
                         @Override
-                        public void onResponse(SearchResponse searchResponse) {
-                            if (searchResponse.getHits().getTotalHits().value() == 0) {
-                                RestUpdateFindingsAction.sendError(
-                                        channel, RestStatus.NOT_FOUND, "Finding [" + findingId + "] not found");
-                                return;
-                            }
+                        public void onResponse(BulkResponse bulkResponse) {
+                            try (XContentBuilder builder = MediaTypeRegistry.JSON.contentBuilder()) {
+                                builder.startObject();
+                                builder.field("took", bulkResponse.getTook().millis());
+                                builder.field("errors", bulkResponse.hasFailures());
+                                builder.startArray("items");
+                                for (BulkItemResponse item : bulkResponse) {
+                                    builder.startObject();
+                                    builder.field(FIELD_ID, item.getId());
+                                    builder.field(FIELD_INDEX, item.getIndex());
+                                    if (item.isFailed()) {
+                                        BulkItemResponse.Failure failure = item.getFailure();
+                                        RestStatus failStatus = failure != null ? failure.getStatus() : null;
+                                        builder.field("status", failStatus != null ? failStatus.getStatus() : 500);
+                                        builder.field("error", item.getFailureMessage());
+                                    } else {
+                                        builder.field("status", item.status().getStatus());
+                                        builder.field("result", item.getResponse().getResult().getLowercase());
+                                    }
+                                    builder.endObject();
+                                }
+                                builder.endArray();
+                                builder.endObject();
 
-                            SearchHit hit = searchResponse.getHits().getHits()[0];
-                            String backingIndex = hit.getIndex();
-                            log.info("Resolved finding [{}] to backing index [{}]", findingId, backingIndex);
-
-                            // Step 2: Parse the body as case fields
-                            Map<String, Object> caseFields;
-                            try {
-                                @SuppressWarnings("unchecked")
-                                Map<String, Object> parsed =
-                                        org.opensearch.common.xcontent.XContentHelper.convertToMap(
-                                                MediaTypeRegistry.JSON.xContent(), body, false);
-                                caseFields = parsed;
+                                RestStatus status =
+                                        bulkResponse.hasFailures() ? RestStatus.MULTI_STATUS : RestStatus.OK;
+                                channel.sendResponse(new BytesRestResponse(status, builder));
                             } catch (Exception e) {
-                                RestUpdateFindingsAction.sendError(
-                                        channel, RestStatus.BAD_REQUEST, "Invalid JSON body: " + e.getMessage());
-                                return;
+                                log.error("Failed to send bulk response", e);
+                                RestUpdateFindingsAction.this.sendError(
+                                        channel,
+                                        RestStatus.INTERNAL_SERVER_ERROR,
+                                        "Failed to build response: " + e.getMessage());
                             }
-
-                            // Step 3: _update directly on the backing index
-                            Map<String, Object> updateDoc = Map.of("wazuh", Map.of("case", caseFields));
-
-                            UpdateRequest updateRequest =
-                                    new UpdateRequest(backingIndex, findingId).doc(updateDoc, MediaTypeRegistry.JSON);
-
-                            client.update(
-                                    updateRequest,
-                                    new ActionListener<>() {
-                                        @Override
-                                        public void onResponse(UpdateResponse updateResponse) {
-                                            try {
-                                                channel.sendResponse(
-                                                        new BytesRestResponse(
-                                                                RestStatus.OK,
-                                                                "application/json",
-                                                                "{\"message\":\"Case updated\","
-                                                                        + "\"backing_index\":\""
-                                                                        + backingIndex
-                                                                        + "\","
-                                                                        + "\"result\":\""
-                                                                        + updateResponse.getResult().getLowercase()
-                                                                        + "\"}"));
-                                            } catch (Exception e) {
-                                                log.error("Failed to send response", e);
-                                            }
-                                        }
-
-                                        @Override
-                                        public void onFailure(Exception e) {
-                                            log.error("Failed to update finding case", e);
-                                            RestUpdateFindingsAction.sendError(
-                                                    channel,
-                                                    RestStatus.INTERNAL_SERVER_ERROR,
-                                                    "Update failed: " + e.getMessage());
-                                        }
-                                    });
                         }
 
                         @Override
                         public void onFailure(Exception e) {
-                            log.error("Failed to resolve finding", e);
-                            RestUpdateFindingsAction.sendError(
-                                    channel, RestStatus.INTERNAL_SERVER_ERROR, "Resolve failed: " + e.getMessage());
+                            log.error("Bulk update failed", e);
+                            RestUpdateFindingsAction.this.sendError(
+                                    channel,
+                                    RestStatus.INTERNAL_SERVER_ERROR,
+                                    "Bulk update failed: " + e.getMessage());
                         }
                     });
         };
     }
 
-    private static void sendError(RestChannel channel, RestStatus status, String message) {
-        try {
-            channel.sendResponse(
-                    new BytesRestResponse(
-                            status,
-                            "application/json",
-                            "{\"message\":\""
-                                    + message.replace("\"", "\\\"")
-                                    + "\","
-                                    + "\"status\":"
-                                    + status.getStatus()
-                                    + "}"));
-        } catch (Exception e) {
+    private void sendError(RestChannel channel, RestStatus status, String message) {
+        try (XContentBuilder builder = MediaTypeRegistry.JSON.contentBuilder()) {
+            builder.startObject();
+            builder.field(FIELD_MESSAGE, message);
+            builder.field(FIELD_STATUS, status.getStatus());
+            builder.endObject();
+            channel.sendResponse(new BytesRestResponse(status, builder));
+        } catch (IOException e) {
             log.error("Failed to send error response", e);
         }
     }
