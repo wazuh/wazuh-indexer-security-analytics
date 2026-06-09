@@ -1,8 +1,46 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.indexmanagment;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.opensearch.action.admin.cluster.state.ClusterStateRequest;
+import org.opensearch.action.admin.cluster.state.ClusterStateResponse;
+import org.opensearch.action.admin.indices.delete.DeleteIndexRequest;
+import org.opensearch.action.admin.indices.rollover.RolloverRequest;
+import org.opensearch.action.admin.indices.rollover.RolloverResponse;
+import org.opensearch.action.support.IndicesOptions;
+import org.opensearch.action.support.clustermanager.AcknowledgedResponse;
+import org.opensearch.cluster.ClusterChangedEvent;
+import org.opensearch.cluster.ClusterStateListener;
+import org.opensearch.cluster.metadata.AliasMetadata;
+import org.opensearch.cluster.metadata.IndexMetadata;
+import org.opensearch.cluster.service.ClusterService;
+import org.opensearch.common.inject.Inject;
+import org.opensearch.common.lifecycle.AbstractLifecycleComponent;
+import org.opensearch.common.settings.Settings;
+import org.opensearch.common.unit.TimeValue;
+import org.opensearch.core.action.ActionListener;
+import org.opensearch.securityanalytics.config.monitors.DetectorMonitorConfig;
+import org.opensearch.securityanalytics.logtype.LogTypeService;
+import org.opensearch.securityanalytics.util.CorrelationIndices;
+import org.opensearch.threadpool.Scheduler;
+import org.opensearch.threadpool.ThreadPool;
+import org.opensearch.transport.client.Client;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -13,36 +51,11 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.opensearch.action.support.clustermanager.AcknowledgedResponse;
-import org.opensearch.core.action.ActionListener;
-import org.opensearch.action.admin.cluster.state.ClusterStateRequest;
-import org.opensearch.action.admin.cluster.state.ClusterStateResponse;
-import org.opensearch.action.admin.indices.delete.DeleteIndexRequest;
-import org.opensearch.action.admin.indices.rollover.RolloverRequest;
-import org.opensearch.action.admin.indices.rollover.RolloverResponse;
-import org.opensearch.action.support.IndicesOptions;
-import org.opensearch.cluster.ClusterChangedEvent;
-import org.opensearch.cluster.ClusterStateListener;
-import org.opensearch.cluster.metadata.AliasMetadata;
-import org.opensearch.cluster.metadata.IndexMetadata;
-import org.opensearch.cluster.service.ClusterService;
-import org.opensearch.common.inject.Inject;
-import org.opensearch.common.lifecycle.AbstractLifecycleComponent;
-import org.opensearch.common.settings.Settings;
-import org.opensearch.common.unit.TimeValue;
-import org.opensearch.securityanalytics.config.monitors.DetectorMonitorConfig;
-import org.opensearch.securityanalytics.logtype.LogTypeService;
-
-import org.opensearch.securityanalytics.util.CorrelationIndices;
-import org.opensearch.threadpool.Scheduler;
-import org.opensearch.threadpool.ThreadPool;
-import org.opensearch.transport.client.Client;
 
 import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings.*;
 
-public class DetectorIndexManagementService extends AbstractLifecycleComponent implements ClusterStateListener {
+public class DetectorIndexManagementService extends AbstractLifecycleComponent
+        implements ClusterStateListener {
 
     private Logger logger = LogManager.getLogger(DetectorIndexManagementService.class);
 
@@ -55,12 +68,8 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
     private volatile Boolean alertHistoryEnabled;
     private volatile Boolean findingHistoryEnabled;
 
-    private volatile Boolean iocFindingHistoryEnabled;
-
     private volatile Long alertHistoryMaxDocs;
     private volatile Long findingHistoryMaxDocs;
-
-    private volatile Long iocFindingHistoryMaxDocs;
 
     private volatile Long correlationHistoryMaxDocs;
 
@@ -69,14 +78,10 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
 
     private volatile TimeValue correlationHistoryMaxAge;
 
-    private volatile TimeValue iocFindingHistoryMaxAge;
-
     private volatile TimeValue alertHistoryRolloverPeriod;
     private volatile TimeValue findingHistoryRolloverPeriod;
 
     private volatile TimeValue correlationHistoryRolloverPeriod;
-
-    private volatile TimeValue iocFindingHistoryRolloverPeriod;
 
     private volatile TimeValue alertHistoryRetentionPeriod;
     private volatile TimeValue findingHistoryRetentionPeriod;
@@ -109,8 +114,7 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
             Client client,
             ThreadPool threadPool,
             ClusterService clusterService,
-            LogTypeService logTypeService
-    ) {
+            LogTypeService logTypeService) {
         this.settings = settings;
         this.client = client;
         this.threadPool = threadPool;
@@ -119,85 +123,113 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
 
         clusterService.addListener(this);
 
-        clusterService.getClusterSettings().addSettingsUpdateConsumer(ALERT_HISTORY_ENABLED, this::setAlertHistoryEnabled);
-        clusterService.getClusterSettings().addSettingsUpdateConsumer(ALERT_HISTORY_MAX_DOCS, maxDocs -> {
-            setAlertHistoryMaxDocs(maxDocs);
-            for (HistoryIndexInfo h : alertHistoryIndices) {
-                h.maxDocs = maxDocs;
-            }
-        });
-        clusterService.getClusterSettings().addSettingsUpdateConsumer(ALERT_HISTORY_INDEX_MAX_AGE, maxAge -> {
-            setAlertHistoryMaxAge(maxAge);
-            for (HistoryIndexInfo h : alertHistoryIndices) {
-                h.maxAge = maxAge;
-            }
-        });
-        clusterService.getClusterSettings().addSettingsUpdateConsumer(ALERT_HISTORY_ROLLOVER_PERIOD, timeValue -> {
-            DetectorIndexManagementService.this.alertHistoryRolloverPeriod = timeValue;
-            rescheduleAlertRollover();
-        });
-        clusterService.getClusterSettings().addSettingsUpdateConsumer(ALERT_HISTORY_RETENTION_PERIOD, this::setAlertHistoryRetentionPeriod);
+        clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(ALERT_HISTORY_ENABLED, this::setAlertHistoryEnabled);
+        clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        ALERT_HISTORY_MAX_DOCS,
+                        maxDocs -> {
+                            setAlertHistoryMaxDocs(maxDocs);
+                            for (HistoryIndexInfo h : alertHistoryIndices) {
+                                h.maxDocs = maxDocs;
+                            }
+                        });
+        clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        ALERT_HISTORY_INDEX_MAX_AGE,
+                        maxAge -> {
+                            setAlertHistoryMaxAge(maxAge);
+                            for (HistoryIndexInfo h : alertHistoryIndices) {
+                                h.maxAge = maxAge;
+                            }
+                        });
+        clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        ALERT_HISTORY_ROLLOVER_PERIOD,
+                        timeValue -> {
+                            DetectorIndexManagementService.this.alertHistoryRolloverPeriod = timeValue;
+                            rescheduleAlertRollover();
+                        });
+        clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        ALERT_HISTORY_RETENTION_PERIOD, this::setAlertHistoryRetentionPeriod);
 
-        clusterService.getClusterSettings().addSettingsUpdateConsumer(FINDING_HISTORY_ENABLED, this::setFindingHistoryEnabled);
-        clusterService.getClusterSettings().addSettingsUpdateConsumer(FINDING_HISTORY_MAX_DOCS, maxDocs -> {
-            setFindingHistoryMaxDocs(maxDocs);
-            for (HistoryIndexInfo h : findingHistoryIndices) {
-                h.maxDocs = maxDocs;
-            }
-        });
-        clusterService.getClusterSettings().addSettingsUpdateConsumer(FINDING_HISTORY_INDEX_MAX_AGE, maxAge -> {
-            setFindingHistoryMaxAge(maxAge);
-            for (HistoryIndexInfo h : findingHistoryIndices) {
-                h.maxAge = maxAge;
-            }
-        });
-        clusterService.getClusterSettings().addSettingsUpdateConsumer(FINDING_HISTORY_ROLLOVER_PERIOD, timeValue -> {
-            DetectorIndexManagementService.this.findingHistoryRolloverPeriod = timeValue;
-            rescheduleFindingRollover();
-        });
-        clusterService.getClusterSettings().addSettingsUpdateConsumer(FINDING_HISTORY_RETENTION_PERIOD, this::setFindingHistoryRetentionPeriod);
+        clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(FINDING_HISTORY_ENABLED, this::setFindingHistoryEnabled);
+        clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        FINDING_HISTORY_MAX_DOCS,
+                        maxDocs -> {
+                            setFindingHistoryMaxDocs(maxDocs);
+                            for (HistoryIndexInfo h : findingHistoryIndices) {
+                                h.maxDocs = maxDocs;
+                            }
+                        });
+        clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        FINDING_HISTORY_INDEX_MAX_AGE,
+                        maxAge -> {
+                            setFindingHistoryMaxAge(maxAge);
+                            for (HistoryIndexInfo h : findingHistoryIndices) {
+                                h.maxAge = maxAge;
+                            }
+                        });
+        clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        FINDING_HISTORY_ROLLOVER_PERIOD,
+                        timeValue -> {
+                            DetectorIndexManagementService.this.findingHistoryRolloverPeriod = timeValue;
+                            rescheduleFindingRollover();
+                        });
+        clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        FINDING_HISTORY_RETENTION_PERIOD, this::setFindingHistoryRetentionPeriod);
 
-        clusterService.getClusterSettings().addSettingsUpdateConsumer(CORRELATION_HISTORY_MAX_DOCS, maxDocs -> {
-            setCorrelationHistoryMaxDocs(maxDocs);
-            if (correlationHistoryIndex != null) {
-                correlationHistoryIndex.maxDocs = maxDocs;
-            }
-        });
+        clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        CORRELATION_HISTORY_MAX_DOCS,
+                        maxDocs -> {
+                            setCorrelationHistoryMaxDocs(maxDocs);
+                            if (correlationHistoryIndex != null) {
+                                correlationHistoryIndex.maxDocs = maxDocs;
+                            }
+                        });
 
-        clusterService.getClusterSettings().addSettingsUpdateConsumer(CORRELATION_HISTORY_INDEX_MAX_AGE, maxAge -> {
-            setCorrelationHistoryMaxAge(maxAge);
-            if (correlationHistoryIndex != null) {
-                correlationHistoryIndex.maxAge = maxAge;
-            }
-        });
+        clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        CORRELATION_HISTORY_INDEX_MAX_AGE,
+                        maxAge -> {
+                            setCorrelationHistoryMaxAge(maxAge);
+                            if (correlationHistoryIndex != null) {
+                                correlationHistoryIndex.maxAge = maxAge;
+                            }
+                        });
 
-        clusterService.getClusterSettings().addSettingsUpdateConsumer(CORRELATION_HISTORY_ROLLOVER_PERIOD, timeValue -> {
-            DetectorIndexManagementService.this.correlationHistoryRolloverPeriod = timeValue;
-            rescheduleCorrelationHistoryRollover();
-        });
+        clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        CORRELATION_HISTORY_ROLLOVER_PERIOD,
+                        timeValue -> {
+                            DetectorIndexManagementService.this.correlationHistoryRolloverPeriod = timeValue;
+                            rescheduleCorrelationHistoryRollover();
+                        });
 
-        clusterService.getClusterSettings().addSettingsUpdateConsumer(CORRELATION_HISTORY_RETENTION_PERIOD, this::setCorrelationHistoryRetentionPeriod);
-
-        clusterService.getClusterSettings().addSettingsUpdateConsumer(IOC_FINDING_HISTORY_MAX_DOCS, maxDocs -> {
-            setIocFindingHistoryMaxDocs(maxDocs);
-            if (iocFindingHistoryIndex != null) {
-                iocFindingHistoryIndex.maxDocs = maxDocs;
-            }
-        });
-
-        clusterService.getClusterSettings().addSettingsUpdateConsumer(IOC_FINDING_HISTORY_INDEX_MAX_AGE, maxAge -> {
-            setIocFindingHistoryMaxAge(maxAge);
-            if (iocFindingHistoryIndex != null) {
-                iocFindingHistoryIndex.maxAge = maxAge;
-            }
-        });
-
-        clusterService.getClusterSettings().addSettingsUpdateConsumer(IOC_FINDING_HISTORY_ROLLOVER_PERIOD, timeValue -> {
-            DetectorIndexManagementService.this.iocFindingHistoryRolloverPeriod = timeValue;
-            rescheduleIocFindingHistoryRollover();
-        });
-
-        clusterService.getClusterSettings().addSettingsUpdateConsumer(IOC_FINDING_HISTORY_RETENTION_PERIOD, this::setIocFindingHistoryRetentionPeriod);
+        clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        CORRELATION_HISTORY_RETENTION_PERIOD, this::setCorrelationHistoryRetentionPeriod);
 
         initFromClusterSettings();
     }
@@ -210,42 +242,43 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
 
         logTypes.forEach(
                 logType -> {
-
                     String alertsHistoryIndex = DetectorMonitorConfig.getAlertsHistoryIndex(logType);
-                    String alertsHistoryIndexPattern = DetectorMonitorConfig.getAlertsHistoryIndexPattern(logType);
+                    String alertsHistoryIndexPattern =
+                            DetectorMonitorConfig.getAlertsHistoryIndexPattern(logType);
 
-                    alertHistoryIndices.add(new HistoryIndexInfo(
-                            alertsHistoryIndex,
-                            alertsHistoryIndexPattern,
-                            alertMapping(),
-                            alertHistoryMaxDocs,
-                            alertHistoryMaxAge,
-                            clusterService.state().metadata().hasAlias(alertsHistoryIndex)
-                    ));
+                    alertHistoryIndices.add(
+                            new HistoryIndexInfo(
+                                    alertsHistoryIndex,
+                                    alertsHistoryIndexPattern,
+                                    alertMapping(),
+                                    alertHistoryMaxDocs,
+                                    alertHistoryMaxAge,
+                                    clusterService.state().metadata().hasAlias(alertsHistoryIndex)));
 
                     String findingsIndex = DetectorMonitorConfig.getFindingsIndex(logType);
                     String findingsIndexPattern = DetectorMonitorConfig.getFindingsIndexPattern(logType);
 
-                    findingHistoryIndices.add(new HistoryIndexInfo(
-                            findingsIndex,
-                            findingsIndexPattern,
-                            findingMapping(),
-                            findingHistoryMaxDocs,
-                            findingHistoryMaxAge,
-                            clusterService.state().metadata().hasAlias(findingsIndex)
-                    ));
+                    findingHistoryIndices.add(
+                            new HistoryIndexInfo(
+                                    findingsIndex,
+                                    findingsIndexPattern,
+                                    findingMapping(),
+                                    findingHistoryMaxDocs,
+                                    findingHistoryMaxAge,
+                                    clusterService.state().metadata().hasAlias(findingsIndex)));
 
                     String wazuhFindingsIndex = DetectorMonitorConfig.getWazuhFindingsIndex(logType);
-                    String wazuhFindingsIndexPattern = DetectorMonitorConfig.getWazuhFindingsIndexPattern(logType);
+                    String wazuhFindingsIndexPattern =
+                            DetectorMonitorConfig.getWazuhFindingsIndexPattern(logType);
 
-                    wazuhFindingHistoryIndices.add(new HistoryIndexInfo(
-                            wazuhFindingsIndex,
-                            wazuhFindingsIndexPattern,
-                            wazuhFindingEnrichmentMapping(),
-                            findingHistoryMaxDocs,
-                            findingHistoryMaxAge,
-                            clusterService.state().metadata().hasAlias(wazuhFindingsIndex)
-                    ));
+                    wazuhFindingHistoryIndices.add(
+                            new HistoryIndexInfo(
+                                    wazuhFindingsIndex,
+                                    wazuhFindingsIndexPattern,
+                                    wazuhFindingEnrichmentMapping(),
+                                    findingHistoryMaxDocs,
+                                    findingHistoryMaxAge,
+                                    clusterService.state().metadata().hasAlias(wazuhFindingsIndex)));
                 });
     }
 
@@ -255,19 +288,15 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
         alertHistoryMaxDocs = ALERT_HISTORY_MAX_DOCS.get(settings);
         findingHistoryMaxDocs = FINDING_HISTORY_MAX_DOCS.get(settings);
         correlationHistoryMaxDocs = CORRELATION_HISTORY_MAX_DOCS.get(settings);
-        iocFindingHistoryMaxDocs = IOC_FINDING_HISTORY_MAX_DOCS.get(settings);
         alertHistoryMaxAge = ALERT_HISTORY_INDEX_MAX_AGE.get(settings);
         findingHistoryMaxAge = FINDING_HISTORY_INDEX_MAX_AGE.get(settings);
         correlationHistoryMaxAge = CORRELATION_HISTORY_INDEX_MAX_AGE.get(settings);
-        iocFindingHistoryMaxAge = IOC_FINDING_HISTORY_INDEX_MAX_AGE.get(settings);
         alertHistoryRolloverPeriod = ALERT_HISTORY_ROLLOVER_PERIOD.get(settings);
         findingHistoryRolloverPeriod = FINDING_HISTORY_ROLLOVER_PERIOD.get(settings);
         correlationHistoryRolloverPeriod = CORRELATION_HISTORY_ROLLOVER_PERIOD.get(settings);
-        iocFindingHistoryRolloverPeriod = IOC_FINDING_HISTORY_ROLLOVER_PERIOD.get(settings);
         alertHistoryRetentionPeriod = ALERT_HISTORY_RETENTION_PERIOD.get(settings);
         findingHistoryRetentionPeriod = FINDING_HISTORY_RETENTION_PERIOD.get(settings);
         correlationHistoryRetentionPeriod = CORRELATION_HISTORY_RETENTION_PERIOD.get(settings);
-        iocFindingHistoryRetentionPeriod = IOC_FINDING_HISTORY_RETENTION_PERIOD.get(settings);
     }
 
     @Override
@@ -294,41 +323,55 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
         }
 
         if (correlationHistoryIndex != null && correlationHistoryIndex.indexAlias != null) {
-            correlationHistoryIndex.isInitialized = event.state().metadata().hasAlias(correlationHistoryIndex.indexAlias);
+            correlationHistoryIndex.isInitialized =
+                    event.state().metadata().hasAlias(correlationHistoryIndex.indexAlias);
         }
         if (iocFindingHistoryIndex != null && iocFindingHistoryIndex.indexAlias != null) {
-            iocFindingHistoryIndex.isInitialized = event.state().metadata().hasAlias(iocFindingHistoryIndex.indexAlias);
+            iocFindingHistoryIndex.isInitialized =
+                    event.state().metadata().hasAlias(iocFindingHistoryIndex.indexAlias);
         }
     }
 
     private void onMaster() {
         try {
             // try to rollover immediately as we might be restarting the cluster
-            threadPool.schedule(() -> {
-                rolloverAndDeleteAlertHistoryIndices();
-                rolloverAndDeleteFindingHistoryIndices();
-                rolloverAndDeleteWazuhFindingHistoryIndices();
-                rolloverAndDeleteCorrelationHistoryIndices();
-                rolloverAndDeleteIocFindingHistoryIndices();
-            }, TimeValue.timeValueSeconds(1), executorName());
+            threadPool.schedule(
+                    () -> {
+                        rolloverAndDeleteAlertHistoryIndices();
+                        rolloverAndDeleteFindingHistoryIndices();
+                        rolloverAndDeleteWazuhFindingHistoryIndices();
+                        rolloverAndDeleteCorrelationHistoryIndices();
+                        rolloverAndDeleteIocFindingHistoryIndices();
+                    },
+                    TimeValue.timeValueSeconds(1),
+                    executorName());
             // schedule the next rollover for approx MAX_AGE later
-            scheduledAlertsRollover = threadPool
-                    .scheduleWithFixedDelay(() -> rolloverAndDeleteAlertHistoryIndices(), alertHistoryRolloverPeriod, executorName());
-            scheduledFindingsRollover = threadPool
-                    .scheduleWithFixedDelay(() -> rolloverAndDeleteFindingHistoryIndices(), findingHistoryRolloverPeriod, executorName());
-            scheduledWazuhFindingsRollover = threadPool
-                    .scheduleWithFixedDelay(() -> rolloverAndDeleteWazuhFindingHistoryIndices(), findingHistoryRolloverPeriod, executorName());
-            scheduledCorrelationHistoryRollover = threadPool
-                    .scheduleWithFixedDelay(() -> rolloverAndDeleteCorrelationHistoryIndices(), correlationHistoryRolloverPeriod, executorName());
-            scheduledIocFindingHistoryRollover = threadPool
-                    .scheduleWithFixedDelay(() -> rolloverAndDeleteIocFindingHistoryIndices(), iocFindingHistoryRolloverPeriod, executorName());
+            scheduledAlertsRollover =
+                    threadPool.scheduleWithFixedDelay(
+                            () -> rolloverAndDeleteAlertHistoryIndices(),
+                            alertHistoryRolloverPeriod,
+                            executorName());
+            scheduledFindingsRollover =
+                    threadPool.scheduleWithFixedDelay(
+                            () -> rolloverAndDeleteFindingHistoryIndices(),
+                            findingHistoryRolloverPeriod,
+                            executorName());
+            scheduledWazuhFindingsRollover =
+                    threadPool.scheduleWithFixedDelay(
+                            () -> rolloverAndDeleteWazuhFindingHistoryIndices(),
+                            findingHistoryRolloverPeriod,
+                            executorName());
+            scheduledCorrelationHistoryRollover =
+                    threadPool.scheduleWithFixedDelay(
+                            () -> rolloverAndDeleteCorrelationHistoryIndices(),
+                            correlationHistoryRolloverPeriod,
+                            executorName());
         } catch (Exception e) {
             // This should be run on cluster startup
             logger.error(
-                    "Error creating alert/finding/correlation/ioc finding indices. " +
-                            "Alerts/Findings/Correlations/IOC Finding can't be recorded until master node is restarted.",
-                    e
-            );
+                    "Error creating alert/finding/correlation/ioc finding indices. "
+                            + "Alerts/Findings/Correlations/IOC Finding can't be recorded until master node is restarted.",
+                    e);
         }
     }
 
@@ -356,55 +399,89 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
 
     private void deleteOldIndices(String tag, String... indices) {
         logger.info("info deleteOldIndices");
-        ClusterStateRequest clusterStateRequest = new ClusterStateRequest()
-                .clear()
-                .indices(indices)
-                .metadata(true)
-                .local(true)
-                .indicesOptions(IndicesOptions.strictExpand());
-        client.admin().cluster().state(
-                clusterStateRequest,
-                new ActionListener<>() {
-                    @Override
-                    public void onResponse(ClusterStateResponse clusterStateResponse) {
-                        if (!clusterStateResponse.getState().metadata().getIndices().isEmpty()) {
-                            List<String> indicesToDelete = getIndicesToDelete(clusterStateResponse);
-                            logger.info("Checking if we should delete " + tag + " indices: [" + indicesToDelete + "]");
-                            deleteAllOldHistoryIndices(indicesToDelete);
-                        } else {
-                            logger.info("No Old " + tag + " Indices to delete");
-                        }
-                    }
+        ClusterStateRequest clusterStateRequest =
+                new ClusterStateRequest()
+                        .clear()
+                        .indices(indices)
+                        .metadata(true)
+                        .local(true)
+                        .indicesOptions(IndicesOptions.strictExpand());
+        client
+                .admin()
+                .cluster()
+                .state(
+                        clusterStateRequest,
+                        new ActionListener<>() {
+                            @Override
+                            public void onResponse(ClusterStateResponse clusterStateResponse) {
+                                if (!clusterStateResponse.getState().metadata().getIndices().isEmpty()) {
+                                    List<String> indicesToDelete = getIndicesToDelete(clusterStateResponse);
+                                    logger.info(
+                                            "Checking if we should delete "
+                                                    + tag
+                                                    + " indices: ["
+                                                    + indicesToDelete
+                                                    + "]");
+                                    deleteAllOldHistoryIndices(indicesToDelete);
+                                } else {
+                                    logger.info("No Old " + tag + " Indices to delete");
+                                }
+                            }
 
-                    @Override
-                    public void onFailure(Exception e) {
-                        logger.error("Error fetching cluster state");
-                    }
-                }
-        );
+                            @Override
+                            public void onFailure(Exception e) {
+                                logger.error("Error fetching cluster state");
+                            }
+                        });
     }
 
     private List<String> getIndicesToDelete(ClusterStateResponse clusterStateResponse) {
         List<String> indicesToDelete = new ArrayList<>();
-        for (IndexMetadata indexMetadata : clusterStateResponse.getState().metadata().indices().values()) {
+        for (IndexMetadata indexMetadata :
+                clusterStateResponse.getState().metadata().indices().values()) {
             IndexMetadata indexMetaData = indexMetadata;
-            String indexToDelete = getHistoryIndexToDelete(indexMetaData, alertHistoryRetentionPeriod.millis(), alertHistoryIndices, alertHistoryEnabled);
+            String indexToDelete =
+                    getHistoryIndexToDelete(
+                            indexMetaData,
+                            alertHistoryRetentionPeriod.millis(),
+                            alertHistoryIndices,
+                            alertHistoryEnabled);
             if (indexToDelete != null) {
                 indicesToDelete.add(indexToDelete);
             }
-            indexToDelete = getHistoryIndexToDelete(indexMetaData, findingHistoryRetentionPeriod.millis(), findingHistoryIndices, findingHistoryEnabled);
+            indexToDelete =
+                    getHistoryIndexToDelete(
+                            indexMetaData,
+                            findingHistoryRetentionPeriod.millis(),
+                            findingHistoryIndices,
+                            findingHistoryEnabled);
             if (indexToDelete != null) {
                 indicesToDelete.add(indexToDelete);
             }
-            indexToDelete = getHistoryIndexToDelete(indexMetaData, correlationHistoryRetentionPeriod.millis(), correlationHistoryIndex != null? List.of(correlationHistoryIndex): List.of(), true);
+            indexToDelete =
+                    getHistoryIndexToDelete(
+                            indexMetaData,
+                            correlationHistoryRetentionPeriod.millis(),
+                            correlationHistoryIndex != null ? List.of(correlationHistoryIndex) : List.of(),
+                            true);
             if (indexToDelete != null) {
                 indicesToDelete.add(indexToDelete);
             }
-            indexToDelete = getHistoryIndexToDelete(indexMetaData, iocFindingHistoryRetentionPeriod.millis(), iocFindingHistoryIndex != null? List.of(iocFindingHistoryIndex): List.of(), true);
+            indexToDelete =
+                    getHistoryIndexToDelete(
+                            indexMetaData,
+                            iocFindingHistoryRetentionPeriod.millis(),
+                            iocFindingHistoryIndex != null ? List.of(iocFindingHistoryIndex) : List.of(),
+                            true);
             if (indexToDelete != null) {
                 indicesToDelete.add(indexToDelete);
             }
-            indexToDelete = getHistoryIndexToDelete(indexMetaData, findingHistoryRetentionPeriod.millis(), wazuhFindingHistoryIndices, findingHistoryEnabled);
+            indexToDelete =
+                    getHistoryIndexToDelete(
+                            indexMetaData,
+                            findingHistoryRetentionPeriod.millis(),
+                            wazuhFindingHistoryIndices,
+                            findingHistoryEnabled);
             if (indexToDelete != null) {
                 indicesToDelete.add(indexToDelete);
             }
@@ -416,16 +493,15 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
             IndexMetadata indexMetadata,
             Long retentionPeriodMillis,
             List<HistoryIndexInfo> historyIndices,
-            Boolean historyEnabled
-    ) {
+            Boolean historyEnabled) {
         long creationTime = indexMetadata.getCreationDate();
         if ((Instant.now().toEpochMilli() - creationTime) > retentionPeriodMillis) {
             String alias = null;
             for (AliasMetadata aliasMetadata : indexMetadata.getAliases().values()) {
-                Optional<HistoryIndexInfo> historyIndexInfoOptional = historyIndices
-                        .stream()
-                        .filter(e -> e.indexAlias.equals(aliasMetadata.alias()))
-                        .findFirst();
+                Optional<HistoryIndexInfo> historyIndexInfoOptional =
+                        historyIndices.stream()
+                                .filter(e -> e.indexAlias.equals(aliasMetadata.alias()))
+                                .findFirst();
                 if (historyIndexInfoOptional.isPresent()) {
                     alias = historyIndexInfoOptional.get().indexAlias;
                     break;
@@ -444,103 +520,133 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
 
     private void deleteAllOldHistoryIndices(List<String> indicesToDelete) {
         if (indicesToDelete.size() > 0) {
-            DeleteIndexRequest deleteIndexRequest = new DeleteIndexRequest(indicesToDelete.toArray(new String[0]));
-            client.admin().indices().delete(
-                    deleteIndexRequest,
-                    new ActionListener<>() {
-                        @Override
-                        public void onResponse(AcknowledgedResponse deleteIndicesResponse) {
-                            if (!deleteIndicesResponse.isAcknowledged()) {
-                                logger.error(
-                                        "Could not delete one or more Alerting/Finding/Correlation/IOC Finding history indices: [" + indicesToDelete + "]. Retrying one by one."
-                                );
-                                deleteOldHistoryIndex(indicesToDelete);
-                            } else {
-                                logger.info("Succsessfuly deleted indices: [" + indicesToDelete + "]");
-                            }
-                        }
+            DeleteIndexRequest deleteIndexRequest =
+                    new DeleteIndexRequest(indicesToDelete.toArray(new String[0]));
+            client
+                    .admin()
+                    .indices()
+                    .delete(
+                            deleteIndexRequest,
+                            new ActionListener<>() {
+                                @Override
+                                public void onResponse(AcknowledgedResponse deleteIndicesResponse) {
+                                    if (!deleteIndicesResponse.isAcknowledged()) {
+                                        logger.error(
+                                                "Could not delete one or more Alerting/Finding/Correlation/IOC Finding history indices: ["
+                                                        + indicesToDelete
+                                                        + "]. Retrying one by one.");
+                                        deleteOldHistoryIndex(indicesToDelete);
+                                    } else {
+                                        logger.info("Succsessfuly deleted indices: [" + indicesToDelete + "]");
+                                    }
+                                }
 
-                        @Override
-                        public void onFailure(Exception e) {
-                            logger.error("Delete for Alerting/Finding/Correlation/IOC Finding History Indices failed: [" + indicesToDelete + "]. Retrying one By one.");
-                            deleteOldHistoryIndex(indicesToDelete);
-                        }
-                    }
-            );
+                                @Override
+                                public void onFailure(Exception e) {
+                                    logger.error(
+                                            "Delete for Alerting/Finding/Correlation/IOC Finding History Indices failed: ["
+                                                    + indicesToDelete
+                                                    + "]. Retrying one By one.");
+                                    deleteOldHistoryIndex(indicesToDelete);
+                                }
+                            });
         }
     }
 
     private void deleteOldHistoryIndex(List<String> indicesToDelete) {
         for (String index : indicesToDelete) {
-            final DeleteIndexRequest singleDeleteRequest = new DeleteIndexRequest(indicesToDelete.toArray(new String[0]));
+            final DeleteIndexRequest singleDeleteRequest =
+                    new DeleteIndexRequest(indicesToDelete.toArray(new String[0]));
 
-            client.admin().indices().delete(
-                    singleDeleteRequest,
-                    new ActionListener<>() {
-                        @Override
-                        public void onResponse(AcknowledgedResponse acknowledgedResponse) {
-                            if (!acknowledgedResponse.isAcknowledged()) {
-                                logger.error("Could not delete one or more Alerting/Finding/Correlation/IOC Finding history indices: " + index);
-                            }
-                        }
+            client
+                    .admin()
+                    .indices()
+                    .delete(
+                            singleDeleteRequest,
+                            new ActionListener<>() {
+                                @Override
+                                public void onResponse(AcknowledgedResponse acknowledgedResponse) {
+                                    if (!acknowledgedResponse.isAcknowledged()) {
+                                        logger.error(
+                                                "Could not delete one or more Alerting/Finding/Correlation/IOC Finding history indices: "
+                                                        + index);
+                                    }
+                                }
 
-                        @Override
-                        public void onFailure(Exception e) {
-                            logger.debug("Exception: [" + e.getMessage() + "] while deleting the index " + index);
-                        }
-                    }
-            );
+                                @Override
+                                public void onFailure(Exception e) {
+                                    logger.debug(
+                                            "Exception: [" + e.getMessage() + "] while deleting the index " + index);
+                                }
+                            });
         }
     }
 
     private void rolloverAndDeleteAlertHistoryIndices() {
-        logTypeService.getAllLogTypes(ActionListener.wrap(logTypes -> {
-            if (logTypes == null || logTypes.isEmpty()) {
-                return;
-            }
-            // We have to do this every time to account for newly added log types
-            populateAllIndexLists(logTypes);
+        logTypeService.getAllLogTypes(
+                ActionListener.wrap(
+                        logTypes -> {
+                            if (logTypes == null || logTypes.isEmpty()) {
+                                return;
+                            }
+                            // We have to do this every time to account for newly added log types
+                            populateAllIndexLists(logTypes);
 
-            if (alertHistoryEnabled) rolloverAlertHistoryIndices();
-            deleteOldIndices("Alert", getAllAlertsIndicesPatternForAllTypes(logTypes).toArray(new String[0]));
-        }, e -> {}));
+                            if (alertHistoryEnabled) rolloverAlertHistoryIndices();
+                            deleteOldIndices(
+                                    "Alert", getAllAlertsIndicesPatternForAllTypes(logTypes).toArray(new String[0]));
+                        },
+                        e -> {}));
     }
 
     private void rolloverAndDeleteFindingHistoryIndices() {
-        logTypeService.getAllLogTypes(ActionListener.wrap(logTypes -> {
-            if (logTypes == null || logTypes.isEmpty()) {
-                return;
-            }
-            // We have to do this every time to account for newly added log types
-            populateAllIndexLists(logTypes);
+        logTypeService.getAllLogTypes(
+                ActionListener.wrap(
+                        logTypes -> {
+                            if (logTypes == null || logTypes.isEmpty()) {
+                                return;
+                            }
+                            // We have to do this every time to account for newly added log types
+                            populateAllIndexLists(logTypes);
 
-            if (findingHistoryEnabled) rolloverFindingHistoryIndices();
-            deleteOldIndices("Finding", getAllFindingsIndicesPatternForAllTypes(logTypes).toArray(new String[0]));
-        }, e -> {}));
+                            if (findingHistoryEnabled) rolloverFindingHistoryIndices();
+                            deleteOldIndices(
+                                    "Finding",
+                                    getAllFindingsIndicesPatternForAllTypes(logTypes).toArray(new String[0]));
+                        },
+                        e -> {}));
     }
 
     private void rolloverAndDeleteWazuhFindingHistoryIndices() {
-        logTypeService.getAllLogTypes(ActionListener.wrap(logTypes -> {
-            if (logTypes == null || logTypes.isEmpty()) {
-                return;
-            }
-            populateAllIndexLists(logTypes);
+        logTypeService.getAllLogTypes(
+                ActionListener.wrap(
+                        logTypes -> {
+                            if (logTypes == null || logTypes.isEmpty()) {
+                                return;
+                            }
+                            populateAllIndexLists(logTypes);
 
-            if (findingHistoryEnabled) rolloverWazuhFindingHistoryIndices();
-            deleteOldIndices("WazuhFinding", getAllWazuhFindingsIndicesPatternForAllTypes(logTypes).toArray(new String[0]));
-        }, e -> {}));
+                            if (findingHistoryEnabled) rolloverWazuhFindingHistoryIndices();
+                            deleteOldIndices(
+                                    "WazuhFinding",
+                                    getAllWazuhFindingsIndicesPatternForAllTypes(logTypes).toArray(new String[0]));
+                        },
+                        e -> {}));
     }
 
     private void rolloverAndDeleteCorrelationHistoryIndices() {
         try {
-            correlationHistoryIndex = new HistoryIndexInfo(
-                    CorrelationIndices.CORRELATION_HISTORY_WRITE_INDEX,
-                    CorrelationIndices.CORRELATION_HISTORY_INDEX_PATTERN,
-                    CorrelationIndices.correlationMappings(),
-                    correlationHistoryMaxDocs,
-                    correlationHistoryMaxAge,
-                    clusterService.state().metadata().hasAlias(CorrelationIndices.CORRELATION_HISTORY_WRITE_INDEX)
-            );
+            correlationHistoryIndex =
+                    new HistoryIndexInfo(
+                            CorrelationIndices.CORRELATION_HISTORY_WRITE_INDEX,
+                            CorrelationIndices.CORRELATION_HISTORY_INDEX_PATTERN,
+                            CorrelationIndices.correlationMappings(),
+                            correlationHistoryMaxDocs,
+                            correlationHistoryMaxAge,
+                            clusterService
+                                    .state()
+                                    .metadata()
+                                    .hasAlias(CorrelationIndices.CORRELATION_HISTORY_WRITE_INDEX));
             rolloverCorrelationHistoryIndices();
             deleteOldIndices("Correlation", CorrelationIndices.CORRELATION_HISTORY_INDEX_PATTERN_REGEXP);
         } catch (Exception ex) {
@@ -549,120 +655,138 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
     }
 
     private void rolloverAndDeleteIocFindingHistoryIndices() {
-//        try {
-//            iocFindingHistoryIndex = new HistoryIndexInfo(
-//                    IocFindingService.IOC_FINDING_ALIAS_NAME,
-//                    IocFindingService.IOC_FINDING_INDEX_PATTERN,
-//                    IocFindingService.getIndexMapping(),
-//                    iocFindingHistoryMaxDocs,
-//                    iocFindingHistoryMaxAge,
-//                    clusterService.state().metadata().hasAlias(IocFindingService.IOC_FINDING_ALIAS_NAME)
-//            );
-//            rolloverIocFindingHistoryIndices();
-//            deleteOldIndices("IOC Findings", IocFindingService.IOC_FINDING_INDEX_PATTERN_REGEXP);
-//        } catch (Exception ex) {
-//            logger.error("failed to construct ioc finding index info");
-//        }
+        //        try {
+        //            iocFindingHistoryIndex = new HistoryIndexInfo(
+        //                    IocFindingService.IOC_FINDING_ALIAS_NAME,
+        //                    IocFindingService.IOC_FINDING_INDEX_PATTERN,
+        //                    IocFindingService.getIndexMapping(),
+        //                    iocFindingHistoryMaxDocs,
+        //                    iocFindingHistoryMaxAge,
+        //
+        // clusterService.state().metadata().hasAlias(IocFindingService.IOC_FINDING_ALIAS_NAME)
+        //            );
+        //            rolloverIocFindingHistoryIndices();
+        //            deleteOldIndices("IOC Findings",
+        // IocFindingService.IOC_FINDING_INDEX_PATTERN_REGEXP);
+        //        } catch (Exception ex) {
+        //            logger.error("failed to construct ioc finding index info");
+        //        }
     }
 
     private List<String> getAllAlertsIndicesPatternForAllTypes(List<String> logTypes) {
-        return logTypes
-                .stream()
+        return logTypes.stream()
                 .map(logType -> DetectorMonitorConfig.getAllAlertsIndicesPattern(logType))
                 .collect(Collectors.toList());
     }
 
     private List<String> getAllFindingsIndicesPatternForAllTypes(List<String> logTypes) {
-        return logTypes
-                .stream()
+        return logTypes.stream()
                 .map(logType -> DetectorMonitorConfig.getAllFindingsIndicesPattern(logType))
                 .collect(Collectors.toList());
     }
 
     private List<String> getAllWazuhFindingsIndicesPatternForAllTypes(List<String> logTypes) {
-        return logTypes
-                .stream()
+        return logTypes.stream()
                 .map(logType -> DetectorMonitorConfig.getAllWazuhFindingsIndicesPattern(logType))
                 .collect(Collectors.toList());
     }
 
-
-        private void rolloverIndex(
+    private void rolloverIndex(
             Boolean initialized,
             String index,
             String pattern,
             String map,
             Long docsCondition,
             TimeValue ageCondition,
-            Boolean isCorrelation
-    ) {
+            Boolean isCorrelation) {
         if (!initialized) {
             return;
         }
 
         // We have to pass null for newIndexName in order to get Elastic to increment the index count.
         RolloverRequest request = new RolloverRequest(index, null);
-        request.getCreateIndexRequest().index(pattern)
+        request
+                .getCreateIndexRequest()
+                .index(pattern)
                 .mapping(map)
-                .settings(isCorrelation?
-                        Settings.builder()
-                                .put("index.hidden", true)
-                                .put("index.correlation", true)
-                                .put(IndexMetadata.SETTING_NUMBER_OF_SHARDS, 1)
-                                .put("index.auto_expand_replicas", minSystemIndexReplicas + "-" + maxSystemIndexReplicas)
-                                .build():
-                        Settings.builder()
-                                .put("index.hidden", true)
-                                .put(IndexMetadata.SETTING_NUMBER_OF_SHARDS, 1)
-                                .put("index.auto_expand_replicas", minSystemIndexReplicas + "-" + maxSystemIndexReplicas)
-                                .build()
-                );
+                .settings(
+                        isCorrelation
+                                ? Settings.builder()
+                                        .put("index.hidden", true)
+                                        .put("index.correlation", true)
+                                        .put(IndexMetadata.SETTING_NUMBER_OF_SHARDS, 1)
+                                        .put(
+                                                "index.auto_expand_replicas",
+                                                minSystemIndexReplicas + "-" + maxSystemIndexReplicas)
+                                        .build()
+                                : Settings.builder()
+                                        .put("index.hidden", true)
+                                        .put(IndexMetadata.SETTING_NUMBER_OF_SHARDS, 1)
+                                        .put(
+                                                "index.auto_expand_replicas",
+                                                minSystemIndexReplicas + "-" + maxSystemIndexReplicas)
+                                        .build());
         request.addMaxIndexDocsCondition(docsCondition);
         request.addMaxIndexAgeCondition(ageCondition);
-        client.admin().indices().rolloverIndex(
-                request,
-                new ActionListener<>() {
-                    @Override
-                    public void onResponse(RolloverResponse rolloverResponse) {
-                        if (!rolloverResponse.isRolledOver()) {
-                            logger.info(index + "not rolled over. Conditions were: " + rolloverResponse.getConditionStatus());
-                        }
-                    }
+        client
+                .admin()
+                .indices()
+                .rolloverIndex(
+                        request,
+                        new ActionListener<>() {
+                            @Override
+                            public void onResponse(RolloverResponse rolloverResponse) {
+                                if (!rolloverResponse.isRolledOver()) {
+                                    logger.info(
+                                            index
+                                                    + "not rolled over. Conditions were: "
+                                                    + rolloverResponse.getConditionStatus());
+                                }
+                            }
 
-                    @Override
-                    public void onFailure(Exception e) {
-                        logger.error("rollover failed for index [" + index + "].");
-                    }
-                }
-        );
+                            @Override
+                            public void onFailure(Exception e) {
+                                logger.error("rollover failed for index [" + index + "].");
+                            }
+                        });
     }
 
     private void rolloverAlertHistoryIndices() {
-        for(HistoryIndexInfo h : alertHistoryIndices) {
+        for (HistoryIndexInfo h : alertHistoryIndices) {
             rolloverIndex(
-                h.isInitialized, h.indexAlias,
-                h.indexPattern, h.indexMappings,
-                h.maxDocs, h.maxAge, false
-            );
+                    h.isInitialized,
+                    h.indexAlias,
+                    h.indexPattern,
+                    h.indexMappings,
+                    h.maxDocs,
+                    h.maxAge,
+                    false);
         }
     }
+
     private void rolloverFindingHistoryIndices() {
         for (HistoryIndexInfo h : findingHistoryIndices) {
             rolloverIndex(
-                h.isInitialized, h.indexAlias,
-                h.indexPattern, h.indexMappings,
-                h.maxDocs, h.maxAge, false
-            );
+                    h.isInitialized,
+                    h.indexAlias,
+                    h.indexPattern,
+                    h.indexMappings,
+                    h.maxDocs,
+                    h.maxAge,
+                    false);
         }
     }
 
     private void rolloverWazuhFindingHistoryIndices() {
         for (HistoryIndexInfo h : wazuhFindingHistoryIndices) {
             rolloverIndex(
-                h.isInitialized, h.indexAlias,
-                h.indexPattern, h.indexMappings,
-                h.maxDocs, h.maxAge, false
-            );
+                    h.isInitialized,
+                    h.indexAlias,
+                    h.indexPattern,
+                    h.indexMappings,
+                    h.maxDocs,
+                    h.maxAge,
+                    false);
         }
     }
 
@@ -675,22 +799,7 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
                     correlationHistoryIndex.indexMappings,
                     correlationHistoryIndex.maxDocs,
                     correlationHistoryIndex.maxAge,
-                    true
-            );
-        }
-    }
-
-    private void rolloverIocFindingHistoryIndices() {
-        if (iocFindingHistoryIndex != null) {
-            rolloverIndex(
-                    iocFindingHistoryIndex.isInitialized,
-                    iocFindingHistoryIndex.indexAlias,
-                    iocFindingHistoryIndex.indexPattern,
-                    iocFindingHistoryIndex.indexMappings,
-                    iocFindingHistoryIndex.maxDocs,
-                    iocFindingHistoryIndex.maxAge,
-                    true
-            );
+                    true);
         }
     }
 
@@ -699,8 +808,11 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
             if (scheduledAlertsRollover != null) {
                 scheduledAlertsRollover.cancel();
             }
-            scheduledAlertsRollover = threadPool
-                    .scheduleWithFixedDelay(() -> rolloverAndDeleteAlertHistoryIndices(), alertHistoryRolloverPeriod, executorName());
+            scheduledAlertsRollover =
+                    threadPool.scheduleWithFixedDelay(
+                            () -> rolloverAndDeleteAlertHistoryIndices(),
+                            alertHistoryRolloverPeriod,
+                            executorName());
         }
     }
 
@@ -709,13 +821,19 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
             if (scheduledFindingsRollover != null) {
                 scheduledFindingsRollover.cancel();
             }
-            scheduledFindingsRollover = threadPool
-                    .scheduleWithFixedDelay(() -> rolloverAndDeleteFindingHistoryIndices(), findingHistoryRolloverPeriod, executorName());
+            scheduledFindingsRollover =
+                    threadPool.scheduleWithFixedDelay(
+                            () -> rolloverAndDeleteFindingHistoryIndices(),
+                            findingHistoryRolloverPeriod,
+                            executorName());
             if (scheduledWazuhFindingsRollover != null) {
                 scheduledWazuhFindingsRollover.cancel();
             }
-            scheduledWazuhFindingsRollover = threadPool
-                    .scheduleWithFixedDelay(() -> rolloverAndDeleteWazuhFindingHistoryIndices(), findingHistoryRolloverPeriod, executorName());
+            scheduledWazuhFindingsRollover =
+                    threadPool.scheduleWithFixedDelay(
+                            () -> rolloverAndDeleteWazuhFindingHistoryIndices(),
+                            findingHistoryRolloverPeriod,
+                            executorName());
         }
     }
 
@@ -724,8 +842,11 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
             if (scheduledCorrelationHistoryRollover != null) {
                 scheduledCorrelationHistoryRollover.cancel();
             }
-            scheduledCorrelationHistoryRollover = threadPool
-                    .scheduleWithFixedDelay(() -> rolloverAndDeleteCorrelationHistoryIndices(), correlationHistoryRolloverPeriod, executorName());
+            scheduledCorrelationHistoryRollover =
+                    threadPool.scheduleWithFixedDelay(
+                            () -> rolloverAndDeleteCorrelationHistoryIndices(),
+                            correlationHistoryRolloverPeriod,
+                            executorName());
         }
     }
 
@@ -734,16 +855,15 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
             if (scheduledIocFindingHistoryRollover != null) {
                 scheduledIocFindingHistoryRollover.cancel();
             }
-            scheduledIocFindingHistoryRollover = threadPool
-                    .scheduleWithFixedDelay(() -> rolloverAndDeleteIocFindingHistoryIndices(), iocFindingHistoryRolloverPeriod, executorName());
         }
     }
 
     private String alertMapping() {
         String alertMapping = null;
-        try (
-                InputStream is = DetectorIndexManagementService.class.getClassLoader().getResourceAsStream("mappings/alert_mapping.json")
-        ) {
+        try (InputStream is =
+                DetectorIndexManagementService.class
+                        .getClassLoader()
+                        .getResourceAsStream("mappings/alert_mapping.json")) {
             alertMapping = new String(Objects.requireNonNull(is).readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
             logger.error(e.getMessage());
@@ -753,10 +873,12 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
 
     private String findingMapping() {
         String findingMapping = null;
-        try (
-                InputStream is = DetectorIndexManagementService.class.getClassLoader().getResourceAsStream("mappings/finding_mapping.json")
-        ) {
-            findingMapping = new String(Objects.requireNonNull(is).readAllBytes(), StandardCharsets.UTF_8);
+        try (InputStream is =
+                DetectorIndexManagementService.class
+                        .getClassLoader()
+                        .getResourceAsStream("mappings/finding_mapping.json")) {
+            findingMapping =
+                    new String(Objects.requireNonNull(is).readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
             logger.error(e.getMessage());
         }
@@ -765,9 +887,10 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
 
     private String wazuhFindingEnrichmentMapping() {
         String mapping = null;
-        try (
-                InputStream is = DetectorIndexManagementService.class.getClassLoader().getResourceAsStream("mappings/wazuh-finding-enrichment-mapping.json")
-        ) {
+        try (InputStream is =
+                DetectorIndexManagementService.class
+                        .getClassLoader()
+                        .getResourceAsStream("mappings/wazuh-finding-enrichment-mapping.json")) {
             mapping = new String(Objects.requireNonNull(is).readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
             logger.error(e.getMessage());
@@ -797,10 +920,6 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
         this.correlationHistoryMaxDocs = correlationHistoryMaxDocs;
     }
 
-    public void setIocFindingHistoryMaxDocs(Long iocFindingHistoryMaxDocs) {
-        this.iocFindingHistoryMaxDocs = iocFindingHistoryMaxDocs;
-    }
-
     public void setAlertHistoryMaxAge(TimeValue alertHistoryMaxAge) {
         this.alertHistoryMaxAge = alertHistoryMaxAge;
     }
@@ -811,10 +930,6 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
 
     public void setCorrelationHistoryMaxAge(TimeValue correlationHistoryMaxAge) {
         this.correlationHistoryMaxAge = correlationHistoryMaxAge;
-    }
-
-    public void setIocFindingHistoryMaxAge(TimeValue iocFindingHistoryMaxAge) {
-        this.iocFindingHistoryMaxAge = iocFindingHistoryMaxAge;
     }
 
     public void setAlertHistoryRolloverPeriod(TimeValue alertHistoryRolloverPeriod) {
@@ -850,9 +965,7 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
     }
 
     @Override
-    protected void doStart() {
-
-    }
+    protected void doStart() {}
 
     @Override
     protected void doStop() {
@@ -901,7 +1014,13 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent i
         TimeValue maxAge;
         boolean isInitialized;
 
-        public HistoryIndexInfo(String indexAlias, String indexPattern, String indexMappings, Long maxDocs, TimeValue maxAge, boolean isInitialized) {
+        public HistoryIndexInfo(
+                String indexAlias,
+                String indexPattern,
+                String indexMappings,
+                Long maxDocs,
+                TimeValue maxAge,
+                boolean isInitialized) {
             this.indexAlias = indexAlias;
             this.indexPattern = indexPattern;
             this.indexMappings = indexMappings;
