@@ -77,12 +77,6 @@ public class TransportDeleteDetectorAction
 
     private static final Logger log = LogManager.getLogger(TransportDeleteDetectorAction.class);
 
-    /**
-     * Thread context header used by internal Wazuh plugin callers (e.g. Content Manager) to bypass
-     * standard-detector deletion restrictions.
-     */
-    public static final String WAZUH_INTERNAL_CALLER_HEADER = "_wazuh_internal_caller";
-
     private static final List<ThrowableCheckingPredicates>
             ACCEPTABLE_ENTITY_MISSING_THROWABLE_MATCHERS =
                     List.of(
@@ -148,10 +142,7 @@ public class TransportDeleteDetectorAction
     @Override
     protected void doExecute(
             Task task, DeleteDetectorRequest request, ActionListener<DeleteDetectorResponse> listener) {
-        // Capture before thread context is stashed in start()
-        boolean isInternalCaller =
-                "content-manager"
-                        .equals(this.threadPool.getThreadContext().getHeader(WAZUH_INTERNAL_CALLER_HEADER));
+        boolean isInternalCaller = request.isInternalCaller();
         AsyncDeleteDetectorAction asyncAction =
                 new AsyncDeleteDetectorAction(task, request, listener, detectorIndices, isInternalCaller);
         asyncAction.start();
@@ -260,62 +251,73 @@ public class TransportDeleteDetectorAction
             StepListener<AcknowledgedResponse> onDeleteWorkflowStep = new StepListener<>();
             // 1. Delete the workflow if the workflow is supported
             deleteWorkflow(detector, onDeleteWorkflowStep);
-            onDeleteWorkflowStep.whenComplete(acknowledgedResponse -> {
-                List<String> monitorIds = detector.getMonitorIds();
-                
-                // A detector with 0 rules will have 0 monitors to delete. Skipping monitor deletion steps.
-                if (monitorIds == null || monitorIds.isEmpty()) {
-                    deleteDetectorFromConfig(detector.getId(), request.getRefreshPolicy());
-                    return;
-                }
-                
-                ActionListener<DeleteMonitorResponse> deletesListener = new GroupedActionListener<>(new ActionListener<>() {
-                    @Override
-                    public void onResponse(Collection<DeleteMonitorResponse> responses) {
-                        SetOnce<RestStatus> errorStatusSupplier = new SetOnce<>();
-                        if (responses.stream().filter(response -> {
-                            if (response.getStatus() != RestStatus.OK) {
-                                log.error(
-                                    "Detector not being deleted because monitor [{}] could not be deleted. Status [{}]",
-                                    response.getId(),
-                                    response.getStatus()
-                                );
-                                errorStatusSupplier.trySet(response.getStatus());
-                                return true;
-                            }
-                            return false;
-                        }).count() > 0) {
-                            onFailures(
-                                new OpenSearchStatusException(
-                                    "Monitor associated with detected could not be deleted",
-                                    errorStatusSupplier.get()
-                                )
-                            );
-                        }
-                        deleteDetectorFromConfig(detector.getId(), request.getRefreshPolicy());
-                    }
+            onDeleteWorkflowStep.whenComplete(
+                    acknowledgedResponse -> {
+                        List<String> monitorIds = detector.getMonitorIds();
 
-                    @Override
-                    public void onFailure(Exception e) {
-                        if (exceptionChecker.doesGroupedActionListenerExceptionMatch(e, ACCEPTABLE_ENTITY_MISSING_THROWABLE_MATCHERS)) {
-                            logAcceptableEntityMissingException(e, detector.getId());
+                        // A detector with 0 rules will have 0 monitors to delete. Skipping monitor deletion
+                        // steps.
+                        if (monitorIds == null || monitorIds.isEmpty()) {
                             deleteDetectorFromConfig(detector.getId(), request.getRefreshPolicy());
-                        } else {
-                            log.error(String.format(Locale.ROOT, "Failed to delete detector %s", detector.getId()), e.getMessage());
-                            if (counter.compareAndSet(false, true)) {
-                                finishHim(null, e);
-                            }
+                            return;
                         }
-                    }
-                }, monitorIds.size());
-                for (String monitorId : monitorIds) {
-                    deleteAlertingMonitor(monitorId, request.getRefreshPolicy(), deletesListener);
-                }
-            }, e -> {
-                if (counter.compareAndSet(false, true)) {
-                    finishHim(null, e);
-                }
-            });
+
+                        ActionListener<DeleteMonitorResponse> deletesListener =
+                                new GroupedActionListener<>(
+                                        new ActionListener<>() {
+                                            @Override
+                                            public void onResponse(Collection<DeleteMonitorResponse> responses) {
+                                                SetOnce<RestStatus> errorStatusSupplier = new SetOnce<>();
+                                                if (responses.stream()
+                                                                .filter(
+                                                                        response -> {
+                                                                            if (response.getStatus() != RestStatus.OK) {
+                                                                                log.error(
+                                                                                        "Detector not being deleted because monitor [{}] could not be deleted. Status [{}]",
+                                                                                        response.getId(),
+                                                                                        response.getStatus());
+                                                                                errorStatusSupplier.trySet(response.getStatus());
+                                                                                return true;
+                                                                            }
+                                                                            return false;
+                                                                        })
+                                                                .count()
+                                                        > 0) {
+                                                    onFailures(
+                                                            new OpenSearchStatusException(
+                                                                    "Monitor associated with detected could not be deleted",
+                                                                    errorStatusSupplier.get()));
+                                                }
+                                                deleteDetectorFromConfig(detector.getId(), request.getRefreshPolicy());
+                                            }
+
+                                            @Override
+                                            public void onFailure(Exception e) {
+                                                if (exceptionChecker.doesGroupedActionListenerExceptionMatch(
+                                                        e, ACCEPTABLE_ENTITY_MISSING_THROWABLE_MATCHERS)) {
+                                                    logAcceptableEntityMissingException(e, detector.getId());
+                                                    deleteDetectorFromConfig(detector.getId(), request.getRefreshPolicy());
+                                                } else {
+                                                    log.error(
+                                                            String.format(
+                                                                    Locale.ROOT, "Failed to delete detector %s", detector.getId()),
+                                                            e.getMessage());
+                                                    if (counter.compareAndSet(false, true)) {
+                                                        finishHim(null, e);
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        monitorIds.size());
+                        for (String monitorId : monitorIds) {
+                            deleteAlertingMonitor(monitorId, request.getRefreshPolicy(), deletesListener);
+                        }
+                    },
+                    e -> {
+                        if (counter.compareAndSet(false, true)) {
+                            finishHim(null, e);
+                        }
+                    });
         }
 
         private void deleteWorkflow(

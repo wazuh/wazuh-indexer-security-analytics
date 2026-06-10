@@ -214,7 +214,7 @@ public class WTransportDeleteSpaceResourcesAction
         String id = iterator.next();
         this.client.execute(
                 DeleteDetectorAction.INSTANCE,
-                new DeleteDetectorRequest(id, refreshPolicy),
+                new DeleteDetectorRequest(id, refreshPolicy, true),
                 ActionListener.wrap(
                         response -> {
                             deleted.incrementAndGet();
