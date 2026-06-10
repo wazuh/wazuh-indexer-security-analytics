@@ -29,7 +29,6 @@ import org.opensearch.core.xcontent.MediaTypeRegistry;
 import org.opensearch.core.xcontent.XContentBuilder;
 import org.opensearch.rest.BaseRestHandler;
 import org.opensearch.rest.BytesRestResponse;
-import org.opensearch.rest.NamedRoute;
 import org.opensearch.rest.RestChannel;
 import org.opensearch.rest.RestRequest;
 import org.opensearch.securityanalytics.SecurityAnalyticsPlugin;
@@ -65,11 +64,7 @@ public class RestUpdateFindingsAction extends BaseRestHandler {
     @Override
     public List<Route> routes() {
         return List.of(
-                new NamedRoute.Builder()
-                        .uniqueName("plugin:wazuh/findings/case/update")
-                        .method(RestRequest.Method.PUT)
-                        .path(SecurityAnalyticsPlugin.FINDINGS_BASE_URI + "/_update")
-                        .build());
+                new Route(RestRequest.Method.PUT, SecurityAnalyticsPlugin.FINDINGS_BASE_URI + "/_update"));
     }
 
     @Override
