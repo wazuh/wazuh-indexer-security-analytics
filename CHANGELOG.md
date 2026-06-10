@@ -30,6 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Restrict thread detectors sources to wazuh-events-v5 [(#209)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/209)
 - Add new Transport action to delete space resources [(#104)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/104)
 - Add support for dynamic configuration of threat detectors [(#206)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/206)
+- Add endpoint to update findings [(#225)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/225)
 
 ### Dependencies
 - Update to JDK 25 [(#49)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/49)

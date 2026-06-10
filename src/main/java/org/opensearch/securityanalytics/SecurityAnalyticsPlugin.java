@@ -100,28 +100,7 @@ import org.opensearch.securityanalytics.model.Detector;
 import org.opensearch.securityanalytics.model.DetectorInput;
 import org.opensearch.securityanalytics.model.Rule;
 import org.opensearch.securityanalytics.model.ThreatIntelFeedData;
-import org.opensearch.securityanalytics.resthandler.RestAcknowledgeAlertsAction;
-import org.opensearch.securityanalytics.resthandler.RestAcknowledgeCorrelationAlertsAction;
-import org.opensearch.securityanalytics.resthandler.RestCreateIndexMappingsAction;
-import org.opensearch.securityanalytics.resthandler.RestDeleteCorrelationRuleAction;
-import org.opensearch.securityanalytics.resthandler.RestDeleteDetectorAction;
-import org.opensearch.securityanalytics.resthandler.RestGetAlertsAction;
-import org.opensearch.securityanalytics.resthandler.RestGetAllRuleCategoriesAction;
-import org.opensearch.securityanalytics.resthandler.RestGetCorrelationsAlertsAction;
-import org.opensearch.securityanalytics.resthandler.RestGetDetectorAction;
-import org.opensearch.securityanalytics.resthandler.RestGetFindingsAction;
-import org.opensearch.securityanalytics.resthandler.RestGetIndexMappingsAction;
-import org.opensearch.securityanalytics.resthandler.RestGetMappingsViewAction;
-import org.opensearch.securityanalytics.resthandler.RestIndexCorrelationRuleAction;
-import org.opensearch.securityanalytics.resthandler.RestIndexDetectorAction;
-import org.opensearch.securityanalytics.resthandler.RestListCorrelationAction;
-import org.opensearch.securityanalytics.resthandler.RestSearchCorrelationAction;
-import org.opensearch.securityanalytics.resthandler.RestSearchCorrelationRuleAction;
-import org.opensearch.securityanalytics.resthandler.RestSearchCustomLogTypeAction;
-import org.opensearch.securityanalytics.resthandler.RestSearchDetectorAction;
-import org.opensearch.securityanalytics.resthandler.RestSearchRuleAction;
-import org.opensearch.securityanalytics.resthandler.RestUpdateIndexMappingsAction;
-import org.opensearch.securityanalytics.resthandler.RestValidateRulesAction;
+import org.opensearch.securityanalytics.resthandler.*;
 import org.opensearch.securityanalytics.rules.objects.WCSFieldValidator;
 import org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings;
 import org.opensearch.securityanalytics.transport.TransportAckCorrelationAlertsAction;
@@ -213,21 +192,10 @@ public class SecurityAnalyticsPlugin extends Plugin
     public static final String FINDINGS_CORRELATE_URI = FINDINGS_BASE_URI + "/correlate";
     public static final String LIST_CORRELATIONS_URI = PLUGINS_BASE_URI + "/correlations";
     public static final String CORRELATION_RULES_BASE_URI = PLUGINS_BASE_URI + "/correlation/rules";
-    public static final String THREAT_INTEL_BASE_URI = PLUGINS_BASE_URI + "/threat_intel";
-    public static final String THREAT_INTEL_SOURCE_URI = PLUGINS_BASE_URI + "/threat_intel/sources";
-    public static final String THREAT_INTEL_MONITOR_URI = PLUGINS_BASE_URI + "/threat_intel/monitors";
     public static final String LIST_IOCS_URI = PLUGINS_BASE_URI + "/threat_intel/iocs";
-    public static final String THREAT_INTEL_ALERTS_URI = PLUGINS_BASE_URI + "/threat_intel/alerts";
-    public static final String THREAT_INTEL_ALERTS_STATUS_URI =
-            PLUGINS_BASE_URI + "/threat_intel/alerts/status";
-    public static final String TEST_CONNECTION_BASE_URI = PLUGINS_BASE_URI + "/connections/%s/test";
-    public static final String TEST_S3_CONNECTION_URI = String.format(TEST_CONNECTION_BASE_URI, "s3");
-
     public static final String CUSTOM_LOG_TYPE_URI = PLUGINS_BASE_URI + "/logtype";
 
     public static final String CORRELATIONS_ALERTS_BASE_URI = PLUGINS_BASE_URI + "/correlationAlerts";
-    public static final String JOB_INDEX_NAME = ".opensearch-sap--job";
-    public static final String JOB_TYPE = "opensearch_sap_job";
 
     public static final Map<String, Object> TIF_JOB_INDEX_SETTING =
             Map.of(
@@ -419,7 +387,8 @@ public class SecurityAnalyticsPlugin extends Plugin
                 new RestSearchCustomLogTypeAction(),
                 // new RestDeleteCustomLogTypeAction(),
                 new RestGetCorrelationsAlertsAction(),
-                new RestAcknowledgeCorrelationAlertsAction());
+                new RestAcknowledgeCorrelationAlertsAction(),
+                new RestUpdateFindingsAction());
     }
 
     @Override
