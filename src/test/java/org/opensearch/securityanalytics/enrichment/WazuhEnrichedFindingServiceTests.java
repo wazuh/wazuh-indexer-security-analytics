@@ -51,7 +51,8 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
         when(threadPool.scheduleWithFixedDelay(any(), any(), any())).thenReturn(cancellable);
 
         service =
-                new WazuhEnrichedFindingService(client, true, TimeValue.timeValueSeconds(30), threadPool);
+                new WazuhEnrichedFindingService(
+                        client, true, TimeValue.timeValueSeconds(30), threadPool, 10000);
     }
 
     @Override
@@ -194,8 +195,9 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
     // ── Helper ──────────────────────────────────────────────────────────────
 
     /**
-     * Invokes the private buildAndIndex method and captures the document that would be indexed. We
-     * intercept at the indexEnrichedFinding level by overriding the pending-requests queue.
+     * Invokes the private buildDocAndIndex method and captures the document that would be indexed. We
+     * intercept at the indexEnrichedFinding level by overriding the pending-requests queue. A {@code
+     * null} primaryQuery maps to the empty-queries path (base doc indexed without rule fields).
      */
     @SuppressWarnings("unchecked")
     private Map<String, Object> invokeBuildAndIndex(
@@ -207,17 +209,13 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
             Map<String, Object> ruleMetadata)
             throws Exception {
 
+        List<DocLevelQuery> queries = primaryQuery == null ? List.of() : List.of(primaryQuery);
+
         Method method =
                 WazuhEnrichedFindingService.class.getDeclaredMethod(
-                        "buildAndIndex",
-                        Finding.class,
-                        String.class,
-                        Map.class,
-                        String.class,
-                        DocLevelQuery.class,
-                        Map.class);
+                        "buildDocAndIndex", Finding.class, String.class, Map.class, String.class, List.class);
         method.setAccessible(true);
-        method.invoke(service, finding, category, eventSource, docId, primaryQuery, ruleMetadata);
+        method.invoke(service, finding, category, eventSource, docId, queries);
 
         // The last pending request contains the indexed document
         var pendingField = WazuhEnrichedFindingService.class.getDeclaredField("pendingRequests");

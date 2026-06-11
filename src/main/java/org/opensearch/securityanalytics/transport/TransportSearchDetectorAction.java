@@ -1,6 +1,18 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.transport;
 
@@ -26,7 +38,9 @@ import org.opensearch.transport.client.Client;
 
 import static org.opensearch.securityanalytics.util.DetectorUtils.getEmptySearchResponse;
 
-public class TransportSearchDetectorAction extends HandledTransportAction<SearchDetectorRequest, SearchResponse> implements SecureTransportAction {
+public class TransportSearchDetectorAction
+        extends HandledTransportAction<SearchDetectorRequest, SearchResponse>
+        implements SecureTransportAction {
 
     private final Client client;
 
@@ -42,12 +56,17 @@ public class TransportSearchDetectorAction extends HandledTransportAction<Search
 
     private volatile Boolean filterByEnabled;
 
-
     private static final Logger log = LogManager.getLogger(TransportSearchDetectorAction.class);
 
-
     @Inject
-    public TransportSearchDetectorAction(TransportService transportService, ClusterService clusterService, DetectorIndices detectorIndices, ActionFilters actionFilters, NamedXContentRegistry xContentRegistry, Settings settings, Client client) {
+    public TransportSearchDetectorAction(
+            TransportService transportService,
+            ClusterService clusterService,
+            DetectorIndices detectorIndices,
+            ActionFilters actionFilters,
+            NamedXContentRegistry xContentRegistry,
+            Settings settings,
+            Client client) {
         super(SearchDetectorAction.NAME, transportService, actionFilters, SearchDetectorRequest::new);
         this.xContentRegistry = xContentRegistry;
         this.client = client;
@@ -57,18 +76,27 @@ public class TransportSearchDetectorAction extends HandledTransportAction<Search
         this.settings = settings;
         this.filterByEnabled = SecurityAnalyticsSettings.FILTER_BY_BACKEND_ROLES.get(this.settings);
 
-        this.clusterService.getClusterSettings().addSettingsUpdateConsumer(SecurityAnalyticsSettings.FILTER_BY_BACKEND_ROLES, this::setFilterByEnabled);
+        this.clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        SecurityAnalyticsSettings.FILTER_BY_BACKEND_ROLES, this::setFilterByEnabled);
     }
 
     @Override
-    protected void doExecute(Task task, SearchDetectorRequest searchDetectorRequest, ActionListener<SearchResponse> actionListener) {
+    protected void doExecute(
+            Task task,
+            SearchDetectorRequest searchDetectorRequest,
+            ActionListener<SearchResponse> actionListener) {
 
         User user = readUserFromThreadContext(this.threadPool);
 
         if (doFilterForUser(user, this.filterByEnabled)) {
             // security is enabled and filterby is enabled
-            log.info("Filtering result by: {}", user.getBackendRoles());
-            addFilter(user, searchDetectorRequest.searchRequest().source(), "detector.user.backend_roles.keyword");
+            log.debug("Filtering result by: {}", user.getBackendRoles());
+            addFilter(
+                    user,
+                    searchDetectorRequest.searchRequest().source(),
+                    "detector.user.backend_roles.keyword");
         }
 
         this.threadPool.getThreadContext().stashContext();
@@ -76,21 +104,22 @@ public class TransportSearchDetectorAction extends HandledTransportAction<Search
             actionListener.onResponse(getEmptySearchResponse());
             return;
         }
-        client.search(searchDetectorRequest.searchRequest(), new ActionListener<>() {
-            @Override
-            public void onResponse(SearchResponse response) {
-                actionListener.onResponse(response);
-            }
+        client.search(
+                searchDetectorRequest.searchRequest(),
+                new ActionListener<>() {
+                    @Override
+                    public void onResponse(SearchResponse response) {
+                        actionListener.onResponse(response);
+                    }
 
-            @Override
-            public void onFailure(Exception e) {
-                actionListener.onFailure(e);
-            }
-        });
+                    @Override
+                    public void onFailure(Exception e) {
+                        actionListener.onFailure(e);
+                    }
+                });
     }
 
     private void setFilterByEnabled(boolean filterByEnabled) {
         this.filterByEnabled = filterByEnabled;
     }
-
 }
