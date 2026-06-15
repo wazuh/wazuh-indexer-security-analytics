@@ -106,7 +106,9 @@ public class WTransportIndexIntegrationAction
         if (!Objects.equals(integration.getSpace(), "standard")) {
             try {
                 String integrationId = integration.getDocumentId();
-                String sapId = integrationId == null ? UUID.randomUUID().toString() : integrationId;
+                String space = integration.getSpace();
+                String sapId =
+                        integrationId == null ? UUID.randomUUID().toString() : integrationId + "-" + space;
 
                 IndexCustomLogTypeRequest internalRequest =
                         new IndexCustomLogTypeRequest(
