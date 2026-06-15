@@ -84,3 +84,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 There are no prior versions. This is the initial release of Wazuh Indexer.
 
+[Unreleased 5.0.x]: https://github.com/wazuh/wazuh-indexer-security-analytics/compare/8a02985a924640048d98b71faee9c310a8333701...main
+
