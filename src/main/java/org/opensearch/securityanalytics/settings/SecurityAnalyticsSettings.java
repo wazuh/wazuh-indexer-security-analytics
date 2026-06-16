@@ -191,6 +191,19 @@ public class SecurityAnalyticsSettings {
                     Setting.Property.Dynamic);
 
     /**
+     * Maximum number of rule-metadata entries cached in memory by {@code
+     * WazuhEnrichedFindingService}. Bounds heap growth: each entry holds a full rule document
+     * (including compliance and MITRE maps). Least-recently-used entries are evicted past this size
+     * and re-fetched on demand.
+     */
+    public static final Setting<Integer> ENRICHED_FINDINGS_RULE_CACHE_MAX_SIZE =
+            Setting.intSetting(
+                    "plugins.security_analytics.enriched_findings_rule_cache_max_size",
+                    10000,
+                    0,
+                    Setting.Property.NodeScope);
+
+    /**
      * Maximum number of user-created threat detectors allowed. Standard detectors created by the
      * Content Manager plugin are not counted towards this limit.
      */

@@ -50,6 +50,9 @@ public final class TemplateInterpolator {
      */
     private static final Pattern PURE_PLACEHOLDER = Pattern.compile("^\\{\\{\\s*(.+?)\\s*}}$");
 
+    /** Pre-compiled dot separator used to split field paths, avoiding a regex compile per call. */
+    private static final Pattern DOT = Pattern.compile("\\.");
+
     private TemplateInterpolator() {}
 
     // String interpolation
@@ -223,7 +226,7 @@ public final class TemplateInterpolator {
         if (dotPath == null || dotPath.isEmpty() || source == null) {
             return null;
         }
-        String[] segments = dotPath.split("\\.");
+        String[] segments = DOT.split(dotPath);
         Object current = source;
         for (String segment : segments) {
             if (!(current instanceof Map)) {

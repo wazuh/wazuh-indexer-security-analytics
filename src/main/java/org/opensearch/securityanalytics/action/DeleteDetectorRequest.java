@@ -1,6 +1,18 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.action;
 
@@ -17,15 +29,26 @@ public class DeleteDetectorRequest extends ActionRequest {
     private String detectorId;
     private WriteRequest.RefreshPolicy refreshPolicy;
 
+    /**
+     * When true the request originates from an internal plugin (e.g. Content Manager) and should
+     * bypass the standard-detector deletion restriction.
+     */
+    private final boolean internalCaller;
+
     public DeleteDetectorRequest(String detectorId, WriteRequest.RefreshPolicy refreshPolicy) {
+        this(detectorId, refreshPolicy, false);
+    }
+
+    public DeleteDetectorRequest(
+            String detectorId, WriteRequest.RefreshPolicy refreshPolicy, boolean internalCaller) {
         super();
         this.detectorId = detectorId;
         this.refreshPolicy = refreshPolicy;
+        this.internalCaller = internalCaller;
     }
 
     public DeleteDetectorRequest(StreamInput sin) throws IOException {
-        this(sin.readString(),
-             WriteRequest.RefreshPolicy.readFrom(sin));
+        this(sin.readString(), WriteRequest.RefreshPolicy.readFrom(sin), sin.readBoolean());
     }
 
     @Override
@@ -37,6 +60,7 @@ public class DeleteDetectorRequest extends ActionRequest {
     public void writeTo(StreamOutput out) throws IOException {
         out.writeString(detectorId);
         refreshPolicy.writeTo(out);
+        out.writeBoolean(internalCaller);
     }
 
     public String getDetectorId() {
@@ -45,5 +69,9 @@ public class DeleteDetectorRequest extends ActionRequest {
 
     public WriteRequest.RefreshPolicy getRefreshPolicy() {
         return refreshPolicy;
+    }
+
+    public boolean isInternalCaller() {
+        return internalCaller;
     }
 }
