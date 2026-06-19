@@ -40,7 +40,7 @@ buildscript {
             opensearch_build += "-SNAPSHOT"
 
             // TODO consider enabling snapshot options once SA commons is published to maven central
-//            sa_commons_version += "-SNAPSHOT"
+            // sa_commons_version += "-SNAPSHOT"
         }
         common_utils_version = System.getProperty("common_utils.version", "${wazuh_version}.${revision}")
         alerting_spi_build = System.getProperty("alerting_spi_build", "${wazuh_version}.${revision}")

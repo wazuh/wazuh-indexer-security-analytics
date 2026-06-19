@@ -41,7 +41,8 @@ on:
 
 jobs:
   branches:
-    runs-on: ubuntu-24.04
+    runs-on:
+      - codebuild-github-actions-codebuild-runner-indexer-amd-${{ github.run_id }}-${{ github.run_attempt }}
     outputs:
       common_utils_ref: ${{ steps.resolve.outputs.wazuh_indexer_common_utils_branch }}
       alerting_ref: ${{ steps.resolve.outputs.wazuh_indexer_alerting_branch }}
@@ -78,7 +79,8 @@ jobs:
           echo "Alerting branch: ${{ steps.resolve.outputs.wazuh_indexer_alerting_branch }}"
 
   get-version:
-    runs-on: ubuntu-24.04
+    runs-on:
+      - codebuild-github-actions-codebuild-runner-indexer-amd-${{ github.run_id }}-${{ github.run_attempt }}
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -88,7 +90,8 @@ jobs:
         run: echo "version=$(jq -r .version<VERSION.json)" >> "$GITHUB_OUTPUT"
 
   publish-common-utils:
-    runs-on: ubuntu-24.04
+    runs-on:
+      - codebuild-github-actions-codebuild-runner-indexer-amd-${{ github.run_id }}-${{ github.run_attempt }}
     needs: [branches, get-version]
     steps:
       - name: Publish common-utils to Maven Local
@@ -104,7 +107,8 @@ jobs:
           key: ${{ github.run_id }}-common-utils
 
   publish-alerting:
-    runs-on: ubuntu-24.04
+    runs-on:
+      - codebuild-github-actions-codebuild-runner-indexer-amd-${{ github.run_id }}-${{ github.run_attempt }}
     needs: [ branches, get-version, publish-common-utils ]
     steps:
       - name: Restore Maven Local cache (common-utils)
@@ -126,7 +130,8 @@ jobs:
 
   build:
     needs: [get-version, publish-common-utils, publish-alerting]
-    runs-on: ubuntu-24.04
+    runs-on:
+      - codebuild-github-actions-codebuild-runner-indexer-amd-${{ github.run_id }}-${{ github.run_attempt }}
     env:
       plugin_name: wazuh-indexer-security-analytics
     steps:
@@ -157,7 +162,15 @@ jobs:
           reference: ${{ github.ref }}
 
       - name: Build with Gradle
-        run: ./gradlew build -Dversion=${{ steps.version.outputs.version }} -Drevision=${{ inputs.revision }} -x integTest
+        run: |
+          ./gradlew --stop || true
+          id -u builder &>/dev/null || useradd -m builder
+          # Hand the build user the workspace and the restored Maven local cache.
+          cp -a "$HOME/.m2" /home/builder/.m2 2>/dev/null || true
+          cp -a "$HOME/.gradle" /home/builder/.gradle 2>/dev/null || true
+          chown -R builder:builder "$GITHUB_WORKSPACE" /home/builder
+          runuser -u builder -- env "JAVA_HOME=$JAVA_HOME" "PATH=$PATH" "GRADLE_USER_HOME=/home/builder/.gradle" \
+          ./gradlew build --no-daemon -Dversion=${{ steps.version.outputs.version }} -Drevision=${{ inputs.revision }} -x integTest
 
       - run: ls -la build/distributions
 
