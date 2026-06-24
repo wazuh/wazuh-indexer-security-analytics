@@ -24,7 +24,7 @@ jobs:
       alerting_ref: ${{ steps.resolve.outputs.wazuh_indexer_alerting_branch }}
       notifications_ref: ${{ steps.resolve.outputs.wazuh_indexer_notifications_branch }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Resolve branches
         id: resolve
@@ -44,7 +44,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Get version
         id: version
         run: echo "version=$(jq -r .version<VERSION.json)" >> "$GITHUB_OUTPUT"
@@ -115,7 +115,7 @@ jobs:
       - codebuild-github-actions-codebuild-runner-indexer-amd-${{ github.run_id }}-${{ github.run_attempt }}
     needs: [get-version, publish-common-utils, publish-notifications, publish-alerting]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
