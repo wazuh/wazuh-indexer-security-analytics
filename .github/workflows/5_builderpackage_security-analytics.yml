@@ -101,7 +101,7 @@ jobs:
           revision: ${{ inputs.revision }}
           reference: ${{ needs.branches.outputs.common_utils_ref }}
       - name: Cache Maven Local
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@v6
         with:
           path: ~/.m2/repository
           key: ${{ github.run_id }}-common-utils
@@ -112,7 +112,7 @@ jobs:
     needs: [ branches, get-version, publish-common-utils ]
     steps:
       - name: Restore Maven Local cache (common-utils)
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: ~/.m2/repository
           key: ${{ github.run_id }}-common-utils
@@ -123,7 +123,7 @@ jobs:
           revision: ${{ inputs.revision }}
           reference: ${{ needs.branches.outputs.alerting_ref }}
       - name: Cache Maven Local
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@v6
         with:
           path: ~/.m2/repository
           key: ${{ github.run_id }}-alerting
@@ -145,7 +145,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Restore Maven Local cache (alerting)
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: ~/.m2/repository
           key: ${{ github.run_id }}-alerting
