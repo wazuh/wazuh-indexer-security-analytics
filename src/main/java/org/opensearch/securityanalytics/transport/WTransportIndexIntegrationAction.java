@@ -16,8 +16,6 @@
  */
 package org.opensearch.securityanalytics.transport;
 
-import com.fasterxml.jackson.annotation.ObjectIdGenerators.UUIDGenerator;
-
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.action.index.IndexRequest;
@@ -158,8 +156,6 @@ public class WTransportIndexIntegrationAction
         } else {
             // Standard integrations
             sapId = integrationId != null ? integrationId : UUID.randomUUID().toString();
-            UUIDGenerator uuidGenerator = new UUIDGenerator();
-            uuidGenerator.generateId("test");
             try {
                 IndexRequest indexRequest =
                         new IndexRequest().index(LOG_TYPE_INDEX).id(sapId).source(integration.toXContent());
