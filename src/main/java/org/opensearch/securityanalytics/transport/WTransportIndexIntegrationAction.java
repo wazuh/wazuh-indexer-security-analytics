@@ -102,12 +102,12 @@ public class WTransportIndexIntegrationAction
             ActionListener<WIndexIntegrationResponse> listener) {
         Integration integration = request.getIntegration();
 
+        String integrationId = integration.getDocumentId();
+        String sapId;
         // Custom integration / log type.
         if (!Objects.equals(integration.getSpace(), "standard")) {
             try {
-                String integrationId = integration.getDocumentId();
                 String space = integration.getSpace();
-                String sapId;
                 if (integrationId != null && "draft".equals(space)) {
                     sapId = integrationId;
                 } else {
@@ -155,7 +155,7 @@ public class WTransportIndexIntegrationAction
             }
         } else {
             // Standard integrations
-            String sapId = UUID.randomUUID().toString();
+            sapId = integrationId != null ? integrationId : UUID.randomUUID().toString();
             try {
                 IndexRequest indexRequest =
                         new IndexRequest().index(LOG_TYPE_INDEX).id(sapId).source(integration.toXContent());
