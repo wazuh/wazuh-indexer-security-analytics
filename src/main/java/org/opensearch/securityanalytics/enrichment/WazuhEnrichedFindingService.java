@@ -108,8 +108,7 @@ public class WazuhEnrichedFindingService implements Closeable {
     private final Semaphore inFlightPermits;
 
     /**
-     * Buffer of pending index requests, flushed as a bulk request every {@link #bulkBatchSize}
-     * items.
+     * Buffer of pending index requests, flushed as a bulk request every {@link #bulkBatchSize} items.
      */
     private final ConcurrentLinkedQueue<IndexRequest> pendingRequests = new ConcurrentLinkedQueue<>();
 
@@ -135,7 +134,7 @@ public class WazuhEnrichedFindingService implements Closeable {
         this.flushIntervalSeconds =
                 SecurityAnalyticsSettings.ENRICHED_FINDINGS_FLUSH_INTERVAL.get(
                         clusterService.getSettings());
-        this.inFlightPermits = new Semaphore(this.maxInFlight);
+        this.inFlightPermits = new AdjustableSemaphore(this.maxInFlight);
         this.ruleMetadataCache =
                 Collections.synchronizedMap(
                         new LinkedHashMap<>(16, 0.75f, true) {
@@ -176,11 +175,8 @@ public class WazuhEnrichedFindingService implements Closeable {
         this.maxInFlight = newMax;
         if (delta > 0) {
             this.inFlightPermits.release(delta);
-        } else {
-            // Drain excess available permits, in-flight chains release naturally as they finish
-            for (int i = 0; i < -delta; i++) {
-                this.inFlightPermits.tryAcquire();
-            }
+        } else if (delta < 0) {
+            ((AdjustableSemaphore) this.inFlightPermits).reducePermits(-delta);
         }
     }
 
@@ -238,6 +234,18 @@ public class WazuhEnrichedFindingService implements Closeable {
     private void enrichmentComplete() {
         this.inFlightPermits.release();
         this.processQueue();
+    }
+
+    /** Exposes {@link Semaphore#reducePermits(int)} so the dynamic setting can shrink the cap. */
+    private static final class AdjustableSemaphore extends Semaphore {
+        AdjustableSemaphore(int permits) {
+            super(permits);
+        }
+
+        @Override
+        public void reducePermits(int reduction) {
+            super.reducePermits(reduction);
+        }
     }
 
     /**
