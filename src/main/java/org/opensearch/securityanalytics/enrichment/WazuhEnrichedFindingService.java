@@ -171,12 +171,12 @@ public class WazuhEnrichedFindingService implements Closeable {
     }
 
     public synchronized void setMaxInFlight(int newMax) {
-        int delta = newMax - this.maxInFlight;
+        int permitChange = newMax - this.maxInFlight;
         this.maxInFlight = newMax;
-        if (delta > 0) {
-            this.inFlightPermits.release(delta);
-        } else if (delta < 0) {
-            ((AdjustableSemaphore) this.inFlightPermits).reducePermits(-delta);
+        if (permitChange > 0) {
+            this.inFlightPermits.release(permitChange);
+        } else if (permitChange < 0) {
+            ((AdjustableSemaphore) this.inFlightPermits).reducePermits(-permitChange);
         }
     }
 
