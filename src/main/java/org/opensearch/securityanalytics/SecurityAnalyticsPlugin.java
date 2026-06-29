@@ -459,7 +459,8 @@ public class SecurityAnalyticsPlugin extends Plugin
                 SecurityAnalyticsSettings.CORRELATION_DETECTOR_CACHE_TTL,
                 SecurityAnalyticsSettings.CORRELATION_MAX_IN_FLIGHT_FINDINGS,
                 SecurityAnalyticsSettings.CORRELATION_METADATA_CACHE_TTL,
-                SecurityAnalyticsSettings.MAX_DETECTORS);
+                SecurityAnalyticsSettings.MAX_DETECTORS,
+                SecurityAnalyticsSettings.MAX_RULES_PER_DETECTOR);
     }
 
     @Override
