@@ -88,6 +88,8 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
@@ -144,6 +146,22 @@ public class TransportCorrelateFindingAction
     /** Pipelines waiting for an in-flight permit; drained as permits are released. */
     private final ConcurrentLinkedQueue<AsyncCorrelateFindingAction> pendingStarts =
             new ConcurrentLinkedQueue<>();
+
+    /**
+     * Size of {@link #pendingStarts}. Incremented when an action is queued, decremented when one is
+     * drained.
+     */
+    private final AtomicInteger pendingCount = new AtomicInteger();
+
+    /**
+     * Maximum allowed correlation backlog. When {@link #pendingCount} reaches this, new findings are
+     * shed instead of growing the queue {@code
+     * plugins.security_analytics.correlation.max_pending_findings}.
+     */
+    private volatile int maxPendingFindings;
+
+    /** Count of findings shed due to a full correlation backlog (for an occasional WARN log). */
+    private final AtomicLong droppedFindings = new AtomicLong();
 
     /** Tracks the current configured permit count to compute deltas on dynamic updates. */
     private volatile int currentMaxInFlight;
@@ -225,6 +243,8 @@ public class TransportCorrelateFindingAction
         this.correlationRulesCache = correlationRulesCache;
         this.currentMaxInFlight =
                 SecurityAnalyticsSettings.CORRELATION_MAX_IN_FLIGHT_FINDINGS.get(settings);
+        this.maxPendingFindings =
+                SecurityAnalyticsSettings.CORRELATION_MAX_PENDING_FINDINGS.get(settings);
         this.correlationPermits = new AdjustableSemaphore(this.currentMaxInFlight);
         this.threadPool = this.detectorIndices.getThreadPool();
 
@@ -262,6 +282,11 @@ public class TransportCorrelateFindingAction
         this.clusterService
                 .getClusterSettings()
                 .addSettingsUpdateConsumer(
+                        SecurityAnalyticsSettings.CORRELATION_MAX_PENDING_FINDINGS,
+                        newMax -> this.maxPendingFindings = newMax);
+        this.clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
                         SecurityAnalyticsSettings.CORRELATION_METADATA_CACHE_TTL,
                         ttl -> {
                             logTypeListCache.setTtl(ttl);
@@ -276,6 +301,18 @@ public class TransportCorrelateFindingAction
      * AsyncCorrelateFindingAction#onFailures(Exception)}) release the permit.
      */
     private void scheduleCorrelation(AsyncCorrelateFindingAction action) {
+        if (pendingCount.get() >= maxPendingFindings) {
+            long n = droppedFindings.incrementAndGet();
+            if (n == 1 || n % 10000 == 0) {
+                log.warn(
+                        "Correlation queue capacity reached ({} pending). Dropping correlation and enrichment for the current finding. Total dropped so far: {}",
+                        maxPendingFindings,
+                        n);
+            }
+            action.dropForBackpressure();
+            return;
+        }
+        pendingCount.incrementAndGet();
         pendingStarts.add(action);
         drainPending();
     }
@@ -287,6 +324,7 @@ public class TransportCorrelateFindingAction
                 correlationPermits.release();
                 return;
             }
+            pendingCount.decrementAndGet();
             next.markPermitAcquired();
             next.doStart();
         }
@@ -932,6 +970,18 @@ public class TransportCorrelateFindingAction
                     releasePermitAndDrain();
                 }
                 finishHim(null);
+            }
+        }
+
+        /**
+         * Completes this finding without correlation or enrichment because the correlation backlog is
+         * full (H-11 load shedding). No permit was acquired, so none is released. Responds success —
+         * the finding itself was already produced; only the optional downstream work is skipped.
+         * Completed inline (no thread-pool hop) so shedding stays cheap under overload.
+         */
+        void dropForBackpressure() {
+            if (counter.compareAndSet(false, true)) {
+                listener.onResponse(new SubscribeFindingsResponse(RestStatus.OK));
             }
         }
 

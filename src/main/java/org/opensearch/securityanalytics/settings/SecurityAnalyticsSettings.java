@@ -244,6 +244,19 @@ public class SecurityAnalyticsSettings {
                     Setting.Property.Dynamic);
 
     /**
+     * Maximum number of findings allowed to wait in the correlation backlog (the pending queue) in
+     * {@code TransportCorrelateFindingAction}.
+     */
+    public static final Setting<Integer> CORRELATION_MAX_PENDING_FINDINGS =
+            Setting.intSetting(
+                    "plugins.security_analytics.correlation.max_pending_findings",
+                    10000,
+                    1,
+                    1000000,
+                    Setting.Property.NodeScope,
+                    Setting.Property.Dynamic);
+
+    /**
      * TTL for the in-memory caches of slow-changing correlation metadata (log type list and
      * correlation rules by detector type). Each cached lookup eliminates a per-finding {@code size:
      * 10000} search against the corresponding system index. Set to zero to disable both caches.
