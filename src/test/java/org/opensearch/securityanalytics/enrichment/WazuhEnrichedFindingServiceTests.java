@@ -16,22 +16,29 @@
  */
 package org.opensearch.securityanalytics.enrichment;
 
+import org.opensearch.cluster.service.ClusterService;
+import org.opensearch.common.settings.ClusterSettings;
+import org.opensearch.common.settings.Setting;
 import org.opensearch.common.settings.Settings;
 import org.opensearch.common.unit.TimeValue;
 import org.opensearch.common.util.concurrent.ThreadContext;
 import org.opensearch.commons.alerting.model.DocLevelQuery;
 import org.opensearch.commons.alerting.model.Finding;
+import org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings;
 import org.opensearch.test.OpenSearchTestCase;
 import org.opensearch.threadpool.Scheduler;
 import org.opensearch.threadpool.ThreadPool;
 import org.opensearch.transport.client.Client;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -50,9 +57,18 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
         Scheduler.Cancellable cancellable = mock(Scheduler.Cancellable.class);
         when(threadPool.scheduleWithFixedDelay(any(), any(), any())).thenReturn(cancellable);
 
+        Set<Setting<?>> settingsSet = new HashSet<>();
+        settingsSet.add(SecurityAnalyticsSettings.ENRICHED_FINDINGS_BULK_SIZE);
+        settingsSet.add(SecurityAnalyticsSettings.ENRICHED_FINDINGS_MAX_IN_FLIGHT);
+        settingsSet.add(SecurityAnalyticsSettings.ENRICHED_FINDINGS_FLUSH_INTERVAL);
+        ClusterSettings clusterSettings = new ClusterSettings(Settings.EMPTY, settingsSet);
+        ClusterService clusterService = mock(ClusterService.class);
+        when(clusterService.getSettings()).thenReturn(Settings.EMPTY);
+        when(clusterService.getClusterSettings()).thenReturn(clusterSettings);
+
         service =
                 new WazuhEnrichedFindingService(
-                        client, true, TimeValue.timeValueSeconds(30), threadPool, 10000);
+                        client, true, TimeValue.timeValueSeconds(30), threadPool, 10000, clusterService);
     }
 
     @Override
@@ -226,5 +242,32 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
         var lastRequest = queue.stream().reduce((first, second) -> second).orElse(null);
         assertNotNull("An index request must have been queued", lastRequest);
         return lastRequest.sourceAsMap();
+    }
+
+    public void testSetBulkBatchSize_updatesField() throws Exception {
+        Field field = WazuhEnrichedFindingService.class.getDeclaredField("bulkBatchSize");
+        field.setAccessible(true);
+
+        service.setBulkBatchSize(200);
+        assertEquals(200, field.get(service));
+
+        service.setBulkBatchSize(10);
+        assertEquals(10, field.get(service));
+    }
+
+    public void testSetMaxInFlight_updatesField() throws Exception {
+        Field field = WazuhEnrichedFindingService.class.getDeclaredField("maxInFlight");
+        field.setAccessible(true);
+
+        service.setMaxInFlight(8);
+        assertEquals(8, field.get(service));
+
+        service.setMaxInFlight(2);
+        assertEquals(2, field.get(service));
+    }
+
+    public void testSetFlushInterval_reschedulesTask() {
+        service.setFlushInterval(3);
+        service.setFlushInterval(60);
     }
 }

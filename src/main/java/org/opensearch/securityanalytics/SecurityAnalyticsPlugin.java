@@ -286,7 +286,8 @@ public class SecurityAnalyticsPlugin extends Plugin
                         SecurityAnalyticsSettings.INDEX_TIMEOUT.get(environment.settings()),
                         threadPool,
                         SecurityAnalyticsSettings.ENRICHED_FINDINGS_RULE_CACHE_MAX_SIZE.get(
-                                environment.settings()));
+                                environment.settings()),
+                        clusterService);
         DetectorLookupCache detectorLookupCache =
                 new DetectorLookupCache(
                         SecurityAnalyticsSettings.CORRELATION_DETECTOR_CACHE_TTL.get(environment.settings()));
@@ -456,6 +457,9 @@ public class SecurityAnalyticsPlugin extends Plugin
                 SecurityAnalyticsSettings.ENABLE_DETECTORS_WITH_DEDICATED_QUERY_INDICES,
                 SecurityAnalyticsSettings.ENRICHED_FINDINGS_ENABLED,
                 SecurityAnalyticsSettings.ENRICHED_FINDINGS_RULE_CACHE_MAX_SIZE,
+                SecurityAnalyticsSettings.ENRICHED_FINDINGS_BULK_SIZE,
+                SecurityAnalyticsSettings.ENRICHED_FINDINGS_MAX_IN_FLIGHT,
+                SecurityAnalyticsSettings.ENRICHED_FINDINGS_FLUSH_INTERVAL,
                 SecurityAnalyticsSettings.CORRELATION_DETECTOR_CACHE_TTL,
                 SecurityAnalyticsSettings.CORRELATION_MAX_IN_FLIGHT_FINDINGS,
                 SecurityAnalyticsSettings.CORRELATION_METADATA_CACHE_TTL,
