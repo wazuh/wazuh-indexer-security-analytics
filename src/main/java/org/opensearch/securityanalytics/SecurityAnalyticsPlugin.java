@@ -460,6 +460,10 @@ public class SecurityAnalyticsPlugin extends Plugin
                 SecurityAnalyticsSettings.CORRELATION_MAX_IN_FLIGHT_FINDINGS,
                 SecurityAnalyticsSettings.CORRELATION_MAX_PENDING_FINDINGS,
                 SecurityAnalyticsSettings.CORRELATION_METADATA_CACHE_TTL,
+                SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_ENABLED,
+                SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_HIGH_WATERMARK_PERCENT,
+                SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_LOW_WATERMARK_PERCENT,
+                SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_INDEX_PATTERN,
                 SecurityAnalyticsSettings.MAX_DETECTORS);
     }
 

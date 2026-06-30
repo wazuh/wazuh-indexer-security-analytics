@@ -268,4 +268,53 @@ public class SecurityAnalyticsSettings {
                     TimeValue.timeValueSeconds(0),
                     Setting.Property.NodeScope,
                     Setting.Property.Dynamic);
+
+    /**
+     * Whether to apply ingestion backpressure by write-blocking the events indices when the
+     * correlation backlog fills. When the backlog reaches {@link
+     * #EVENTS_BACKPRESSURE_HIGH_WATERMARK_PERCENT} of {@link #CORRELATION_MAX_PENDING_FINDINGS}, the
+     * events indices are made read-only so no new events (and therefore no new findings) are
+     * ingested, letting the backlog drain; when it falls back to {@link
+     * #EVENTS_BACKPRESSURE_LOW_WATERMARK_PERCENT}, the block is lifted.
+     */
+    public static final Setting<Boolean> EVENTS_BACKPRESSURE_ENABLED =
+            Setting.boolSetting(
+                    "plugins.security_analytics.correlation.events_backpressure.enabled",
+                    true,
+                    Setting.Property.NodeScope,
+                    Setting.Property.Dynamic);
+
+    /**
+     * Correlation-backlog level, as a percentage of {@link #CORRELATION_MAX_PENDING_FINDINGS}, at or
+     * above which the events indices are write-blocked. Default 100 (block when the backlog is full).
+     */
+    public static final Setting<Integer> EVENTS_BACKPRESSURE_HIGH_WATERMARK_PERCENT =
+            Setting.intSetting(
+                    "plugins.security_analytics.correlation.events_backpressure.high_watermark_percent",
+                    100,
+                    1,
+                    100,
+                    Setting.Property.NodeScope,
+                    Setting.Property.Dynamic);
+
+    /**
+     * Correlation-backlog level, as a percentage of {@link #CORRELATION_MAX_PENDING_FINDINGS}, at or
+     * below which the events-index write block is lifted (reopened).
+     */
+    public static final Setting<Integer> EVENTS_BACKPRESSURE_LOW_WATERMARK_PERCENT =
+            Setting.intSetting(
+                    "plugins.security_analytics.correlation.events_backpressure.low_watermark_percent",
+                    60,
+                    0,
+                    99,
+                    Setting.Property.NodeScope,
+                    Setting.Property.Dynamic);
+
+    /** Index/data-stream pattern of the events indices to write-block under backpressure. */
+    public static final Setting<String> EVENTS_BACKPRESSURE_INDEX_PATTERN =
+            Setting.simpleString(
+                    "plugins.security_analytics.correlation.events_backpressure.index_pattern",
+                    "wazuh-events-v5-*",
+                    Setting.Property.NodeScope,
+                    Setting.Property.Dynamic);
 }

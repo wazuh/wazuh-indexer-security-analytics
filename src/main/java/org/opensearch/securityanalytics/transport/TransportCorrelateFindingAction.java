@@ -25,11 +25,14 @@ import org.opensearch.ResourceAlreadyExistsException;
 import org.opensearch.ResourceNotFoundException;
 import org.opensearch.action.ActionRequest;
 import org.opensearch.action.ActionRunnable;
+import org.opensearch.action.admin.indices.settings.put.UpdateSettingsRequest;
 import org.opensearch.action.index.IndexRequest;
 import org.opensearch.action.search.SearchRequest;
 import org.opensearch.action.support.ActionFilters;
 import org.opensearch.action.support.HandledTransportAction;
+import org.opensearch.action.support.IndicesOptions;
 import org.opensearch.action.support.WriteRequest;
+import org.opensearch.action.support.clustermanager.AcknowledgedResponse;
 import org.opensearch.cluster.routing.Preference;
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.inject.Inject;
@@ -166,6 +169,27 @@ public class TransportCorrelateFindingAction
     /** Tracks the current configured permit count to compute deltas on dynamic updates. */
     private volatile int currentMaxInFlight;
 
+    // When the correlation backlog fills, write-block the events indices so no new events are
+    // ingested. When it falls back to the low watermark, the block is lifted.
+
+    /** Whether the events-index backpressure mechanism is active. */
+    private volatile boolean eventsBackpressureEnabled;
+
+    /** Block the events indices when the backlog reaches this %% of {@link #maxPendingFindings}. */
+    private volatile int eventsHighWatermarkPercent;
+
+    /** Lift the block when the backlog falls to this %% of {@link #maxPendingFindings}. */
+    private volatile int eventsLowWatermarkPercent;
+
+    /** Index/data-stream pattern of the events indices to write-block. */
+    private volatile String eventsIndexPattern;
+
+    /** Current applied state of the events write block (true = blocked). */
+    private final AtomicBoolean eventsBlocked = new AtomicBoolean(false);
+
+    /** Guards against firing overlapping block/unblock cluster updates. */
+    private final AtomicBoolean blockTransitionInFlight = new AtomicBoolean(false);
+
     static Map<String, CustomLogType> buildLogTypesFromHits(
             SearchHit[] hits, String monitorId, String findingId) {
         Map<String, CustomLogType> logTypes = new HashMap<>();
@@ -292,6 +316,34 @@ public class TransportCorrelateFindingAction
                             logTypeListCache.setTtl(ttl);
                             correlationRulesCache.setTtl(ttl);
                         });
+        this.eventsBackpressureEnabled =
+                SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_ENABLED.get(this.settings);
+        this.eventsHighWatermarkPercent =
+                SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_HIGH_WATERMARK_PERCENT.get(this.settings);
+        this.eventsLowWatermarkPercent =
+                SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_LOW_WATERMARK_PERCENT.get(this.settings);
+        this.eventsIndexPattern =
+                SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_INDEX_PATTERN.get(this.settings);
+        this.clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_ENABLED,
+                        it -> this.eventsBackpressureEnabled = it);
+        this.clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_HIGH_WATERMARK_PERCENT,
+                        it -> this.eventsHighWatermarkPercent = it);
+        this.clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_LOW_WATERMARK_PERCENT,
+                        it -> this.eventsLowWatermarkPercent = it);
+        this.clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_INDEX_PATTERN,
+                        it -> this.eventsIndexPattern = it);
         this.setupTimestamp = System.currentTimeMillis();
     }
 
@@ -314,6 +366,7 @@ public class TransportCorrelateFindingAction
         }
         pendingCount.incrementAndGet();
         pendingStarts.add(action);
+        evaluateBackpressure();
         drainPending();
     }
 
@@ -328,11 +381,80 @@ public class TransportCorrelateFindingAction
             next.markPermitAcquired();
             next.doStart();
         }
+        evaluateBackpressure();
     }
 
     private void releasePermitAndDrain() {
         correlationPermits.release();
         drainPending();
+    }
+
+    /**
+     * Applies ingestion backpressure based on the current correlation backlog: at/above the high
+     * watermark, write-block the events indices; at/below the low watermark, lift the block.
+     */
+    private void evaluateBackpressure() {
+        if (!eventsBackpressureEnabled) {
+            // If it got disabled while a block is applied, make sure we release it.
+            if (eventsBlocked.get()) {
+                setEventsWriteBlock(false);
+            }
+            return;
+        }
+        int max = maxPendingFindings;
+        int pending = pendingCount.get();
+        long high = (long) max * eventsHighWatermarkPercent / 100L;
+        long low = (long) max * eventsLowWatermarkPercent / 100L;
+
+        if (!eventsBlocked.get() && pending >= high) {
+            setEventsWriteBlock(true);
+        } else if (eventsBlocked.get() && pending <= low) {
+            setEventsWriteBlock(false);
+        }
+    }
+
+    /**
+     * Fires a single async cluster-settings update to set or clear {@code index.blocks.write} on the
+     * events indices. At most one transition is in flight at a time; {@link #eventsBlocked} flips
+     * only after the update is acknowledged, so a failed update is retried on the next backlog
+     * change.
+     */
+    private void setEventsWriteBlock(boolean block) {
+        if (!blockTransitionInFlight.compareAndSet(false, true)) {
+            return; // a transition is already in flight
+        }
+        UpdateSettingsRequest request =
+                new UpdateSettingsRequest(eventsIndexPattern)
+                        .settings(Settings.builder().put("index.blocks.write", block).build())
+                        .indicesOptions(IndicesOptions.lenientExpandOpen());
+        log.warn(
+                "Events ingestion backpressure: {} write block on '{}' (correlation backlog {}/{})",
+                block ? "Applying" : "Lifting",
+                eventsIndexPattern,
+                pendingCount.get(),
+                maxPendingFindings);
+        client
+                .admin()
+                .indices()
+                .updateSettings(
+                        request,
+                        new ActionListener<>() {
+                            @Override
+                            public void onResponse(AcknowledgedResponse response) {
+                                eventsBlocked.set(block);
+                                blockTransitionInFlight.set(false);
+                                evaluateBackpressure();
+                            }
+
+                            @Override
+                            public void onFailure(Exception e) {
+                                log.error(
+                                        "Failed to {} events write block on '{}'",
+                                        block ? "Apply" : "Lift",
+                                        eventsIndexPattern);
+                                blockTransitionInFlight.set(false);
+                            }
+                        });
     }
 
     private synchronized void adjustMaxInFlight(int newMax) {
