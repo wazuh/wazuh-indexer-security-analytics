@@ -80,10 +80,10 @@ public class WazuhEnrichedFindingService implements Closeable {
     /**
      * Maximum number of findings drained from the queue per in-flight permit. The batch's triggering
      * events are fetched in a single combined source-doc MultiGet instead of one MultiGet per
-     * finding, eliminating ~{@code ENRICH_BATCH_SIZE}-1 of every {@code ENRICH_BATCH_SIZE}
-     * round-trips to the event index under load.
+     * finding, eliminating ~{@code enrichBatchSize}-1 of every {@code enrichBatchSize} round-trips to
+     * the event index under load.
      */
-    private static final int ENRICH_BATCH_SIZE = 100;
+    private volatile int enrichBatchSize;
 
     /**
      * Interval in seconds at which leftover pending requests are flushed regardless of batch size.
@@ -143,6 +143,9 @@ public class WazuhEnrichedFindingService implements Closeable {
         this.flushIntervalSeconds =
                 SecurityAnalyticsSettings.ENRICHED_FINDINGS_FLUSH_INTERVAL.get(
                         clusterService.getSettings());
+        this.enrichBatchSize =
+                SecurityAnalyticsSettings.ENRICHED_FINDINGS_ENRICH_BATCH_SIZE.get(
+                        clusterService.getSettings());
         this.inFlightPermits = new AdjustableSemaphore(this.maxInFlight);
         this.ruleMetadataCache =
                 Collections.synchronizedMap(
@@ -169,6 +172,11 @@ public class WazuhEnrichedFindingService implements Closeable {
                 .getClusterSettings()
                 .addSettingsUpdateConsumer(
                         SecurityAnalyticsSettings.ENRICHED_FINDINGS_FLUSH_INTERVAL, this::setFlushInterval);
+        clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        SecurityAnalyticsSettings.ENRICHED_FINDINGS_ENRICH_BATCH_SIZE,
+                        this::setEnrichBatchSize);
     }
 
     public void setEnabled(boolean enabled) {
@@ -177,6 +185,10 @@ public class WazuhEnrichedFindingService implements Closeable {
 
     public void setBulkBatchSize(int bulkBatchSize) {
         this.bulkBatchSize = bulkBatchSize;
+    }
+
+    public void setEnrichBatchSize(int enrichBatchSize) {
+        this.enrichBatchSize = enrichBatchSize;
     }
 
     public synchronized void setMaxInFlight(int newMax) {
@@ -223,14 +235,15 @@ public class WazuhEnrichedFindingService implements Closeable {
 
     /**
      * Drains the findings queue up to the number of available in-flight permits. Each acquired permit
-     * covers a batch of up to {@link #ENRICH_BATCH_SIZE} findings whose triggering events are fetched
+     * covers a batch of up to {@link #enrichBatchSize} findings whose triggering events are fetched
      * in one combined MultiGet; the permit is released once the whole batch completes.
      */
     private void processQueue() {
         while (this.inFlightPermits.tryAcquire()) {
-            List<Finding> batch = new ArrayList<>(ENRICH_BATCH_SIZE);
+            int batchSize = this.enrichBatchSize;
+            List<Finding> batch = new ArrayList<>(batchSize);
             Finding finding;
-            while (batch.size() < ENRICH_BATCH_SIZE && (finding = this.findingsQueue.poll()) != null) {
+            while (batch.size() < batchSize && (finding = this.findingsQueue.poll()) != null) {
                 batch.add(finding);
             }
             if (batch.isEmpty()) {

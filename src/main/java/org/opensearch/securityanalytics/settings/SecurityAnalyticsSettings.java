@@ -310,14 +310,6 @@ public class SecurityAnalyticsSettings {
                     Setting.Property.NodeScope,
                     Setting.Property.Dynamic);
 
-    /** Index/data-stream pattern of the events indices to write-block under backpressure. */
-    public static final Setting<String> EVENTS_BACKPRESSURE_INDEX_PATTERN =
-            Setting.simpleString(
-                    "plugins.security_analytics.correlation.events_backpressure.index_pattern",
-                    "wazuh-events-v5-*",
-                    Setting.Property.NodeScope,
-                    Setting.Property.Dynamic);
-
     /**
      * Number of enriched findings accumulated before a bulk index request is fired by {@code
      * WazuhEnrichedFindingService}.
@@ -354,6 +346,21 @@ public class SecurityAnalyticsSettings {
                     5,
                     1,
                     60,
+                    Setting.Property.NodeScope,
+                    Setting.Property.Dynamic);
+
+    /**
+     * Maximum number of findings drained from the queue per in-flight permit in {@code
+     * WazuhEnrichedFindingService}. The batch's triggering events are fetched in a single combined
+     * source-doc MultiGet instead of one MultiGet per finding, eliminating most round-trips to the
+     * event index under load.
+     */
+    public static final Setting<Integer> ENRICHED_FINDINGS_ENRICH_BATCH_SIZE =
+            Setting.intSetting(
+                    "plugins.security_analytics.enriched_findings_enrich_batch_size",
+                    100,
+                    1,
+                    1000,
                     Setting.Property.NodeScope,
                     Setting.Property.Dynamic);
 }

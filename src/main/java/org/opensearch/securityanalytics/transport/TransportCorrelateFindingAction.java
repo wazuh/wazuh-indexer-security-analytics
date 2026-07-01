@@ -181,8 +181,12 @@ public class TransportCorrelateFindingAction
     /** Lift the block when the backlog falls to this %% of {@link #maxPendingFindings}. */
     private volatile int eventsLowWatermarkPercent;
 
-    /** Index/data-stream pattern of the events indices to write-block. */
-    private volatile String eventsIndexPattern;
+    /**
+     * Index/data-stream pattern of the events indices to write-block. Fixed by design — the events
+     * data stream is always {@code wazuh-events-v5-*}; making it configurable risks blocking the
+     * wrong indices (or none), so it is intentionally not a setting.
+     */
+    private static final String EVENTS_INDEX_PATTERN = "wazuh-events-v5-*";
 
     /** Current applied state of the events write block (true = blocked). */
     private final AtomicBoolean eventsBlocked = new AtomicBoolean(false);
@@ -322,8 +326,6 @@ public class TransportCorrelateFindingAction
                 SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_HIGH_WATERMARK_PERCENT.get(this.settings);
         this.eventsLowWatermarkPercent =
                 SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_LOW_WATERMARK_PERCENT.get(this.settings);
-        this.eventsIndexPattern =
-                SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_INDEX_PATTERN.get(this.settings);
         this.clusterService
                 .getClusterSettings()
                 .addSettingsUpdateConsumer(
@@ -339,11 +341,6 @@ public class TransportCorrelateFindingAction
                 .addSettingsUpdateConsumer(
                         SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_LOW_WATERMARK_PERCENT,
                         it -> this.eventsLowWatermarkPercent = it);
-        this.clusterService
-                .getClusterSettings()
-                .addSettingsUpdateConsumer(
-                        SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_INDEX_PATTERN,
-                        it -> this.eventsIndexPattern = it);
         this.setupTimestamp = System.currentTimeMillis();
     }
 
@@ -424,13 +421,13 @@ public class TransportCorrelateFindingAction
             return; // a transition is already in flight
         }
         UpdateSettingsRequest request =
-                new UpdateSettingsRequest(eventsIndexPattern)
+                new UpdateSettingsRequest(EVENTS_INDEX_PATTERN)
                         .settings(Settings.builder().put("index.blocks.write", block).build())
                         .indicesOptions(IndicesOptions.lenientExpandOpen());
         log.warn(
                 "Events ingestion backpressure: {} write block on '{}' (correlation backlog {}/{})",
                 block ? "Applying" : "Lifting",
-                eventsIndexPattern,
+                EVENTS_INDEX_PATTERN,
                 pendingCount.get(),
                 maxPendingFindings);
         client
@@ -451,7 +448,7 @@ public class TransportCorrelateFindingAction
                                 log.error(
                                         "Failed to {} events write block on '{}'",
                                         block ? "Apply" : "Lift",
-                                        eventsIndexPattern);
+                                        EVENTS_INDEX_PATTERN);
                                 blockTransitionInFlight.set(false);
                             }
                         });
