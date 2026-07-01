@@ -392,9 +392,9 @@ public class TransportDeleteDetectorAction
         }
 
         private void onFailures(Exception t) {
-            log.error(String.format(Locale.ROOT, "Failed to delete detector"));
+            log.warn(String.format(Locale.ROOT, "Failed to delete detector"));
             if (counter.compareAndSet(false, true)) {
-                finishHim(null, t);
+                finishHim(request.getDetectorId(), t);
             }
         }
 
@@ -406,7 +406,7 @@ public class TransportDeleteDetectorAction
                                     listener,
                                     () -> {
                                         if (t != null) {
-                                            log.error(
+                                            log.warn(
                                                     String.format(Locale.ROOT, "Failed to delete detector %s", detectorId),
                                                     t.getMessage());
                                             if (t instanceof OpenSearchStatusException) {
