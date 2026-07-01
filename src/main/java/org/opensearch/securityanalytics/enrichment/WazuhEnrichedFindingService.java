@@ -23,6 +23,7 @@ import org.opensearch.action.bulk.BulkRequest;
 import org.opensearch.action.get.MultiGetItemResponse;
 import org.opensearch.action.get.MultiGetRequest;
 import org.opensearch.action.index.IndexRequest;
+import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.unit.TimeValue;
 import org.opensearch.common.util.concurrent.ThreadContext;
 import org.opensearch.common.xcontent.XContentType;
@@ -32,6 +33,7 @@ import org.opensearch.core.action.ActionListener;
 import org.opensearch.securityanalytics.config.monitors.DetectorMonitorConfig;
 import org.opensearch.securityanalytics.model.LOG_CATEGORY;
 import org.opensearch.securityanalytics.model.Rule;
+import org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings;
 import org.opensearch.threadpool.Scheduler;
 import org.opensearch.threadpool.ThreadPool;
 import org.opensearch.transport.client.Client;
@@ -59,10 +61,10 @@ import java.util.stream.Collectors;
  * caller. The existing {@code .opensearch-sap-{category}-findings-*} write path is unaffected.
  *
  * <p>Rule metadata is cached in memory to avoid repeated round-trips for the same rule across
- * findings. Index requests are batched into bulk requests every {@link #BULK_BATCH_SIZE} items,
- * with a periodic flush every {@link #FLUSH_INTERVAL} to drain any remainder.
+ * findings. Index requests are batched into bulk requests every {@link #bulkBatchSize} items, with
+ * a periodic flush every {@link #flushIntervalSeconds} seconds to drain any remainder.
  *
- * <p>Concurrent in-flight enrichment chains are bounded by {@link #MAX_IN_FLIGHT} to prevent
+ * <p>Concurrent in-flight enrichment chains are bounded by {@link #maxInFlight} to prevent
  * transport-layer overload on resource-constrained nodes.
  */
 public class WazuhEnrichedFindingService implements Closeable {
@@ -70,10 +72,10 @@ public class WazuhEnrichedFindingService implements Closeable {
     private static final Logger log = LogManager.getLogger(WazuhEnrichedFindingService.class);
 
     /** Number of enriched findings accumulated before a bulk index request is fired. */
-    private static final int BULK_BATCH_SIZE = 100;
+    private volatile int bulkBatchSize;
 
     /** Maximum number of concurrent async enrichment chains (MultiGet + build + buffer). */
-    private static final int MAX_IN_FLIGHT = 50;
+    private volatile int maxInFlight;
 
     /**
      * Maximum number of findings drained from the queue per in-flight permit. The batch's triggering
@@ -83,8 +85,10 @@ public class WazuhEnrichedFindingService implements Closeable {
      */
     private static final int ENRICH_BATCH_SIZE = 100;
 
-    /** Interval at which leftover pending requests are flushed regardless of batch size. */
-    private static final TimeValue FLUSH_INTERVAL = TimeValue.timeValueSeconds(5);
+    /**
+     * Interval in seconds at which leftover pending requests are flushed regardless of batch size.
+     */
+    private volatile int flushIntervalSeconds;
 
     /** Valid base categories derived from {@link LOG_CATEGORY}. */
     private static final Set<String> VALID_CATEGORIES =
@@ -110,28 +114,36 @@ public class WazuhEnrichedFindingService implements Closeable {
     private final ConcurrentLinkedQueue<Finding> findingsQueue = new ConcurrentLinkedQueue<>();
 
     /** Limits the number of concurrent async enrichment chains to avoid transport-layer overload. */
-    private final Semaphore inFlightPermits = new Semaphore(MAX_IN_FLIGHT);
+    private final Semaphore inFlightPermits;
 
     /**
-     * Buffer of pending index requests, flushed as a bulk request every {@link #BULK_BATCH_SIZE}
-     * items.
+     * Buffer of pending index requests, flushed as a bulk request every {@link #bulkBatchSize} items.
      */
     private final ConcurrentLinkedQueue<IndexRequest> pendingRequests = new ConcurrentLinkedQueue<>();
 
     private final AtomicInteger pendingCount = new AtomicInteger(0);
 
-    private final Scheduler.Cancellable flushSchedule;
+    private volatile Scheduler.Cancellable flushSchedule;
 
     public WazuhEnrichedFindingService(
             Client client,
             boolean enabled,
             TimeValue indexTimeout,
             ThreadPool threadPool,
-            int ruleCacheMaxSize) {
+            int ruleCacheMaxSize,
+            ClusterService clusterService) {
         this.client = client;
         this.threadPool = threadPool;
         this.enabled = enabled;
         this.indexTimeout = indexTimeout;
+        this.bulkBatchSize =
+                SecurityAnalyticsSettings.ENRICHED_FINDINGS_BULK_SIZE.get(clusterService.getSettings());
+        this.maxInFlight =
+                SecurityAnalyticsSettings.ENRICHED_FINDINGS_MAX_IN_FLIGHT.get(clusterService.getSettings());
+        this.flushIntervalSeconds =
+                SecurityAnalyticsSettings.ENRICHED_FINDINGS_FLUSH_INTERVAL.get(
+                        clusterService.getSettings());
+        this.inFlightPermits = new AdjustableSemaphore(this.maxInFlight);
         this.ruleMetadataCache =
                 Collections.synchronizedMap(
                         new LinkedHashMap<>(16, 0.75f, true) {
@@ -142,11 +154,47 @@ public class WazuhEnrichedFindingService implements Closeable {
                         });
         this.flushSchedule =
                 threadPool.scheduleWithFixedDelay(
-                        this::periodicFlush, FLUSH_INTERVAL, ThreadPool.Names.GENERIC);
+                        this::periodicFlush,
+                        TimeValue.timeValueSeconds(this.flushIntervalSeconds),
+                        ThreadPool.Names.GENERIC);
+        clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        SecurityAnalyticsSettings.ENRICHED_FINDINGS_BULK_SIZE, this::setBulkBatchSize);
+        clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        SecurityAnalyticsSettings.ENRICHED_FINDINGS_MAX_IN_FLIGHT, this::setMaxInFlight);
+        clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        SecurityAnalyticsSettings.ENRICHED_FINDINGS_FLUSH_INTERVAL, this::setFlushInterval);
     }
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+    }
+
+    public void setBulkBatchSize(int bulkBatchSize) {
+        this.bulkBatchSize = bulkBatchSize;
+    }
+
+    public synchronized void setMaxInFlight(int newMax) {
+        int permitChange = newMax - this.maxInFlight;
+        this.maxInFlight = newMax;
+        if (permitChange > 0) {
+            this.inFlightPermits.release(permitChange);
+        } else if (permitChange < 0) {
+            ((AdjustableSemaphore) this.inFlightPermits).reducePermits(-permitChange);
+        }
+    }
+
+    public synchronized void setFlushInterval(int seconds) {
+        this.flushIntervalSeconds = seconds;
+        this.flushSchedule.cancel();
+        this.flushSchedule =
+                this.threadPool.scheduleWithFixedDelay(
+                        this::periodicFlush, TimeValue.timeValueSeconds(seconds), ThreadPool.Names.GENERIC);
     }
 
     @Override
@@ -200,6 +248,18 @@ public class WazuhEnrichedFindingService implements Closeable {
     private void enrichmentComplete() {
         this.inFlightPermits.release();
         this.processQueue();
+    }
+
+    /** Exposes {@link Semaphore#reducePermits(int)} so the dynamic setting can shrink the cap. */
+    private static final class AdjustableSemaphore extends Semaphore {
+        AdjustableSemaphore(int permits) {
+            super(permits);
+        }
+
+        @Override
+        public void reducePermits(int reduction) {
+            super.reducePermits(reduction);
+        }
     }
 
     /**
@@ -502,7 +562,7 @@ public class WazuhEnrichedFindingService implements Closeable {
         } catch (Exception e) {
             // Submission was rejected (e.g. thread pool queue full). Signal completion for this
             // finding here so the batch's in-flight permit is not leaked; otherwise enrichment
-            // stalls once MAX_IN_FLIGHT is reached.
+            // stalls once maxInFlight is reached.
             log.warn(
                     "Failed to submit enrichment build for finding {}, releasing in-flight slot",
                     finding.getId(),
@@ -638,7 +698,7 @@ public class WazuhEnrichedFindingService implements Closeable {
 
         this.pendingRequests.add(request);
         log.debug("Added enriched finding to pending requests: {}", document);
-        if (this.pendingCount.incrementAndGet() % BULK_BATCH_SIZE == 0) {
+        if (this.pendingCount.incrementAndGet() % this.bulkBatchSize == 0) {
             this.drainAndFlush();
         }
     }

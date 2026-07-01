@@ -317,4 +317,43 @@ public class SecurityAnalyticsSettings {
                     "wazuh-events-v5-*",
                     Setting.Property.NodeScope,
                     Setting.Property.Dynamic);
+
+    /**
+     * Number of enriched findings accumulated before a bulk index request is fired by {@code
+     * WazuhEnrichedFindingService}.
+     */
+    public static final Setting<Integer> ENRICHED_FINDINGS_BULK_SIZE =
+            Setting.intSetting(
+                    "plugins.security_analytics.enriched_findings_bulk_size",
+                    100,
+                    10,
+                    1000,
+                    Setting.Property.NodeScope,
+                    Setting.Property.Dynamic);
+
+    /**
+     * Maximum number of concurrent async enrichment chains in {@code WazuhEnrichedFindingService}.
+     * Bounds peak demand on the transport layer when many findings are published at once.
+     */
+    public static final Setting<Integer> ENRICHED_FINDINGS_MAX_IN_FLIGHT =
+            Setting.intSetting(
+                    "plugins.security_analytics.enriched_findings_max_in_flight",
+                    5,
+                    1,
+                    10,
+                    Setting.Property.NodeScope,
+                    Setting.Property.Dynamic);
+
+    /**
+     * Interval in seconds at which leftover pending index requests are flushed by {@code
+     * WazuhEnrichedFindingService} regardless of batch size.
+     */
+    public static final Setting<Integer> ENRICHED_FINDINGS_FLUSH_INTERVAL =
+            Setting.intSetting(
+                    "plugins.security_analytics.enriched_findings_flush_interval",
+                    5,
+                    1,
+                    60,
+                    Setting.Property.NodeScope,
+                    Setting.Property.Dynamic);
 }
