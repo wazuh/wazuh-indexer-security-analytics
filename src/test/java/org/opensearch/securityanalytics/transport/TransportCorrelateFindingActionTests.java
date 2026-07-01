@@ -157,6 +157,10 @@ public class TransportCorrelateFindingActionTests extends OpenSearchTestCase {
                                         SecurityAnalyticsSettings.ENRICHED_FINDINGS_ENABLED,
                                         SecurityAnalyticsSettings.CORRELATION_DETECTOR_CACHE_TTL,
                                         SecurityAnalyticsSettings.CORRELATION_MAX_IN_FLIGHT_FINDINGS,
+                                        SecurityAnalyticsSettings.CORRELATION_MAX_PENDING_FINDINGS,
+                                        SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_ENABLED,
+                                        SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_HIGH_WATERMARK_PERCENT,
+                                        SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_LOW_WATERMARK_PERCENT,
                                         SecurityAnalyticsSettings.CORRELATION_METADATA_CACHE_TTL)));
         when(clusterService.getClusterSettings()).thenReturn(clusterSettings);
         when(clusterService.state()).thenReturn(ClusterState.builder(new ClusterName("test")).build());
