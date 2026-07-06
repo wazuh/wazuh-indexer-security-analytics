@@ -42,7 +42,9 @@ import java.util.Map;
  * PUT /_plugins/_security_analytics/findings/_update
  *
  * <p>Accepts a JSON object with a {@code findings} array. Each element must contain {@code _id},
- * {@code _index}, and a {@code case} object with the case-management fields to set.
+ * {@code _index}, and a {@code case} object with the case-management fields to set. The {@code
+ * case} object is validated against the Wazuh Common Schema (WCS) and its enum values are
+ * normalized before the update is applied (see {@link CaseValidator}).
  */
 public class RestUpdateFindingsAction extends BaseRestHandler {
     private static final Logger log = LogManager.getLogger(RestUpdateFindingsAction.class);
@@ -139,7 +141,16 @@ public class RestUpdateFindingsAction extends BaseRestHandler {
                     return;
                 }
 
-                Map<String, Object> updateDoc = Map.of(FIELD_WAZUH, Map.of(FIELD_CASE, caseObj));
+                @SuppressWarnings("unchecked")
+                Map<String, Object> caseMap = (Map<String, Object>) caseObj;
+                String caseError = CaseValidator.validateAndNormalize(caseMap);
+                if (caseError != null) {
+                    this.sendError(
+                            channel, RestStatus.BAD_REQUEST, "Element at index " + i + ": " + caseError);
+                    return;
+                }
+
+                Map<String, Object> updateDoc = Map.of(FIELD_WAZUH, Map.of(FIELD_CASE, caseMap));
                 UpdateRequest updateRequest =
                         new UpdateRequest(index, id).doc(updateDoc, MediaTypeRegistry.JSON);
                 bulkRequest.add(updateRequest);

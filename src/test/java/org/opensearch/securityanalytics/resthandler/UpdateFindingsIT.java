@@ -61,12 +61,22 @@ public class UpdateFindingsIT extends SecurityAnalyticsRestTestCase {
                         + index
                         + "\","
                         + "  \"case\": {"
-                        + "    \"status\": \"ACKNOWLEDGED\","
-                        + "    \"comment\": \"Reviewed by analyst\","
+                        + "    \"title\": \"Suspicious login\","
+                        + "    \"description\": \"Multiple failed logins\","
+                        + "    \"status\": \"acknowledged\","
+                        + "    \"severity\": \"medium\","
+                        + "    \"priority\": \"high\","
+                        + "    \"tlp\": \"TLP:AMBER\","
                         + "    \"tags\": [\"critical\", \"reviewed\"],"
                         + "    \"created_at\": \"2026-06-10T08:00:00.000Z\","
                         + "    \"updated_at\": \"2026-06-10T09:00:00.000Z\","
-                        + "    \"user\": { \"name\": \"analyst1\" }"
+                        + "    \"user\": { \"name\": \"analyst1\" },"
+                        + "    \"comments\": [{"
+                        + "      \"author\": \"analyst1\","
+                        + "      \"comment\": \"Reviewed by analyst\","
+                        + "      \"created_at\": \"2026-06-10T09:00:00.000Z\","
+                        + "      \"updated_at\": \"2026-06-10T09:00:00.000Z\""
+                        + "    }]"
                         + "  }"
                         + "}]"
                         + "}";
@@ -91,9 +101,16 @@ public class UpdateFindingsIT extends SecurityAnalyticsRestTestCase {
         @SuppressWarnings("unchecked")
         Map<String, Object> caseObj = (Map<String, Object>) wazuh.get("case");
         assertNotNull("wazuh.case field should exist", caseObj);
-        assertEquals("ACKNOWLEDGED", caseObj.get("status"));
-        assertEquals("Reviewed by analyst", caseObj.get("comment"));
+        assertEquals("acknowledged", caseObj.get("status"));
+        assertEquals("medium", caseObj.get("severity"));
+        assertEquals("high", caseObj.get("priority"));
+        assertEquals("TLP:AMBER", caseObj.get("tlp"));
         assertEquals("analyst1", ((Map<?, ?>) caseObj.get("user")).get("name"));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> comments = (List<Map<String, Object>>) caseObj.get("comments");
+        assertEquals(1, comments.size());
+        assertEquals("Reviewed by analyst", comments.getFirst().get("comment"));
+        assertEquals("analyst1", comments.getFirst().get("author"));
     }
 
     /** Update only the status field — partial case update. */
@@ -110,7 +127,7 @@ public class UpdateFindingsIT extends SecurityAnalyticsRestTestCase {
                         + "  \"_index\": \""
                         + index
                         + "\","
-                        + "  \"case\": { \"status\": \"COMPLETED\" }"
+                        + "  \"case\": { \"status\": \"completed\" }"
                         + "}]"
                         + "}";
 
@@ -121,7 +138,46 @@ public class UpdateFindingsIT extends SecurityAnalyticsRestTestCase {
         @SuppressWarnings("unchecked")
         Map<String, Object> caseObj =
                 (Map<String, Object>) ((Map<String, Object>) source.get("wazuh")).get("case");
-        assertEquals("COMPLETED", caseObj.get("status"));
+        assertEquals("completed", caseObj.get("status"));
+    }
+
+    /**
+     * Enum values sent in mixed case are normalized: status/severity/priority to lowercase, tlp to
+     * uppercase with its prefix.
+     */
+    public void testUpdateSingleFinding_normalizesEnumCase() throws IOException {
+        String index = this.createFindingsIndex();
+        String docId = this.indexFindingDoc(index);
+
+        String body =
+                "{"
+                        + "\"findings\": [{"
+                        + "  \"_id\": \""
+                        + docId
+                        + "\","
+                        + "  \"_index\": \""
+                        + index
+                        + "\","
+                        + "  \"case\": {"
+                        + "    \"status\": \"ACKNOWLEDGED\","
+                        + "    \"severity\": \"High\","
+                        + "    \"priority\": \"Urgent\","
+                        + "    \"tlp\": \"tlp:green\""
+                        + "  }"
+                        + "}]"
+                        + "}";
+
+        Response response = this.makePutRequest(body);
+        assertEquals(HttpStatus.SC_OK, response.getStatusLine().getStatusCode());
+
+        Map<String, Object> source = this.getDocSource(index, docId);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> caseObj =
+                (Map<String, Object>) ((Map<String, Object>) source.get("wazuh")).get("case");
+        assertEquals("acknowledged", caseObj.get("status"));
+        assertEquals("high", caseObj.get("severity"));
+        assertEquals("urgent", caseObj.get("priority"));
+        assertEquals("TLP:GREEN", caseObj.get("tlp"));
     }
 
     /** Bulk update of multiple findings in a single request. */
@@ -137,12 +193,12 @@ public class UpdateFindingsIT extends SecurityAnalyticsRestTestCase {
                         + docId1
                         + "\", \"_index\": \""
                         + index
-                        + "\", \"case\": { \"status\": \"ACKNOWLEDGED\" } },"
+                        + "\", \"case\": { \"status\": \"acknowledged\" } },"
                         + "  { \"_id\": \""
                         + docId2
                         + "\", \"_index\": \""
                         + index
-                        + "\", \"case\": { \"status\": \"COMPLETED\" } }"
+                        + "\", \"case\": { \"status\": \"completed\" } }"
                         + "]"
                         + "}";
 
@@ -172,7 +228,7 @@ public class UpdateFindingsIT extends SecurityAnalyticsRestTestCase {
                         + "  \"_index\": \""
                         + index
                         + "\","
-                        + "  \"case\": { \"status\": \"ACTIVE\", \"comment\": \"Initial triage\" }"
+                        + "  \"case\": { \"status\": \"active\", \"comments\": [{ \"comment\": \"Initial triage\" }] }"
                         + "}]"
                         + "}";
         this.makePutRequest(body1);
@@ -187,7 +243,7 @@ public class UpdateFindingsIT extends SecurityAnalyticsRestTestCase {
                         + "  \"_index\": \""
                         + index
                         + "\","
-                        + "  \"case\": { \"status\": \"COMPLETED\", \"user\": { \"name\": \"admin\" } }"
+                        + "  \"case\": { \"status\": \"completed\", \"user\": { \"name\": \"admin\" } }"
                         + "}]"
                         + "}";
         Response response = this.makePutRequest(body2);
@@ -197,7 +253,7 @@ public class UpdateFindingsIT extends SecurityAnalyticsRestTestCase {
         @SuppressWarnings("unchecked")
         Map<String, Object> caseObj =
                 (Map<String, Object>) ((Map<String, Object>) source.get("wazuh")).get("case");
-        assertEquals("COMPLETED", caseObj.get("status"));
+        assertEquals("completed", caseObj.get("status"));
         assertEquals("admin", ((Map<?, ?>) caseObj.get("user")).get("name"));
     }
 
@@ -309,6 +365,62 @@ public class UpdateFindingsIT extends SecurityAnalyticsRestTestCase {
         }
     }
 
+    /** An out-of-schema status value should be rejected with 400. */
+    public void testUpdateFindings_invalidStatusEnum() throws IOException {
+        assertCaseRejected("{ \"status\": \"banana\" }");
+    }
+
+    /** An out-of-schema severity value should be rejected with 400. */
+    public void testUpdateFindings_invalidSeverityEnum() throws IOException {
+        assertCaseRejected("{ \"severity\": \"super-high\" }");
+    }
+
+    /** An out-of-schema tlp value should be rejected with 400. */
+    public void testUpdateFindings_invalidTlpEnum() throws IOException {
+        assertCaseRejected("{ \"tlp\": \"TLP:PURPLE\" }");
+    }
+
+    /** An unknown field inside the case object should be rejected with 400. */
+    public void testUpdateFindings_unknownCaseField() throws IOException {
+        assertCaseRejected("{ \"status\": \"active\", \"foo\": \"bar\" }");
+    }
+
+    /** A comments value that is not an array should be rejected with 400. */
+    public void testUpdateFindings_commentsNotArray() throws IOException {
+        assertCaseRejected("{ \"comments\": \"not-an-array\" }");
+    }
+
+    /** An unknown field inside a comment entry should be rejected with 400. */
+    public void testUpdateFindings_unknownCommentField() throws IOException {
+        assertCaseRejected("{ \"comments\": [{ \"comment\": \"ok\", \"foo\": \"bar\" }] }");
+    }
+
+    /** A tags value that is not an array of strings should be rejected with 400. */
+    public void testUpdateFindings_invalidTags() throws IOException {
+        assertCaseRejected("{ \"tags\": [1, 2, 3] }");
+    }
+
+    /**
+     * Helper: sends an update with the given raw {@code case} JSON and asserts the endpoint rejects
+     * it with a 400 (the finding index is created but no document is required, since validation
+     * happens before the bulk request is issued).
+     */
+    private void assertCaseRejected(String caseJson) throws IOException {
+        String index = this.createFindingsIndex();
+        String body =
+                "{\"findings\": [{ \"_id\": \"any\", \"_index\": \""
+                        + index
+                        + "\", \"case\": "
+                        + caseJson
+                        + " }]}";
+        try {
+            this.makePutRequest(body);
+            fail("Expected 400 for invalid case object: " + caseJson);
+        } catch (ResponseException e) {
+            assertEquals(HttpStatus.SC_BAD_REQUEST, e.getResponse().getStatusLine().getStatusCode());
+        }
+    }
+
     // ---------------------------------------------------------------
     // Response structure tests
     // ---------------------------------------------------------------
@@ -362,14 +474,27 @@ public class UpdateFindingsIT extends SecurityAnalyticsRestTestCase {
                         + "      \"properties\": {"
                         + "        \"case\": {"
                         + "          \"properties\": {"
+                        + "            \"title\": { \"type\": \"match_only_text\" },"
+                        + "            \"description\": { \"type\": \"match_only_text\" },"
                         + "            \"status\": { \"type\": \"keyword\" },"
-                        + "            \"comment\": { \"type\": \"text\" },"
+                        + "            \"severity\": { \"type\": \"keyword\" },"
+                        + "            \"priority\": { \"type\": \"keyword\" },"
+                        + "            \"tlp\": { \"type\": \"keyword\" },"
                         + "            \"tags\": { \"type\": \"keyword\" },"
                         + "            \"created_at\": { \"type\": \"date\" },"
                         + "            \"updated_at\": { \"type\": \"date\" },"
                         + "            \"user\": {"
                         + "              \"properties\": {"
                         + "                \"name\": { \"type\": \"keyword\" }"
+                        + "              }"
+                        + "            },"
+                        + "            \"comments\": {"
+                        + "              \"type\": \"nested\","
+                        + "              \"properties\": {"
+                        + "                \"author\": { \"type\": \"keyword\" },"
+                        + "                \"comment\": { \"type\": \"match_only_text\" },"
+                        + "                \"created_at\": { \"type\": \"date\" },"
+                        + "                \"updated_at\": { \"type\": \"date\" }"
                         + "              }"
                         + "            }"
                         + "          }"
