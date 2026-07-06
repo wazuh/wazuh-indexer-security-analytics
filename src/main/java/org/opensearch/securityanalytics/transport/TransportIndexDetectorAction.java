@@ -110,6 +110,7 @@ import org.opensearch.securityanalytics.util.DetectorIndices;
 import org.opensearch.securityanalytics.util.ExceptionChecker;
 import org.opensearch.securityanalytics.util.IndexUtils;
 import org.opensearch.securityanalytics.util.MonitorService;
+import org.opensearch.securityanalytics.util.ResourceLockService;
 import org.opensearch.securityanalytics.util.RuleIndices;
 import org.opensearch.securityanalytics.util.RuleTopicIndices;
 import org.opensearch.securityanalytics.util.SecurityAnalyticsException;
@@ -152,6 +153,9 @@ public class TransportIndexDetectorAction
      * standard-detector modification restrictions.
      */
     public static final String WAZUH_INTERNAL_CALLER_HEADER = "_wazuh_internal_caller";
+
+    /** Lock ID guarding the {@code max_detectors} limit-check-then-create sequence. */
+    private static final String MAX_DETECTORS_LOCK_ID = "security-analytics-max-detectors";
 
     static String validateSingleRuleSpace(Detector detector) {
         if (detector.getInputs().isEmpty()) {
@@ -207,6 +211,8 @@ public class TransportIndexDetectorAction
 
     private final TimeValue indexTimeout;
 
+    private final ResourceLockService resourceLockService;
+
     @Inject
     public TransportIndexDetectorAction(
             TransportService transportService,
@@ -245,6 +251,7 @@ public class TransportIndexDetectorAction
         this.maxRulesPerDetector = SecurityAnalyticsSettings.MAX_RULES_PER_DETECTOR.get(this.settings);
         this.monitorService = new MonitorService(client);
         this.workflowService = new WorkflowService(client, this.monitorService);
+        this.resourceLockService = new ResourceLockService(client, clusterService, this.threadPool);
 
         this.clusterService
                 .getClusterSettings()
@@ -310,9 +317,21 @@ public class TransportIndexDetectorAction
             this.validateStandardDetectorUpdate(
                     request, listener, () -> this.checkIndicesAndExecute(task, request, listener, user));
         } else if (request.getMethod() == RestRequest.Method.POST && !isInternalCaller) {
-            // On create, enforce the max detectors limit for user-created detectors.
-            this.validateMaxDetectors(
-                    listener, () -> this.checkIndicesAndExecute(task, request, listener, user));
+            // On create, serialize the limit-check-then-create sequence so concurrent requests
+            // cannot all observe a stale count and overshoot max_detectors. The lock is released
+            // via the wrapped listener once the whole (async) creation pipeline completes.
+            this.resourceLockService.acquire(
+                    MAX_DETECTORS_LOCK_ID,
+                    ActionListener.wrap(
+                            lockId -> {
+                                ActionListener<IndexDetectorResponse> releasingListener =
+                                        ActionListener.runAfter(
+                                                listener, () -> this.resourceLockService.release(lockId));
+                                this.validateMaxDetectors(
+                                        releasingListener,
+                                        () -> this.checkIndicesAndExecute(task, request, releasingListener, user));
+                            },
+                            e -> listener.onFailure(SecurityAnalyticsException.wrap(e))));
         } else {
             this.checkIndicesAndExecute(task, request, listener, user);
         }
