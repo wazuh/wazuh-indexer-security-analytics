@@ -31,6 +31,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Add new Transport action to delete space resources [(#104)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/104)
 - Add support for dynamic configuration of threat detectors [(#206)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/206)
 - Add endpoint to update findings [(#225)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/225)
+- Support new findings case management fields [(#256)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/256)
 
 ### Dependencies
 - Update to JDK 25 [(#49)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/49)
