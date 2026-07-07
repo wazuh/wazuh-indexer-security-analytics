@@ -68,30 +68,79 @@ final class CaseValidator {
      *     problem found
      */
     static String validateAndNormalize(Map<String, Object> caseObj) {
+        String error = checkUnknownFields(caseObj);
+        if (error != null) {
+            return error;
+        }
+        return validateFields(caseObj);
+    }
+
+    /**
+     * Checks that {@code caseObj} contains no keys outside {@link #CASE_FIELDS}.
+     *
+     * @param caseObj the {@code case} map from the request
+     * @return {@code null} if all keys are known, or a message naming the first unknown key
+     */
+    private static String checkUnknownFields(Map<String, Object> caseObj) {
         for (String key : caseObj.keySet()) {
             if (!CASE_FIELDS.contains(key)) {
                 return "unknown case field \"" + key + "\"";
             }
         }
+        return null;
+    }
 
+    /**
+     * Runs every field-level check (enum normalization, string/timestamp/tags/user/comments
+     * validation) against {@code caseObj}, stopping at the first failure.
+     *
+     * @param caseObj the mutable {@code case} map from the request
+     * @return {@code null} if every check passes, or the first error encountered
+     */
+    private static String validateFields(Map<String, Object> caseObj) {
         String error;
-        if ((error = normalizeEnum(caseObj, "status", STATUS_VALUES, false)) != null) return error;
-        if ((error = normalizeEnum(caseObj, "severity", SEVERITY_VALUES, false)) != null) return error;
-        if ((error = normalizeEnum(caseObj, "priority", PRIORITY_VALUES, false)) != null) return error;
-        if ((error = normalizeEnum(caseObj, "tlp", TLP_VALUES, true)) != null) return error;
-
-        if ((error = validateString(caseObj.get("title"), "title")) != null) return error;
-        if ((error = validateString(caseObj.get("description"), "description")) != null) return error;
-        if ((error = validateTimestamp(caseObj.get("created_at"), "created_at")) != null) return error;
-        if ((error = validateTimestamp(caseObj.get("updated_at"), "updated_at")) != null) return error;
-
-        if ((error = validateTags(caseObj)) != null) return error;
-        if ((error = validateUser(caseObj)) != null) return error;
+        if ((error = normalizeEnum(caseObj, "status", STATUS_VALUES, false)) != null) {
+            return error;
+        }
+        if ((error = normalizeEnum(caseObj, "severity", SEVERITY_VALUES, false)) != null) {
+            return error;
+        }
+        if ((error = normalizeEnum(caseObj, "priority", PRIORITY_VALUES, false)) != null) {
+            return error;
+        }
+        if ((error = normalizeEnum(caseObj, "tlp", TLP_VALUES, true)) != null) {
+            return error;
+        }
+        if ((error = validateString(caseObj.get("title"), "title")) != null) {
+            return error;
+        }
+        if ((error = validateString(caseObj.get("description"), "description")) != null) {
+            return error;
+        }
+        if ((error = validateTimestamp(caseObj.get("created_at"), "created_at")) != null) {
+            return error;
+        }
+        if ((error = validateTimestamp(caseObj.get("updated_at"), "updated_at")) != null) {
+            return error;
+        }
+        if ((error = validateTags(caseObj)) != null) {
+            return error;
+        }
+        if ((error = validateUser(caseObj)) != null) {
+            return error;
+        }
         return validateComments(caseObj);
     }
 
     /**
      * Lowercases (or uppercases, for {@code tlp}) an enum value and checks it against the WCS set.
+     *
+     * @param caseObj the mutable {@code case} map, updated in place with the normalized value
+     * @param field the field name to read and normalize (e.g. {@code "status"})
+     * @param allowed the set of accepted normalized values
+     * @param upper {@code true} to uppercase the value (used for {@code tlp}), {@code false} to
+     *     lowercase it
+     * @return {@code null} if absent or valid, otherwise a message describing the problem
      */
     private static String normalizeEnum(
             Map<String, Object> caseObj, String field, Set<String> allowed, boolean upper) {
@@ -113,6 +162,13 @@ final class CaseValidator {
         return null;
     }
 
+    /**
+     * Checks that {@code value} is either absent or a {@link String}.
+     *
+     * @param value the value to check, may be {@code null}
+     * @param label the field name used in the error message (e.g. {@code "title"})
+     * @return {@code null} if absent or a string, otherwise a message describing the problem
+     */
     private static String validateString(Object value, String label) {
         if (value != null && !(value instanceof String)) {
             return label + " must be a string";
@@ -120,7 +176,13 @@ final class CaseValidator {
         return null;
     }
 
-    /** A timestamp may be an ISO-8601 string or an epoch-millis number. */
+    /**
+     * Checks that {@code value} is either absent, an ISO-8601 string, or an epoch-millis number.
+     *
+     * @param value the value to check, may be {@code null}
+     * @param label the field name used in the error message (e.g. {@code "created_at"})
+     * @return {@code null} if absent or valid, otherwise a message describing the problem
+     */
     private static String validateTimestamp(Object value, String label) {
         if (value == null || value instanceof String || value instanceof Number) {
             return null;
@@ -128,6 +190,12 @@ final class CaseValidator {
         return label + " must be a string or number";
     }
 
+    /**
+     * Checks that {@code caseObj}'s {@code tags} field, if present, is an array of strings.
+     *
+     * @param caseObj the {@code case} map from the request
+     * @return {@code null} if absent or valid, otherwise a message describing the problem
+     */
     private static String validateTags(Map<String, Object> caseObj) {
         Object value = caseObj.get("tags");
         if (value == null) {
@@ -144,15 +212,21 @@ final class CaseValidator {
         return null;
     }
 
+    /**
+     * Checks that {@code caseObj}'s {@code user} field, if present, is an object containing only
+     * {@link #USER_FIELDS} with a valid {@code name}.
+     *
+     * @param caseObj the {@code case} map from the request
+     * @return {@code null} if absent or valid, otherwise a message describing the problem
+     */
     private static String validateUser(Map<String, Object> caseObj) {
         Object value = caseObj.get("user");
         if (value == null) {
             return null;
         }
-        if (!(value instanceof Map)) {
+        if (!(value instanceof Map<?, ?> user)) {
             return "user must be an object";
         }
-        Map<?, ?> user = (Map<?, ?>) value;
         for (Object key : user.keySet()) {
             if (!USER_FIELDS.contains(key)) {
                 return "unknown user field \"" + key + "\"";
@@ -161,36 +235,62 @@ final class CaseValidator {
         return validateString(user.get("name"), "user.name");
     }
 
+    /**
+     * Checks that {@code caseObj}'s {@code comments} field, if present, is an array of objects, each
+     * containing only {@link #COMMENT_FIELDS} with valid {@code comment}, {@code author}, {@code
+     * created_at} and {@code updated_at} values.
+     *
+     * @param caseObj the {@code case} map from the request
+     * @return {@code null} if absent or valid, otherwise a message describing the first problem
+     *     found, including the offending comment's index
+     */
     private static String validateComments(Map<String, Object> caseObj) {
         Object value = caseObj.get("comments");
         if (value == null) {
             return null;
         }
-        if (!(value instanceof List)) {
+        if (!(value instanceof List<?> comments)) {
             return "comments must be an array";
         }
-        List<?> comments = (List<?>) value;
         for (int i = 0; i < comments.size(); i++) {
-            Object element = comments.get(i);
-            if (!(element instanceof Map)) {
-                return "comment at index " + i + " must be an object";
-            }
-            Map<?, ?> comment = (Map<?, ?>) element;
-            for (Object key : comment.keySet()) {
-                if (!COMMENT_FIELDS.contains(key)) {
-                    return "unknown comment field \"" + key + "\" at index " + i;
-                }
-            }
-            String error;
-            if ((error = validateString(comment.get("comment"), "comment.comment at index " + i)) != null)
+            String error = validateComment(comments.get(i), i);
+            if (error != null) {
                 return error;
-            if ((error = validateString(comment.get("author"), "comment.author at index " + i)) != null)
-                return error;
-            if ((error = validateTimestamp(comment.get("created_at"), "comment.created_at at index " + i))
-                    != null) return error;
-            if ((error = validateTimestamp(comment.get("updated_at"), "comment.updated_at at index " + i))
-                    != null) return error;
+            }
         }
         return null;
+    }
+
+    /**
+     * Validates a single entry from the {@code comments} array.
+     *
+     * @param element the comment element, expected to be a {@code Map}
+     * @param index the element's position in the {@code comments} array, used in error messages
+     * @return {@code null} if valid, otherwise a message describing the problem
+     */
+    private static String validateComment(Object element, int index) {
+        if (!(element instanceof Map<?, ?> comment)) {
+            return "comment at index " + index + " must be an object";
+        }
+        for (Object key : comment.keySet()) {
+            if (!COMMENT_FIELDS.contains(key)) {
+                return "unknown comment field \"" + key + "\" at index " + index;
+            }
+        }
+        String error;
+        if ((error = validateString(comment.get("comment"), "comment.comment at index " + index))
+                != null) {
+            return error;
+        }
+        if ((error = validateString(comment.get("author"), "comment.author at index " + index))
+                != null) {
+            return error;
+        }
+        if ((error =
+                        validateTimestamp(comment.get("created_at"), "comment.created_at at index " + index))
+                != null) {
+            return error;
+        }
+        return validateTimestamp(comment.get("updated_at"), "comment.updated_at at index " + index);
     }
 }
