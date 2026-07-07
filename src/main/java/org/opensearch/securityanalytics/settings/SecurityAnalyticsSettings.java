@@ -363,4 +363,17 @@ public class SecurityAnalyticsSettings {
                     1000,
                     Setting.Property.NodeScope,
                     Setting.Property.Dynamic);
+
+    /**
+     * Maximum number of findings that can be updated in a single request to {@code
+     * RestUpdateFindingsAction}. A value of 0 disables the case management bulk update endpoint.
+     */
+    public static final Setting<Integer> MAX_CASE_MANAGEMENT_BULK_SIZE =
+            Setting.intSetting(
+                    "plugins.security_analytics.max_case_management_bulk_size",
+                    10,
+                    0,
+                    100,
+                    Setting.Property.NodeScope,
+                    Setting.Property.Dynamic);
 }

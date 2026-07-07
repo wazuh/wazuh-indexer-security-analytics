@@ -22,6 +22,7 @@ import org.opensearch.action.bulk.BulkItemResponse;
 import org.opensearch.action.bulk.BulkRequest;
 import org.opensearch.action.bulk.BulkResponse;
 import org.opensearch.action.update.UpdateRequest;
+import org.opensearch.common.settings.ClusterSettings;
 import org.opensearch.common.xcontent.XContentHelper;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.rest.RestStatus;
@@ -32,6 +33,7 @@ import org.opensearch.rest.BytesRestResponse;
 import org.opensearch.rest.RestChannel;
 import org.opensearch.rest.RestRequest;
 import org.opensearch.securityanalytics.SecurityAnalyticsPlugin;
+import org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings;
 import org.opensearch.transport.client.node.NodeClient;
 
 import java.io.IOException;
@@ -56,7 +58,12 @@ public class RestUpdateFindingsAction extends BaseRestHandler {
     private static final String FIELD_WAZUH = "wazuh";
     private static final String FIELD_MESSAGE = "message";
     private static final String FIELD_STATUS = "status";
-    private static final int MAX_BULK_ITEMS = 50;
+
+    private final ClusterSettings clusterSettings;
+
+    public RestUpdateFindingsAction(ClusterSettings clusterSettings) {
+        this.clusterSettings = clusterSettings;
+    }
 
     @Override
     public String getName() {
@@ -97,11 +104,17 @@ public class RestUpdateFindingsAction extends BaseRestHandler {
                 return;
             }
 
-            if (items.size() > MAX_BULK_ITEMS) {
+            int maxBulkItems =
+                    this.clusterSettings.get(SecurityAnalyticsSettings.MAX_CASE_MANAGEMENT_BULK_SIZE);
+            if (maxBulkItems == 0) {
+                this.sendError(channel, RestStatus.BAD_REQUEST, "Case management is disabled");
+                return;
+            }
+            if (items.size() > maxBulkItems) {
                 this.sendError(
                         channel,
                         RestStatus.BAD_REQUEST,
-                        "Cannot update more than " + MAX_BULK_ITEMS + " findings at once");
+                        "Cannot update more than " + maxBulkItems + " findings at once");
                 return;
             }
 

@@ -346,10 +346,10 @@ public class UpdateFindingsIT extends SecurityAnalyticsRestTestCase {
         assertTrue((Boolean) responseBody.get("errors"));
     }
 
-    /** Exceeding the MAX_BULK_ITEMS limit (50) should return 400. */
+    /** Exceeding the max_case_management_bulk_size limit (default 10) should return 400. */
     public void testUpdateFindings_exceedsMaxBulkItems() throws IOException {
         StringBuilder sb = new StringBuilder("{\"findings\": [");
-        for (int i = 0; i < 51; i++) {
+        for (int i = 0; i < 11; i++) {
             if (i > 0) sb.append(",");
             sb.append("{\"_id\": \"id")
                     .append(i)
