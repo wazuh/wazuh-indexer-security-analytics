@@ -389,7 +389,7 @@ public class SecurityAnalyticsPlugin extends Plugin
                 // new RestDeleteCustomLogTypeAction(),
                 new RestGetCorrelationsAlertsAction(),
                 new RestAcknowledgeCorrelationAlertsAction(),
-                new RestUpdateFindingsAction());
+                new RestUpdateFindingsAction(clusterSettings));
     }
 
     @Override
@@ -468,7 +468,8 @@ public class SecurityAnalyticsPlugin extends Plugin
                 SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_ENABLED,
                 SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_HIGH_WATERMARK_PERCENT,
                 SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_LOW_WATERMARK_PERCENT,
-                SecurityAnalyticsSettings.MAX_DETECTORS);
+                SecurityAnalyticsSettings.MAX_DETECTORS,
+                SecurityAnalyticsSettings.MAX_CASE_MANAGEMENT_BULK_SIZE);
     }
 
     @Override
