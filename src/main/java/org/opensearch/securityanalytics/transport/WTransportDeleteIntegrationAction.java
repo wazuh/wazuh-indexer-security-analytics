@@ -68,7 +68,7 @@ public class WTransportDeleteIntegrationAction
         if (request.getDocumentId() != null && request.getSpace() != null) {
             this.resolveAndDelete(request, listener);
         } else {
-            this.deleteById(request.getLogTypeId(), request.getRefreshPolicy(), listener);
+            this.deleteById(request.getLogTypeId(), request.getRefreshPolicy(), true, listener);
         }
     }
 
@@ -111,7 +111,7 @@ public class WTransportDeleteIntegrationAction
                                 request.getSpace(),
                                 resolvedId);
                         WTransportDeleteIntegrationAction.this.deleteById(
-                                resolvedId, request.getRefreshPolicy(), listener);
+                                resolvedId, request.getRefreshPolicy(), true, listener);
                     }
 
                     @Override
@@ -125,9 +125,10 @@ public class WTransportDeleteIntegrationAction
     private void deleteById(
             String logTypeId,
             org.opensearch.action.support.WriteRequest.RefreshPolicy refreshPolicy,
+            boolean internalCaller,
             ActionListener<WDeleteIntegrationResponse> listener) {
         DeleteCustomLogTypeRequest internalRequest =
-                new DeleteCustomLogTypeRequest(logTypeId, refreshPolicy);
+                new DeleteCustomLogTypeRequest(logTypeId, refreshPolicy, internalCaller);
         this.client.execute(
                 DeleteCustomLogTypeAction.INSTANCE,
                 internalRequest,

@@ -219,7 +219,7 @@ public class TransportDeleteCustomLogTypeAction
                                     RestStatus.BAD_REQUEST));
                 }
             }
-            if (detectorIndices.detectorIndexExists()) {
+            if (!request.isInternalCaller() && detectorIndices.detectorIndexExists()) {
                 searchDetectors(
                         logType.getName(),
                         new ActionListener<>() {
