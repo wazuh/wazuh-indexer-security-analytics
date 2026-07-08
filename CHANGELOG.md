@@ -33,6 +33,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Add endpoint to update findings [(#225)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/225)
 - Add limits for the creation of rules per thread detectors [(#249)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/249)
 - Support new findings case management fields [(#256)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/256)
+- Create new Action to toggle enabled/disable detectors [(#260)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/260)
 
 ### Dependencies
 - Update to JDK 25 [(#49)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/49)
