@@ -140,6 +140,7 @@ import org.opensearch.securityanalytics.transport.WTransportIndexCustomRuleActio
 import org.opensearch.securityanalytics.transport.WTransportIndexDetectorAction;
 import org.opensearch.securityanalytics.transport.WTransportIndexIntegrationAction;
 import org.opensearch.securityanalytics.transport.WTransportIndexRuleAction;
+import org.opensearch.securityanalytics.transport.WTransportSetDetectorEnabledAction;
 import org.opensearch.securityanalytics.util.CorrelationIndices;
 import org.opensearch.securityanalytics.util.CorrelationRuleIndices;
 import org.opensearch.securityanalytics.util.CustomLogTypeIndices;
@@ -168,6 +169,7 @@ import com.wazuh.securityanalytics.action.WIndexCustomRuleAction;
 import com.wazuh.securityanalytics.action.WIndexDetectorAction;
 import com.wazuh.securityanalytics.action.WIndexIntegrationAction;
 import com.wazuh.securityanalytics.action.WIndexRuleAction;
+import com.wazuh.securityanalytics.action.WSetDetectorEnabledAction;
 
 import static org.opensearch.securityanalytics.util.CorrelationIndices.CORRELATION_ALERT_INDEX;
 
@@ -543,7 +545,9 @@ public class SecurityAnalyticsPlugin extends Plugin
                 new ActionPlugin.ActionHandler<>(
                         AckCorrelationAlertsAction.INSTANCE, TransportAckCorrelationAlertsAction.class),
                 new ActionPlugin.ActionHandler<>(
-                        WIndexDetectorAction.INSTANCE, WTransportIndexDetectorAction.class));
+                        WIndexDetectorAction.INSTANCE, WTransportIndexDetectorAction.class),
+                new ActionPlugin.ActionHandler<>(
+                        WSetDetectorEnabledAction.INSTANCE, WTransportSetDetectorEnabledAction.class));
     }
 
     @Override
