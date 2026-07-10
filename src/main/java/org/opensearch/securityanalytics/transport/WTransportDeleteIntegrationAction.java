@@ -76,7 +76,7 @@ public class WTransportDeleteIntegrationAction
             WDeleteIntegrationRequest request, ActionListener<WDeleteIntegrationResponse> listener) {
         BoolQueryBuilder query =
                 QueryBuilders.boolQuery()
-                        .must(QueryBuilders.termQuery(DOCUMENT_ID_FIELD, request.getDocumentId()))
+                        .must(QueryBuilders.termQuery(DOCUMENT_ID_FIELD + ".keyword", request.getDocumentId()))
                         .must(QueryBuilders.termQuery(SPACE_FIELD + ".keyword", request.getSpace()));
 
         SearchSourceBuilder searchSource = new SearchSourceBuilder().query(query).size(1);
