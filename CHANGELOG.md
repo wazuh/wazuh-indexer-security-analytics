@@ -39,7 +39,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Update to JDK 25 [(#1341)](https://github.com/wazuh/wazuh-indexer/issues/1341)
 
 ### Changed
-- Rename folder for pre-packaged rules [(#3587)](https://github.com/wazuh/internal-devel-requests/issues/3587)
 - Build SAP in Content Manager workflow [(#3754)](https://github.com/wazuh/internal-devel-requests/issues/3754)
 - Skip validation of Integrations source [(#3788)](https://github.com/wazuh/internal-devel-requests/issues/3788)
 - Merge `cloud-services` categories [(#3785)](https://github.com/wazuh/internal-devel-requests/issues/3785)
@@ -50,7 +49,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Rename commons library [(#3881)](https://github.com/wazuh/internal-devel-requests/issues/3881)
 - Allow creating custom and standard integrations [(#4047)](https://github.com/wazuh/internal-devel-requests/issues/4047)
 - Change SAP logic to use findings indices [(#72)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/72)
-- Optimize findings enrichment [(#82)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/82)
 - Limit number of rules per detector [(#111)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/111)
 - Prevent modification of standard threat detectors [(#112)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/112)
 - Remove duplicated metadata fields for rules [(#147)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/147)
