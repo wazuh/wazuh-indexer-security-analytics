@@ -203,6 +203,27 @@ public class SecurityAnalyticsSettings {
                     0,
                     Setting.Property.NodeScope);
 
+    private static final int MAXIMUM_MAX_RULES_PER_DETECTOR = 50;
+    public static final int DEFAULT_MAX_RULES_PER_DETECTOR = MAXIMUM_MAX_RULES_PER_DETECTOR;
+    private static final int MINIMUM_MAX_RULES_PER_DETECTOR = 0;
+
+    /**
+     * Maximum number of rules allowed per detector input. Requests that would exceed this limit are
+     * rejected with a 400 error.
+     */
+    public static final Setting<Integer> MAX_RULES_PER_DETECTOR =
+            Setting.intSetting(
+                    "plugins.security_analytics.max_rules_per_detector",
+                    DEFAULT_MAX_RULES_PER_DETECTOR,
+                    MINIMUM_MAX_RULES_PER_DETECTOR,
+                    MAXIMUM_MAX_RULES_PER_DETECTOR,
+                    Setting.Property.NodeScope,
+                    Setting.Property.Dynamic);
+
+    private static final int MAXIMUM_MAX_DETECTORS = 10;
+    public static final int DEFAULT_MAX_DETECTORS = MAXIMUM_MAX_DETECTORS;
+    private static final int MINIMUM_MAX_DETECTORS = 0;
+
     /**
      * Maximum number of user-created threat detectors allowed. Standard detectors created by the
      * Content Manager plugin are not counted towards this limit.
@@ -210,8 +231,9 @@ public class SecurityAnalyticsSettings {
     public static final Setting<Integer> MAX_DETECTORS =
             Setting.intSetting(
                     "plugins.security_analytics.max_detectors",
-                    10,
-                    0,
+                    DEFAULT_MAX_DETECTORS,
+                    MINIMUM_MAX_DETECTORS,
+                    MAXIMUM_MAX_DETECTORS,
                     Setting.Property.NodeScope,
                     Setting.Property.Dynamic);
 
