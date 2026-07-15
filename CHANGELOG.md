@@ -31,9 +31,6 @@
 - Support new findings case management fields [(#256)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/256)
 - Create new Action to toggle enabled/disable detectors [(#260)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/260)
 
-### Dependencies
-- Update to JDK 25 [(#49)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/49)
-
 ### Changed
 - Rename folder for pre-packaged rules [(#10)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/10)
 - Build SAP in Content Manager workflow [(#17)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/17)
@@ -45,6 +42,7 @@
 - Improve SAP code quality [(#26)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/26)
 - Rename commons library [(#28)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/28)
 - Allow creating custom and standard integrations [(#32)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/32)
+- Update to JDK 25 [(#49)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/49)
 - Change SAP logic to use findings indices [(#76)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/76)
 - Optimize findings enrichment [(#93)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/93)
 - Limit number of rules per detector [(#111)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/111)
@@ -54,9 +52,6 @@
 - Improve time correlation between events and findings [(#216)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/216)
 - Nest `rule` under `wazuh` object [(#204)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/204)
 - Remove unused settings [(#221)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/221)
-
-### Deprecated
--
 
 ### Removed
 - Disable pre-packaged rules [(#9)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/9)
@@ -75,9 +70,6 @@
 - Fix contains conditions using white spaces [(#162)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/162)
 - Fix enrichment dispatch coupling that dropped findings on correlation failure [(#193)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/193)
 - Fix `ClassCastException` in `WTransportDeleteSpaceResourcesAction` [(#205)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/205)
-
-### Security
--
 
 ## Prior versions
 - []()
