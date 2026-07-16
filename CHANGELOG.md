@@ -1,9 +1,5 @@
-# CHANGELOG
-All notable changes to this project are documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). See the [CONTRIBUTING guide](./CONTRIBUTING.md#Changelog) for instructions on how to add changelog entries.
-
 ## [v5.0.0]
+
 ### Added
 - Init repository [(#1)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/1)
 - Add initial version of SAP commons lib [(#3699)](https://github.com/wazuh/internal-devel-requests/issues/3699)
@@ -35,9 +31,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Support new findings case management fields [(#1334)](https://github.com/wazuh/wazuh-indexer-plugins/issues/1334)
 - Create new Action to toggle enabled/disable detectors [(#1356)](https://github.com/wazuh/wazuh-indexer-plugins/issues/1356)
 
-### Dependencies
-- Update to JDK 25 [(#1341)](https://github.com/wazuh/wazuh-indexer/issues/1341)
-
 ### Changed
 - Build SAP in Content Manager workflow [(#3754)](https://github.com/wazuh/internal-devel-requests/issues/3754)
 - Skip validation of Integrations source [(#3788)](https://github.com/wazuh/internal-devel-requests/issues/3788)
@@ -48,6 +41,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Improve SAP code quality [(#3822)](https://github.com/wazuh/internal-devel-requests/issues/3822)
 - Rename commons library [(#3881)](https://github.com/wazuh/internal-devel-requests/issues/3881)
 - Allow creating custom and standard integrations [(#4047)](https://github.com/wazuh/internal-devel-requests/issues/4047)
+- Update to JDK 25 [(#1341)](https://github.com/wazuh/wazuh-indexer/issues/1341)
 - Change SAP logic to use findings indices [(#72)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/72)
 - Limit number of rules per detector [(#111)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/111)
 - Prevent modification of standard threat detectors [(#112)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/112)
@@ -56,9 +50,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Improve time correlation between events and findings [(#214)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/214)
 - Nest `rule` under `wazuh` object [(#1121)](https://github.com/wazuh/wazuh-indexer-plugins/issues/1121)
 - Remove unused settings [(#219)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/219)
-
-### Deprecated
--
 
 ### Removed
 - Disable pre-packaged rules [(#3587)](https://github.com/wazuh/internal-devel-requests/issues/3587)
@@ -78,10 +69,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - Fix enrichment dispatch coupling that dropped findings on correlation failure [(#168)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/168)
 - Fix `ClassCastException` in `WTransportDeleteSpaceResourcesAction` [(#1150)](https://github.com/wazuh/wazuh-indexer-plugins/issues/1150)
 
-### Security
--
-
 ## Prior versions
 - []()
-
-[Unreleased 5.0.x]: https://github.com/wazuh/wazuh-indexer-security-analytics/compare/8a02985a924640048d98b71faee9c310a8333701...5.0.0
