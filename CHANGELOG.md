@@ -2,13 +2,7 @@
 
 ### Added
 - Init repository [(#1)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/1)
-- Add initial version of SAP commons lib [(#3699)](https://github.com/wazuh/internal-devel-requests/issues/3699)
-- Add transport classes to the "commons" lib to create integrations [(#3737)](https://github.com/wazuh/internal-devel-requests/issues/3737)
-- Initialize threat detectors [(#3585)](https://github.com/wazuh/internal-devel-requests/issues/3585)
-- Fix integrations not being created under the correct category [(#3758)](https://github.com/wazuh/internal-devel-requests/issues/3758)
-- Add new actions to security-analytics-commons [(#3757)](https://github.com/wazuh/internal-devel-requests/issues/3757)
 - Implement GH Action for Local Maven publication [(#743)](https://github.com/wazuh/wazuh-indexer-plugins/issues/743)
-- Add new action to create custom rules [(#3927)](https://github.com/wazuh/internal-devel-requests/issues/3927)
 - Add Unclassified log category for integrations and custom log types [(#832)](https://github.com/wazuh/wazuh-indexer-plugins/issues/832)
 - Implement finding enrichment [(#57)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/57)
 - Implement extended sigma rules syntax [(#47)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/47)
@@ -32,15 +26,6 @@
 - Create new Action to toggle enabled/disable detectors [(#1356)](https://github.com/wazuh/wazuh-indexer-plugins/issues/1356)
 
 ### Changed
-- Build SAP in Content Manager workflow [(#3754)](https://github.com/wazuh/internal-devel-requests/issues/3754)
-- Skip validation of Integrations source [(#3788)](https://github.com/wazuh/internal-devel-requests/issues/3788)
-- Merge `cloud-services` categories [(#3785)](https://github.com/wazuh/internal-devel-requests/issues/3785)
-- Create Integrations and Detectors using CTI IDs [(#3790)](https://github.com/wazuh/internal-devel-requests/issues/3790)
-- Load Wazuh Integrations and Rules as standard [(#3772)](https://github.com/wazuh/internal-devel-requests/issues/3772)
-- Improve logging of security-analytics resources [(#3821)](https://github.com/wazuh/internal-devel-requests/issues/3821)
-- Improve SAP code quality [(#3822)](https://github.com/wazuh/internal-devel-requests/issues/3822)
-- Rename commons library [(#3881)](https://github.com/wazuh/internal-devel-requests/issues/3881)
-- Allow creating custom and standard integrations [(#4047)](https://github.com/wazuh/internal-devel-requests/issues/4047)
 - Update to JDK 25 [(#1341)](https://github.com/wazuh/wazuh-indexer/issues/1341)
 - Change SAP logic to use findings indices [(#72)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/72)
 - Limit number of rules per detector [(#111)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/111)
@@ -52,8 +37,6 @@
 - Remove unused settings [(#219)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/219)
 
 ### Removed
-- Disable pre-packaged rules [(#3587)](https://github.com/wazuh/internal-devel-requests/issues/3587)
-- Remove Job Scheduler and IOCs stuff from the plugin [(#3698)](https://github.com/wazuh/internal-devel-requests/issues/3698)
 - Disable Rules and Log Types actions [(#38)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/38)
 
 ### Fixed
