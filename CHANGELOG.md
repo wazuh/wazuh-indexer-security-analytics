@@ -6,7 +6,7 @@
 - `wazuh-events-v5-unclassified` datastream [(#832)](https://github.com/wazuh/wazuh-indexer-plugins/issues/832)
 - Findings enrichment [(#57)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/57)
 - Extended Sigma rules syntax [(#47)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/47)
-- Lifecycle space support for Log Types and Rules [(#37)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/37)
+- Lifecycle space support for Log Types and Rules [(#37)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/37) [(#812)](https://github.com/wazuh/wazuh-indexer-plugins/issues/812)
 - Configure Spotless [(#60)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/60)
 - Detector configuration constraints [(#39)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/39)
 - Rule testing capabilities in logtest [(#56)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/56)
