@@ -157,6 +157,7 @@ public class JoinEngine {
         searchSourceBuilder.size(100);
 
         SearchRequest request = new SearchRequest();
+        request.indicesOptions(IndicesOptions.lenientExpandOpen());
         request.source(searchSourceBuilder);
         this.logTypeService.searchLogTypes(
                 request,
@@ -189,6 +190,7 @@ public class JoinEngine {
                                 SearchRequest searchRequest = new SearchRequest();
                                 searchRequest.indices(
                                         DetectorMonitorConfig.getAllFindingsIndicesPattern(logTypeName));
+                                searchRequest.indicesOptions(IndicesOptions.lenientExpandOpen());
                                 searchRequest.source(sourceBuilder);
                                 searchRequest.preference(Preference.PRIMARY_FIRST.type());
                                 searchRequest.setCancelAfterTimeInterval(TimeValue.timeValueSeconds(30L));
@@ -381,6 +383,7 @@ public class JoinEngine {
                 searchSourceBuilder.size(10000);
                 SearchRequest searchRequest = new SearchRequest();
                 searchRequest.indices(indices.toArray(new String[] {}));
+                searchRequest.indicesOptions(IndicesOptions.lenientExpandOpen());
                 searchRequest.source(searchSourceBuilder);
                 searchRequest.preference(Preference.PRIMARY_FIRST.type());
                 searchRequest.setCancelAfterTimeInterval(TimeValue.timeValueSeconds(30L));
@@ -505,6 +508,7 @@ public class JoinEngine {
             SearchRequest searchRequest = new SearchRequest();
             searchRequest.indices(
                     DetectorMonitorConfig.getAllFindingsIndicesPattern(categoryToQueries.getKey()));
+            searchRequest.indicesOptions(IndicesOptions.lenientExpandOpen());
             searchRequest.source(searchSourceBuilder);
             searchRequest.preference(Preference.PRIMARY_FIRST.type());
             searchRequest.setCancelAfterTimeInterval(TimeValue.timeValueSeconds(30L));
@@ -596,6 +600,7 @@ public class JoinEngine {
             searchSourceBuilder.size(10000);
             SearchRequest searchRequest = new SearchRequest();
             searchRequest.indices(docSearchCriteria.getValue().indices.toArray(new String[] {}));
+            searchRequest.indicesOptions(IndicesOptions.lenientExpandOpen());
             searchRequest.source(searchSourceBuilder);
             searchRequest.preference(Preference.PRIMARY_FIRST.type());
             searchRequest.setCancelAfterTimeInterval(TimeValue.timeValueSeconds(30L));
@@ -680,6 +685,7 @@ public class JoinEngine {
             SearchRequest searchRequest = new SearchRequest();
             searchRequest.indices(
                     DetectorMonitorConfig.getAllFindingsIndicesPattern(relatedDocIds.getKey()));
+            searchRequest.indicesOptions(IndicesOptions.lenientExpandOpen());
             searchRequest.source(searchSourceBuilder);
             searchRequest.preference(Preference.PRIMARY_FIRST.type());
             searchRequest.setCancelAfterTimeInterval(TimeValue.timeValueSeconds(30L));

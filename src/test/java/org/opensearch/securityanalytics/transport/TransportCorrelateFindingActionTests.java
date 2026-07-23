@@ -310,4 +310,171 @@ public class TransportCorrelateFindingActionTests extends OpenSearchTestCase {
         verify(s.client).search(captor.capture(), any());
         assertEquals(Detector.DETECTORS_INDEX, captor.getValue().indices()[0]);
     }
+
+    @SuppressWarnings("unchecked")
+    public void testDoExecute_correlationIndexCreationFails_skipsCorrelationGracefully()
+            throws Exception {
+        TestSetup s = buildTestSetup();
+        when(s.correlationIndices.correlationIndexExists()).thenReturn(false);
+        doAnswer(
+                        inv -> {
+                            ActionListener<CreateIndexResponse> l = inv.getArgument(0);
+                            l.onFailure(new RuntimeException("cluster state update timed out"));
+                            return null;
+                        })
+                .when(s.correlationIndices)
+                .initCorrelationIndex(any());
+
+        Finding finding =
+                new Finding(
+                        "finding-1",
+                        List.of("doc-1"),
+                        List.of("doc-1"),
+                        "monitor-1",
+                        "monitor-name",
+                        "test-index",
+                        Collections.emptyList(),
+                        Instant.now(),
+                        "high");
+        PublishFindingsRequest findingsRequest = new PublishFindingsRequest("monitor-1", finding);
+        ActionListener<SubscribeFindingsResponse> listener = mock(ActionListener.class);
+
+        s.transportAction.execute(mock(Task.class), findingsRequest, listener);
+
+        ArgumentCaptor<SubscribeFindingsResponse> responseCaptor =
+                ArgumentCaptor.forClass(SubscribeFindingsResponse.class);
+        verify(listener).onResponse(responseCaptor.capture());
+        assertEquals(org.opensearch.core.rest.RestStatus.OK, responseCaptor.getValue().getStatus());
+        verify(listener, never()).onFailure(any());
+        verify(s.detectorIndices, never()).detectorIndexExists();
+    }
+
+    @SuppressWarnings("unchecked")
+    public void testDoExecute_correlationIndexNotAcknowledged_skipsCorrelationGracefully()
+            throws Exception {
+        TestSetup s = buildTestSetup();
+        when(s.correlationIndices.correlationIndexExists()).thenReturn(false);
+        doAnswer(
+                        inv -> {
+                            ActionListener<CreateIndexResponse> l = inv.getArgument(0);
+                            l.onResponse(new CreateIndexResponse(false, false, "history-index-1"));
+                            return null;
+                        })
+                .when(s.correlationIndices)
+                .initCorrelationIndex(any());
+
+        Finding finding =
+                new Finding(
+                        "finding-1",
+                        List.of("doc-1"),
+                        List.of("doc-1"),
+                        "monitor-1",
+                        "monitor-name",
+                        "test-index",
+                        Collections.emptyList(),
+                        Instant.now(),
+                        "high");
+        PublishFindingsRequest findingsRequest = new PublishFindingsRequest("monitor-1", finding);
+        ActionListener<SubscribeFindingsResponse> listener = mock(ActionListener.class);
+
+        s.transportAction.execute(mock(Task.class), findingsRequest, listener);
+
+        ArgumentCaptor<SubscribeFindingsResponse> responseCaptor =
+                ArgumentCaptor.forClass(SubscribeFindingsResponse.class);
+        verify(listener).onResponse(responseCaptor.capture());
+        assertEquals(org.opensearch.core.rest.RestStatus.OK, responseCaptor.getValue().getStatus());
+        verify(listener, never()).onFailure(any());
+    }
+
+    @SuppressWarnings("unchecked")
+    public void testDoExecute_correlationMetadataIndexCreationFails_skipsCorrelationGracefully()
+            throws Exception {
+        TestSetup s = buildTestSetup();
+        when(s.correlationIndices.correlationIndexExists()).thenReturn(false);
+        when(s.correlationIndices.correlationMetadataIndexExists()).thenReturn(false);
+        when(s.correlationIndices.correlationAlertIndexExists()).thenReturn(true);
+        doAnswer(
+                        inv -> {
+                            ActionListener<CreateIndexResponse> l = inv.getArgument(0);
+                            l.onResponse(new CreateIndexResponse(true, true, "history-index-1"));
+                            return null;
+                        })
+                .when(s.correlationIndices)
+                .initCorrelationIndex(any());
+        doAnswer(
+                        inv -> {
+                            ActionListener<CreateIndexResponse> l = inv.getArgument(0);
+                            l.onFailure(new RuntimeException("cluster state update timed out"));
+                            return null;
+                        })
+                .when(s.correlationIndices)
+                .initCorrelationMetadataIndex(any());
+
+        Finding finding =
+                new Finding(
+                        "finding-1",
+                        List.of("doc-1"),
+                        List.of("doc-1"),
+                        "monitor-1",
+                        "monitor-name",
+                        "test-index",
+                        Collections.emptyList(),
+                        Instant.now(),
+                        "high");
+        PublishFindingsRequest findingsRequest = new PublishFindingsRequest("monitor-1", finding);
+        ActionListener<SubscribeFindingsResponse> listener = mock(ActionListener.class);
+
+        s.transportAction.execute(mock(Task.class), findingsRequest, listener);
+
+        ArgumentCaptor<SubscribeFindingsResponse> responseCaptor =
+                ArgumentCaptor.forClass(SubscribeFindingsResponse.class);
+        verify(listener).onResponse(responseCaptor.capture());
+        assertEquals(org.opensearch.core.rest.RestStatus.OK, responseCaptor.getValue().getStatus());
+        verify(listener, never()).onFailure(any());
+        // start() never reached for this pipeline, so the detector-existence check in doStart()
+        // (the next step after a successful bootstrap) must never run.
+        verify(s.detectorIndices, never()).detectorIndexExists();
+    }
+
+    @SuppressWarnings("unchecked")
+    public void testDoExecute_correlationIndexResourceAlreadyExists_stillProceedsToStart()
+            throws Exception {
+        TestSetup s = buildTestSetup();
+        when(s.correlationIndices.correlationIndexExists()).thenReturn(false);
+        when(s.correlationIndices.correlationMetadataIndexExists()).thenReturn(true);
+        when(s.correlationIndices.correlationAlertIndexExists()).thenReturn(true);
+        doAnswer(
+                        inv -> {
+                            ActionListener<CreateIndexResponse> l = inv.getArgument(0);
+                            l.onFailure(
+                                    new ResourceAlreadyExistsException(
+                                            CorrelationIndices.CORRELATION_HISTORY_WRITE_INDEX));
+                            return null;
+                        })
+                .when(s.correlationIndices)
+                .initCorrelationIndex(any());
+        when(s.detectorIndices.detectorIndexExists()).thenReturn(true);
+
+        Finding finding =
+                new Finding(
+                        "finding-1",
+                        List.of("doc-1"),
+                        List.of("doc-1"),
+                        "monitor-1",
+                        "monitor-name",
+                        "test-index",
+                        Collections.emptyList(),
+                        Instant.now(),
+                        "high");
+        PublishFindingsRequest findingsRequest = new PublishFindingsRequest("monitor-1", finding);
+        ActionListener<SubscribeFindingsResponse> listener = mock(ActionListener.class);
+
+        s.transportAction.execute(mock(Task.class), findingsRequest, listener);
+
+        // A concurrent creator won the race (ResourceAlreadyExistsException): the pipeline must
+        // still proceed to start()/doStart() instead of skipping, proven by the detector-index
+        // check that only doStart() performs.
+        verify(s.detectorIndices).detectorIndexExists();
+        verify(listener, never()).onFailure(any());
+    }
 }
