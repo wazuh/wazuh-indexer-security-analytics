@@ -16,6 +16,7 @@
  */
 package org.opensearch.securityanalytics.transport;
 
+import org.apache.commons.lang3.tuple.Pair;
 import org.opensearch.OpenSearchException;
 import org.opensearch.OpenSearchStatusException;
 import org.opensearch.action.search.SearchRequest;
@@ -40,6 +41,8 @@ import org.opensearch.securityanalytics.mapper.MapperService;
 import org.opensearch.securityanalytics.model.Detector;
 import org.opensearch.securityanalytics.model.DetectorInput;
 import org.opensearch.securityanalytics.model.DetectorRule;
+import org.opensearch.securityanalytics.model.Rule;
+import org.opensearch.securityanalytics.model.Value;
 import org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings;
 import org.opensearch.securityanalytics.util.DetectorIndices;
 import org.opensearch.securityanalytics.util.ExceptionChecker;
@@ -51,6 +54,7 @@ import org.opensearch.transport.TransportService;
 import org.opensearch.transport.client.Client;
 
 import java.lang.reflect.Method;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
@@ -261,6 +265,85 @@ public class TransportIndexDetectorActionTests extends OpenSearchTestCase {
         Detector detector = randomDetectorWithInputs(List.of(input));
 
         assertNull(TransportIndexDetectorAction.validateSingleRuleSpace(detector));
+    }
+
+    public void testIsRuleEnabled_disabledJson_returnsFalse() {
+        String raw = "{\"title\":\"r\",\"enabled\":false,\"detection\":{\"condition\":\"selection\"}}";
+        assertFalse(TransportIndexDetectorAction.isRuleEnabled(raw));
+    }
+
+    public void testIsRuleEnabled_enabledJson_returnsTrue() {
+        String raw = "{\"title\":\"r\",\"enabled\":true,\"detection\":{\"condition\":\"selection\"}}";
+        assertTrue(TransportIndexDetectorAction.isRuleEnabled(raw));
+    }
+
+    public void testIsRuleEnabled_missingField_returnsTrue() {
+        String raw = "{\"title\":\"r\",\"detection\":{\"condition\":\"selection\"}}";
+        assertTrue(TransportIndexDetectorAction.isRuleEnabled(raw));
+    }
+
+    public void testIsRuleEnabled_blankOrNull_returnsTrue() {
+        assertTrue(TransportIndexDetectorAction.isRuleEnabled(null));
+        assertTrue(TransportIndexDetectorAction.isRuleEnabled(""));
+        assertTrue(TransportIndexDetectorAction.isRuleEnabled("   "));
+    }
+
+    public void testIsRuleEnabled_nonJsonYamlBlob_returnsTrue() {
+        // Pre-packaged rules loaded from disk are Sigma YAML, not JSON, and carry no enabled field.
+        String yaml = "title: r\ndetection:\n  condition: selection\n";
+        assertTrue(TransportIndexDetectorAction.isRuleEnabled(yaml));
+    }
+
+    public void testIsRuleEnabled_stringBoolean_returnsFalse() {
+        String raw = "{\"title\":\"r\",\"enabled\":\"false\"}";
+        assertFalse(TransportIndexDetectorAction.isRuleEnabled(raw));
+    }
+
+    private static Rule ruleWithBlob(String id, String blob) {
+        return new Rule(
+                id,
+                1L,
+                "title",
+                "cat",
+                "logsource",
+                "desc",
+                Collections.<Value>emptyList(),
+                Collections.<Value>emptyList(),
+                "low",
+                Collections.<Value>emptyList(),
+                "author",
+                "stable",
+                Instant.now(),
+                Collections.<Value>emptyList(),
+                Collections.<Value>emptyList(),
+                blob,
+                Collections.<Value>emptyList());
+    }
+
+    public void testFilterEnabledRules_dropsDisabled_keepsEnabledAndUnmarked() {
+        List<Pair<String, Rule>> in =
+                List.of(
+                        Pair.of("a", ruleWithBlob("a", "{\"enabled\":true}")),
+                        Pair.of("b", ruleWithBlob("b", "{\"enabled\":false}")),
+                        Pair.of("c", ruleWithBlob("c", "{\"title\":\"no-enabled-field\"}")));
+
+        List<Pair<String, Rule>> out = TransportIndexDetectorAction.filterEnabledRules(in);
+
+        List<String> ids = out.stream().map(Pair::getKey).collect(Collectors.toList());
+        assertEquals(List.of("a", "c"), ids);
+    }
+
+    public void testFilterEnabledRules_allEnabled_returnsAll() {
+        List<Pair<String, Rule>> in =
+                List.of(
+                        Pair.of("a", ruleWithBlob("a", "{\"enabled\":true}")),
+                        Pair.of("b", ruleWithBlob("b", "{\"title\":\"x\"}")));
+
+        assertEquals(2, TransportIndexDetectorAction.filterEnabledRules(in).size());
+    }
+
+    public void testFilterEnabledRules_empty_returnsEmpty() {
+        assertTrue(TransportIndexDetectorAction.filterEnabledRules(Collections.emptyList()).isEmpty());
     }
 
     public void testCheckIndicesAndExecute_rejectsNonWazuhEventsV5DataSources() throws Exception {
