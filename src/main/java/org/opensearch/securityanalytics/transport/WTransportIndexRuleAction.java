@@ -20,6 +20,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.action.ActionRunnable;
 import org.opensearch.action.admin.indices.create.CreateIndexResponse;
+import org.opensearch.action.get.GetRequest;
+import org.opensearch.action.get.GetResponse;
 import org.opensearch.action.index.IndexRequest;
 import org.opensearch.action.index.IndexResponse;
 import org.opensearch.action.support.ActionFilters;
@@ -30,6 +32,7 @@ import org.opensearch.common.unit.TimeValue;
 import org.opensearch.common.xcontent.XContentFactory;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.rest.RestStatus;
+import org.opensearch.core.xcontent.NamedXContentRegistry;
 import org.opensearch.core.xcontent.ToXContent;
 import org.opensearch.securityanalytics.logtype.LogTypeService;
 import org.opensearch.securityanalytics.model.FieldMappingDoc;
@@ -40,6 +43,7 @@ import org.opensearch.securityanalytics.rules.exceptions.SigmaConditionError;
 import org.opensearch.securityanalytics.rules.exceptions.SigmaError;
 import org.opensearch.securityanalytics.rules.exceptions.SigmaValueError;
 import org.opensearch.securityanalytics.rules.objects.SigmaRule;
+import org.opensearch.securityanalytics.util.RuleDetectorSync;
 import org.opensearch.securityanalytics.util.RuleIndices;
 import org.opensearch.securityanalytics.util.SecurityAnalyticsException;
 import org.opensearch.tasks.Task;
@@ -88,6 +92,7 @@ public class WTransportIndexRuleAction
     private final LogTypeService logTypeService;
     private final RuleIndices ruleIndices;
     private final ThreadPool threadPool;
+    private final NamedXContentRegistry xContentRegistry;
 
     /**
      * Constructs a new WTransportIndexRuleAction.
@@ -97,6 +102,7 @@ public class WTransportIndexRuleAction
      * @param actionFilters filters to apply to the action execution
      * @param logTypeService service for managing log type configurations
      * @param ruleIndices utility for managing rule indices
+     * @param xContentRegistry registry used to parse detector documents when rebuilding them
      */
     @Inject
     public WTransportIndexRuleAction(
@@ -104,12 +110,14 @@ public class WTransportIndexRuleAction
             Client client,
             ActionFilters actionFilters,
             LogTypeService logTypeService,
-            RuleIndices ruleIndices) {
+            RuleIndices ruleIndices,
+            NamedXContentRegistry xContentRegistry) {
         super(WIndexRuleAction.NAME, transportService, actionFilters, WIndexRuleRequest::new);
         this.client = client;
         this.threadPool = ruleIndices.getThreadPool();
         this.logTypeService = logTypeService;
         this.ruleIndices = ruleIndices;
+        this.xContentRegistry = xContentRegistry;
     }
 
     /**
@@ -268,10 +276,39 @@ public class WTransportIndexRuleAction
         }
 
         /**
-         * Indexes a Rule into the pre-packaged rules index. After successful indexing, updates field
-         * mappings in the log type config index.
+         * Indexes a Rule into the pre-packaged rules index. First reads the previously stored rule (if
+         * any) to capture its {@code enabled} state, so that a change to that state can trigger a
+         * rebuild of the detectors referencing the rule (see {@link #cascadeThenComplete}).
          */
         void indexRule(Rule rule, Map<String, String> ruleFieldMappings) throws IOException {
+            WTransportIndexRuleAction.this.client.get(
+                    new GetRequest(PRE_PACKAGED_RULES_INDEX, rule.getId()),
+                    ActionListener.wrap(
+                            getResponse -> {
+                                try {
+                                    AsyncIndexRule.this.doIndexRule(
+                                            rule,
+                                            ruleFieldMappings,
+                                            AsyncIndexRule.this.previousEnabled(getResponse, rule));
+                                } catch (IOException e) {
+                                    AsyncIndexRule.this.onFailures(e);
+                                }
+                            },
+                            e -> {
+                                // Fail-open: if the previous state can't be read, index anyway. Passing
+                                // wasEnabled=true still triggers a rebuild when the new state is disabled,
+                                // which is the case that matters for issue #1394.
+                                try {
+                                    AsyncIndexRule.this.doIndexRule(rule, ruleFieldMappings, true);
+                                } catch (IOException ex) {
+                                    AsyncIndexRule.this.onFailures(ex);
+                                }
+                            }));
+        }
+
+        /** Indexes the rule document and, on success, updates field mappings then cascades. */
+        private void doIndexRule(Rule rule, Map<String, String> ruleFieldMappings, boolean wasEnabled)
+                throws IOException {
             IndexRequest indexRequest =
                     new IndexRequest(PRE_PACKAGED_RULES_INDEX)
                             .id(rule.getId())
@@ -294,12 +331,12 @@ public class WTransportIndexRuleAction
                                     ActionListener.wrap(
                                             v -> {
                                                 log.info("Successfully updated field mappings for rule: {}", rule.getId());
-                                                AsyncIndexRule.this.onOperation(indexResponse, rule);
+                                                AsyncIndexRule.this.cascadeThenComplete(rule, wasEnabled, indexResponse);
                                             },
                                             e -> {
                                                 log.error("Failed to update field mappings for rule: {}", rule.getId(), e);
                                                 // Still consider the rule indexed successfully
-                                                AsyncIndexRule.this.onOperation(indexResponse, rule);
+                                                AsyncIndexRule.this.cascadeThenComplete(rule, wasEnabled, indexResponse);
                                             }));
                         }
 
@@ -308,6 +345,57 @@ public class WTransportIndexRuleAction
                             AsyncIndexRule.this.listener.onFailure(e);
                         }
                     });
+        }
+
+        /**
+         * Rebuilds detectors referencing this pre-packaged rule when its {@code enabled} state changed,
+         * then completes the operation. When the state is unchanged this is a no-op that avoids rebuild
+         * storms during bulk CTI syncs, which re-index every standard rule. Best-effort: a rebuild
+         * failure is logged inside {@link RuleDetectorSync} and never fails the rule write.
+         */
+        private void cascadeThenComplete(Rule rule, boolean wasEnabled, IndexResponse indexResponse) {
+            boolean nowEnabled = TransportIndexDetectorAction.isRuleEnabled(rule.getRule());
+            if (wasEnabled == nowEnabled) {
+                this.onOperation(indexResponse, rule);
+                return;
+            }
+            log.info(
+                    "enabled state of pre-packaged rule [{}] changed ({} -> {}); rebuilding referencing detectors",
+                    rule.getId(),
+                    wasEnabled,
+                    nowEnabled);
+            RuleDetectorSync.rebuildDetectorsForRule(
+                    WTransportIndexRuleAction.this.client,
+                    WTransportIndexRuleAction.this.xContentRegistry,
+                    "pre_packaged_rules",
+                    rule.getId(),
+                    WriteRequest.RefreshPolicy.IMMEDIATE,
+                    ActionListener.wrap(
+                            v -> AsyncIndexRule.this.onOperation(indexResponse, rule),
+                            e -> AsyncIndexRule.this.onOperation(indexResponse, rule)));
+        }
+
+        /**
+         * Reads the {@code enabled} state of the previously stored version of this rule. A missing
+         * document means the rule is new (no detectors reference it yet), so the current state is
+         * returned to signal "no change". Fail-open on any parse problem.
+         */
+        private boolean previousEnabled(GetResponse getResponse, Rule rule) {
+            if (getResponse == null || !getResponse.isExists()) {
+                return TransportIndexDetectorAction.isRuleEnabled(rule.getRule());
+            }
+            try {
+                Object ruleObj = getResponse.getSourceAsMap().get("rule");
+                if (ruleObj instanceof Map) {
+                    Object blob = ((Map<?, ?>) ruleObj).get("rule");
+                    if (blob instanceof String) {
+                        return TransportIndexDetectorAction.isRuleEnabled((String) blob);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Could not read previous enabled state for rule [{}]", rule.getId(), e);
+            }
+            return true;
         }
 
         /**
