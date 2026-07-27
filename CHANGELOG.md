@@ -51,6 +51,7 @@
 - [BUG] Rules using `contains` and white spaces do not work [(#127)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/127)
 - RCA: missing findings [(#168)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/168)
 - ClassCastException during Security Analytics space resource deletion on startup [(#1150)](https://github.com/wazuh/wazuh-indexer-plugins/issues/1150)
+- [BUG] `enabled` flag not evaluated on various resource-related operations [(#1394)](https://github.com/wazuh/wazuh-indexer-plugins/issues/1394)
 
 ## Prior versions
 - []()
