@@ -46,11 +46,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Keeps detectors in sync with the rules they reference.
  *
- * <p>A detector compiles its rules into an alerting Monitor when it is created or updated; the
- * Monitor is not re-evaluated afterwards. So when a rule changes in a way that affects compilation
- * (most importantly, when it is disabled — see issue #1394), every detector that references it must
- * be rebuilt for the change to take effect on already-running detectors. This is used by both the
- * custom rules path and the pre-packaged rules path.
+ * <p>A detector compiles its rules into an alerting monitor when it is created or updated; the
+ * monitor is not re-evaluated afterwards. So when a rule changes in a way that affects compilation
+ * (for example, when it is disabled), every detector that references it must be rebuilt for the
+ * change to take effect. Used by both the custom and pre-packaged rules paths.
  */
 public final class RuleDetectorSync {
 

@@ -141,9 +141,8 @@ public class TransportIndexRuleAction
     }
 
     /**
-     * Returns true when the throwable (or any cause in its chain) is the "detector has no compatible
-     * rules" error — i.e. rebuilding a detector left it with zero enabled rules. Only this specific
-     * failure is treated as non-fatal for a rule update; every other rebuild error stays fatal.
+     * Returns true when the throwable (or any cause in its chain) is the "no compatible rules" error,
+     * i.e. rebuilding a detector left it with zero enabled rules.
      */
     private static boolean isNoCompatibleRulesError(Throwable e) {
         while (e != null) {
@@ -436,11 +435,8 @@ public class TransportIndexRuleAction
 
                             @Override
                             public void onFailure(Exception e) {
-                                // Best-effort ONLY for the "detector left with no enabled rules" case:
-                                // the rule write must not fail just because a referenced detector ended
-                                // up with zero compatible rules — that detector is reconciled when the
-                                // change is promoted to the space it uses. Any other rebuild failure is
-                                // still fatal, preserving the original behaviour.
+                                // Non-fatal only when a referenced detector ended up with no enabled
+                                // rules; it is reconciled on the next promote. Any other error is fatal.
                                 if (isNoCompatibleRulesError(e)) {
                                     log.warn(
                                             "Detector {} has no enabled rules after updating rule {}; skipping its rebuild",

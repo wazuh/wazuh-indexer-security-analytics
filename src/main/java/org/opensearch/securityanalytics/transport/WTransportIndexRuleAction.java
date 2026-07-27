@@ -295,9 +295,8 @@ public class WTransportIndexRuleAction
                                 }
                             },
                             e -> {
-                                // Fail-open: if the previous state can't be read, index anyway. Passing
-                                // wasEnabled=true still triggers a rebuild when the new state is disabled,
-                                // which is the case that matters for issue #1394.
+                                // Fail-open: if the previous state can't be read, index anyway.
+                                // wasEnabled=true still triggers a rebuild when the new state is disabled.
                                 try {
                                     AsyncIndexRule.this.doIndexRule(rule, ruleFieldMappings, true);
                                 } catch (IOException ex) {
@@ -348,10 +347,9 @@ public class WTransportIndexRuleAction
         }
 
         /**
-         * Rebuilds detectors referencing this pre-packaged rule when its {@code enabled} state changed,
-         * then completes the operation. When the state is unchanged this is a no-op that avoids rebuild
-         * storms during bulk CTI syncs, which re-index every standard rule. Best-effort: a rebuild
-         * failure is logged inside {@link RuleDetectorSync} and never fails the rule write.
+         * Rebuilds the detectors referencing this rule when its {@code enabled} state changed, then
+         * completes. When the state is unchanged it is a no-op, which avoids rebuild storms during bulk
+         * CTI syncs. Best-effort: rebuild failures do not fail the rule write.
          */
         private void cascadeThenComplete(Rule rule, boolean wasEnabled, IndexResponse indexResponse) {
             boolean nowEnabled = TransportIndexDetectorAction.isRuleEnabled(rule.getRule());
