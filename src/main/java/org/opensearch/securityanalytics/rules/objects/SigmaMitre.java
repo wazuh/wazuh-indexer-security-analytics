@@ -16,13 +16,17 @@
  */
 package org.opensearch.securityanalytics.rules.objects;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.opensearch.securityanalytics.rules.exceptions.SigmaError;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * MITRE ATT&amp;CK block for Wazuh Sigma rules.
@@ -43,8 +47,35 @@ import java.util.Map;
  *     name:
  *       - Account Manipulation
  * }</pre>
+ *
+ * <p>A deprecated shorthand in which each category is a plain array of ID strings is also accepted,
+ * and is equivalent to supplying only {@code id}:
+ *
+ * <pre>{@code
+ * mitre:
+ *   tactic:
+ *     - TA0003
+ *   technique:
+ *     - T1098
+ * }</pre>
+ *
+ * <p>This shorthand was the documented format before the {@code id}/{@code name} structure was
+ * introduced. It is parsed for backwards compatibility with rules authored against those docs, but
+ * it cannot carry ATT&amp;CK names, so {@code tactic.name}, {@code technique.name} and {@code
+ * subtechnique.name} are left empty. New rules should use the nested form.
+ *
+ * <p>A {@code mitre} block that cannot be interpreted as either form raises a {@link SigmaError}
+ * rather than being silently discarded.
  */
 public class SigmaMitre {
+
+    private static final Logger log = LogManager.getLogger(SigmaMitre.class);
+
+    /** Recognized MITRE category keys within the {@code mitre} block. */
+    private static final Set<String> CATEGORIES = Set.of("tactic", "technique", "subtechnique");
+
+    /** Recognized keys within a single nested MITRE category. */
+    private static final Set<String> CATEGORY_KEYS = Set.of("id", "name");
 
     private final List<String> tacticId;
     private final List<String> tacticName;
@@ -83,46 +114,133 @@ public class SigmaMitre {
      * ({@code tactic}, {@code technique}, {@code subtechnique}) is expected to be an object with
      * {@code id} and {@code name} array fields.
      *
+     * <p>Each category may be supplied either as an object with {@code id} and {@code name} arrays
+     * (the current format) or as a plain array of ID strings (the deprecated shorthand). Any other
+     * structure, or an unrecognized key, is reported as an error instead of being ignored.
+     *
      * @param map the map containing 'tactic', 'technique', and 'subtechnique' keys
      * @return a new SigmaMitre instance, or null if the input map is null
-     * @throws SigmaError if there is an error during parsing
+     * @throws SigmaError if the block contains unrecognized keys or malformed categories
      */
-    @SuppressWarnings("unchecked")
     public static SigmaMitre fromDict(Map<String, Object> map) throws SigmaError {
         if (map == null) {
             return null;
         }
 
-        List<String> tacticId = Collections.emptyList();
-        List<String> tacticName = Collections.emptyList();
-        List<String> techniqueId = Collections.emptyList();
-        List<String> techniqueName = Collections.emptyList();
-        List<String> subtechniqueId = Collections.emptyList();
-        List<String> subtechniqueName = Collections.emptyList();
+        List<String> problems = new ArrayList<>();
+        Set<String> legacyCategories = new LinkedHashSet<>();
 
-        Object tacticObj = map.get("tactic");
-        if (tacticObj instanceof Map) {
-            Map<String, Object> tacticMap = (Map<String, Object>) tacticObj;
-            tacticId = toStringList(tacticMap.get("id"));
-            tacticName = toStringList(tacticMap.get("name"));
+        for (Object key : map.keySet()) {
+            String name = String.valueOf(key);
+            if (!CATEGORIES.contains(name)) {
+                problems.add(
+                        "'mitre."
+                                + name
+                                + "' is not a supported MITRE category; expected one of "
+                                + CATEGORIES);
+            }
         }
 
-        Object techniqueObj = map.get("technique");
-        if (techniqueObj instanceof Map) {
-            Map<String, Object> techniqueMap = (Map<String, Object>) techniqueObj;
-            techniqueId = toStringList(techniqueMap.get("id"));
-            techniqueName = toStringList(techniqueMap.get("name"));
+        Category tactic = parseCategory("tactic", map.get("tactic"), problems, legacyCategories);
+        Category technique =
+                parseCategory("technique", map.get("technique"), problems, legacyCategories);
+        Category subtechnique =
+                parseCategory("subtechnique", map.get("subtechnique"), problems, legacyCategories);
+
+        if (!problems.isEmpty()) {
+            throw new SigmaError("Invalid 'mitre' block: " + String.join("; ", problems));
         }
 
-        Object subtechniqueObj = map.get("subtechnique");
-        if (subtechniqueObj instanceof Map) {
-            Map<String, Object> subtechniqueMap = (Map<String, Object>) subtechniqueObj;
-            subtechniqueId = toStringList(subtechniqueMap.get("id"));
-            subtechniqueName = toStringList(subtechniqueMap.get("name"));
+        if (!legacyCategories.isEmpty()) {
+            log.warn(
+                    "Rule uses the deprecated MITRE shorthand (plain ID arrays) for {}. ATT&CK names "
+                            + "cannot be derived from IDs, so 'name' will be empty for those categories. "
+                            + "Use the nested form instead, e.g. 'mitre.tactic.id' and 'mitre.tactic.name'.",
+                    legacyCategories);
         }
 
         return new SigmaMitre(
-                tacticId, tacticName, techniqueId, techniqueName, subtechniqueId, subtechniqueName);
+                tactic.ids,
+                tactic.names,
+                technique.ids,
+                technique.names,
+                subtechnique.ids,
+                subtechnique.names);
+    }
+
+    /** The {@code id} and {@code name} values parsed from a single MITRE category. */
+    private static final class Category {
+
+        private static final Category EMPTY =
+                new Category(Collections.emptyList(), Collections.emptyList());
+
+        private final List<String> ids;
+        private final List<String> names;
+
+        private Category(List<String> ids, List<String> names) {
+            this.ids = ids;
+            this.names = names;
+        }
+    }
+
+    /**
+     * Parses a single MITRE category, accepting both the nested {@code id}/{@code name} object and
+     * the deprecated plain array of ID strings.
+     *
+     * @param category the category name, used for error messages
+     * @param value the raw value for the category, may be {@code null}
+     * @param problems accumulator for validation problems found while parsing
+     * @param legacyCategories accumulator for categories supplied in the deprecated shorthand
+     * @return the parsed IDs and names, never {@code null}
+     */
+    private static Category parseCategory(
+            String category, Object value, List<String> problems, Set<String> legacyCategories) {
+        if (value == null) {
+            return Category.EMPTY;
+        }
+
+        if (value instanceof Map) {
+            Map<?, ?> categoryMap = (Map<?, ?>) value;
+            List<String> unsupported = new ArrayList<>();
+            for (Object key : categoryMap.keySet()) {
+                String name = String.valueOf(key);
+                if (!CATEGORY_KEYS.contains(name)) {
+                    unsupported.add(name);
+                }
+            }
+            if (!unsupported.isEmpty()) {
+                problems.add(
+                        "'mitre."
+                                + category
+                                + "' contains unsupported key(s) "
+                                + unsupported
+                                + "; expected 'id' and/or 'name'");
+                return Category.EMPTY;
+            }
+            return new Category(
+                    toStringList(categoryMap.get("id")), toStringList(categoryMap.get("name")));
+        }
+
+        if (value instanceof List) {
+            List<String> ids = toStringList(value);
+            if (!ids.isEmpty()) {
+                legacyCategories.add(category);
+            }
+            return new Category(ids, Collections.emptyList());
+        }
+
+        if (value instanceof String || value instanceof Number || value instanceof Boolean) {
+            legacyCategories.add(category);
+            return new Category(toStringList(value), Collections.emptyList());
+        }
+
+        problems.add(
+                "'mitre."
+                        + category
+                        + "' must be an array of ID strings or an object with 'id'/'name' arrays, but"
+                        + " was "
+                        + value.getClass().getSimpleName());
+        return Category.EMPTY;
     }
 
     /**

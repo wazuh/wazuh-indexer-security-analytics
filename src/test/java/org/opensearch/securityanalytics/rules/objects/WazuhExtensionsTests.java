@@ -388,4 +388,188 @@ public class WazuhExtensionsTests extends OpenSearchTestCase {
         Assert.assertEquals(List.of("Command and Scripting Interpreter"), techniqueMap.get("name"));
         Assert.assertFalse(mitreMap.containsKey("subtechnique"));
     }
+
+    /** Builds a minimal valid rule with the supplied {@code mitre} block appended. */
+    private static String ruleWithMitreBlock(String mitreBlock) {
+        return "title: Mitre Shape\n"
+                + "id: 22345678-1234-1234-1234-123456789012\n"
+                + "status: experimental\n"
+                + "level: high\n"
+                + "logsource:\n"
+                + "    product: windows\n"
+                + "detection:\n"
+                + "    selection:\n"
+                + "        event.id: 16\n"
+                + "    condition: selection\n"
+                + mitreBlock;
+    }
+
+    /**
+     * The deprecated shorthand, in which each category is a plain array of ID strings, must be parsed
+     * into the nested WCS structure with empty name arrays. This is the format documented before the
+     * id/name structure was introduced, and the one reported in wazuh/wazuh#37939.
+     */
+    public void testMitreLegacyFlatShorthandIsParsed() {
+        String yaml =
+                ruleWithMitreBlock(
+                        "mitre:\n"
+                                + "    tactic:\n"
+                                + "        - TA0007\n"
+                                + "    technique:\n"
+                                + "        - T1518\n");
+
+        SigmaRule rule = SigmaRule.fromYaml(yaml, true);
+        Assert.assertTrue(rule.getErrors().getErrors().isEmpty());
+
+        SigmaMitre mitre = rule.getMitre();
+        Assert.assertNotNull(mitre);
+        Assert.assertEquals(List.of("TA0007"), mitre.getTacticId());
+        Assert.assertEquals(List.of(), mitre.getTacticName());
+        Assert.assertEquals(List.of("T1518"), mitre.getTechniqueId());
+        Assert.assertEquals(List.of(), mitre.getTechniqueName());
+
+        Map<String, Object> mitreMap = mitre.toMitreMap();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> tacticMap = (Map<String, Object>) mitreMap.get("tactic");
+        Assert.assertEquals(List.of("TA0007"), tacticMap.get("id"));
+        Assert.assertFalse(tacticMap.containsKey("name"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> techniqueMap = (Map<String, Object>) mitreMap.get("technique");
+        Assert.assertEquals(List.of("T1518"), techniqueMap.get("id"));
+        Assert.assertFalse(techniqueMap.containsKey("name"));
+    }
+
+    /** The shorthand must also carry subtechniques. */
+    public void testMitreLegacyFlatShorthandWithSubtechnique() {
+        String yaml =
+                ruleWithMitreBlock(
+                        "mitre:\n"
+                                + "    tactic:\n"
+                                + "        - TA0001\n"
+                                + "    technique:\n"
+                                + "        - T1190\n"
+                                + "    subtechnique:\n"
+                                + "        - T1190.001\n");
+
+        SigmaRule rule = SigmaRule.fromYaml(yaml, true);
+        Assert.assertTrue(rule.getErrors().getErrors().isEmpty());
+
+        SigmaMitre mitre = rule.getMitre();
+        Assert.assertNotNull(mitre);
+        Assert.assertEquals(List.of("T1190.001"), mitre.getSubtechniqueId());
+    }
+
+    /** An explicitly empty category is legitimate and must not raise an error. */
+    public void testMitreEmptyCategoryIsAccepted() {
+        String yaml =
+                ruleWithMitreBlock(
+                        "mitre:\n" + "    tactic:\n" + "        - TA0001\n" + "    subtechnique: []\n");
+
+        SigmaRule rule = SigmaRule.fromYaml(yaml, true);
+        Assert.assertTrue(rule.getErrors().getErrors().isEmpty());
+        Assert.assertEquals(List.of("TA0001"), rule.getMitre().getTacticId());
+        Assert.assertEquals(List.of(), rule.getMitre().getSubtechniqueId());
+    }
+
+    /** The nested and shorthand forms may be mixed across categories. */
+    public void testMitreMixedNestedAndShorthandForms() {
+        String yaml =
+                ruleWithMitreBlock(
+                        "mitre:\n"
+                                + "    tactic:\n"
+                                + "        id:\n"
+                                + "            - TA0002\n"
+                                + "        name:\n"
+                                + "            - Execution\n"
+                                + "    technique:\n"
+                                + "        - T1059\n");
+
+        SigmaRule rule = SigmaRule.fromYaml(yaml, true);
+        Assert.assertTrue(rule.getErrors().getErrors().isEmpty());
+
+        SigmaMitre mitre = rule.getMitre();
+        Assert.assertEquals(List.of("TA0002"), mitre.getTacticId());
+        Assert.assertEquals(List.of("Execution"), mitre.getTacticName());
+        Assert.assertEquals(List.of("T1059"), mitre.getTechniqueId());
+        Assert.assertEquals(List.of(), mitre.getTechniqueName());
+    }
+
+    /** Asserts the rule collected at least one error whose message contains {@code substring}. */
+    private static void assertErrorContaining(SigmaRule rule, String substring) {
+        boolean found =
+                rule.getErrors().getErrors().stream()
+                        .map(Throwable::getMessage)
+                        .filter(java.util.Objects::nonNull)
+                        .anyMatch(message -> message.contains(substring));
+        Assert.assertTrue(
+                "expected an error containing \""
+                        + substring
+                        + "\" but got "
+                        + rule.getErrors().getErrors(),
+                found);
+    }
+
+    /** An unrecognized category must be reported rather than silently discarded. */
+    public void testMitreUnknownCategoryIsReported() {
+        String yaml = ruleWithMitreBlock("mitre:\n" + "    tactics:\n" + "        - TA0007\n");
+
+        SigmaRule rule = SigmaRule.fromYaml(yaml, true);
+        assertErrorContaining(rule, "mitre.tactics");
+    }
+
+    /** A misspelled key inside a category must be reported rather than silently discarded. */
+    public void testMitreUnknownCategoryKeyIsReported() {
+        String yaml =
+                ruleWithMitreBlock(
+                        "mitre:\n" + "    tactic:\n" + "        ids:\n" + "            - TA0007\n");
+
+        SigmaRule rule = SigmaRule.fromYaml(yaml, true);
+        assertErrorContaining(rule, "ids");
+    }
+
+    /** A mitre block that is not an object must be reported, not raise ClassCastException. */
+    public void testMitreBlockNotAnObjectIsReported() {
+        String yaml = ruleWithMitreBlock("mitre:\n" + "    - TA0007\n");
+
+        SigmaRule rule = SigmaRule.fromYaml(yaml, true);
+        assertErrorContaining(rule, "Mitre block must be");
+    }
+
+    /**
+     * End-to-end check of the exact rule reported in wazuh/wazuh#37939: the shorthand mitre block
+     * must survive into the map the finding enrichment writes to {@code wazuh.rule.mitre}.
+     */
+    public void testMitreIssue37939ReportedRule() {
+        String yaml =
+                "title: Custom IT Hygiene hardware stat modified\n"
+                        + "id: b940f93b-8fb5-409f-96c5-f06a55480912\n"
+                        + "status: stable\n"
+                        + "level: informational\n"
+                        + "logsource:\n"
+                        + "    product: windows\n"
+                        + "detection:\n"
+                        + "    selection:\n"
+                        + "        event.id: 16\n"
+                        + "    condition: selection\n"
+                        + "tags:\n"
+                        + "    - attack.discovery\n"
+                        + "    - attack.t1518\n"
+                        + "mitre:\n"
+                        + "    tactic:\n"
+                        + "        - TA0007\n"
+                        + "    technique:\n"
+                        + "        - T1518\n";
+
+        SigmaRule rule = SigmaRule.fromYaml(yaml, true);
+        Assert.assertTrue(rule.getErrors().getErrors().isEmpty());
+
+        Map<String, Object> mitreMap = rule.getMitre().toMitreMap();
+        Assert.assertFalse("mitre map must not be empty", mitreMap.isEmpty());
+        @SuppressWarnings("unchecked")
+        Map<String, Object> tacticMap = (Map<String, Object>) mitreMap.get("tactic");
+        Assert.assertEquals(List.of("TA0007"), tacticMap.get("id"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> techniqueMap = (Map<String, Object>) mitreMap.get("technique");
+        Assert.assertEquals(List.of("T1518"), techniqueMap.get("id"));
+    }
 }
