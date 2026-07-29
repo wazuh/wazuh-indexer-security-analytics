@@ -110,6 +110,7 @@ import org.opensearch.securityanalytics.util.DetectorIndices;
 import org.opensearch.securityanalytics.util.ExceptionChecker;
 import org.opensearch.securityanalytics.util.IndexUtils;
 import org.opensearch.securityanalytics.util.MonitorService;
+import org.opensearch.securityanalytics.util.ResourceLockService;
 import org.opensearch.securityanalytics.util.RuleIndices;
 import org.opensearch.securityanalytics.util.RuleTopicIndices;
 import org.opensearch.securityanalytics.util.SecurityAnalyticsException;
@@ -143,7 +144,6 @@ public class TransportIndexDetectorAction
         implements SecureTransportAction {
 
     public static final String PLUGIN_OWNER_FIELD = "security_analytics";
-    private static final int MAX_RULES_PER_DETECTOR = 100;
     private static final Logger log = LogManager.getLogger(TransportIndexDetectorAction.class);
     public static final String TIMESTAMP_FIELD_ALIAS = "timestamp";
     public static final String CHAINED_FINDINGS_MONITOR_STRING = "chained_findings_monitor";
@@ -153,6 +153,9 @@ public class TransportIndexDetectorAction
      * standard-detector modification restrictions.
      */
     public static final String WAZUH_INTERNAL_CALLER_HEADER = "_wazuh_internal_caller";
+
+    /** Lock ID guarding the {@code max_detectors} limit-check-then-create sequence. */
+    private static final String MAX_DETECTORS_LOCK_ID = "security-analytics-max-detectors";
 
     static String validateSingleRuleSpace(Detector detector) {
         if (detector.getInputs().isEmpty()) {
@@ -193,6 +196,8 @@ public class TransportIndexDetectorAction
 
     private volatile int maxDetectors;
 
+    private volatile int maxRulesPerDetector;
+
     private final Settings settings;
 
     private final NamedWriteableRegistry namedWriteableRegistry;
@@ -205,6 +210,8 @@ public class TransportIndexDetectorAction
     private final ExceptionChecker exceptionChecker;
 
     private final TimeValue indexTimeout;
+
+    private final ResourceLockService resourceLockService;
 
     @Inject
     public TransportIndexDetectorAction(
@@ -241,8 +248,10 @@ public class TransportIndexDetectorAction
         this.enableDetectorWithDedicatedQueryIndices =
                 SecurityAnalyticsSettings.ENABLE_DETECTORS_WITH_DEDICATED_QUERY_INDICES.get(this.settings);
         this.maxDetectors = SecurityAnalyticsSettings.MAX_DETECTORS.get(this.settings);
+        this.maxRulesPerDetector = SecurityAnalyticsSettings.MAX_RULES_PER_DETECTOR.get(this.settings);
         this.monitorService = new MonitorService(client);
         this.workflowService = new WorkflowService(client, this.monitorService);
+        this.resourceLockService = new ResourceLockService(client, clusterService, this.threadPool);
 
         this.clusterService
                 .getClusterSettings()
@@ -261,6 +270,11 @@ public class TransportIndexDetectorAction
                 .getClusterSettings()
                 .addSettingsUpdateConsumer(
                         SecurityAnalyticsSettings.MAX_DETECTORS, maxVal -> this.maxDetectors = maxVal);
+        this.clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        SecurityAnalyticsSettings.MAX_RULES_PER_DETECTOR,
+                        maxVal -> this.maxRulesPerDetector = maxVal);
         this.exceptionChecker = exceptionChecker;
     }
 
@@ -277,8 +291,10 @@ public class TransportIndexDetectorAction
             return;
         }
 
-        // Prevent detection of detectors with more than 100 rules.
-        String ruleCountError = TransportIndexDetectorAction.validateRuleCount(request.getDetector());
+        // Prevent detectors from exceeding the configured rules-per-detector limit.
+        String ruleCountError =
+                TransportIndexDetectorAction.validateRuleCount(
+                        request.getDetector(), this.maxRulesPerDetector);
         if (ruleCountError != null) {
             listener.onFailure(
                     SecurityAnalyticsException.wrap(
@@ -301,9 +317,21 @@ public class TransportIndexDetectorAction
             this.validateStandardDetectorUpdate(
                     request, listener, () -> this.checkIndicesAndExecute(task, request, listener, user));
         } else if (request.getMethod() == RestRequest.Method.POST && !isInternalCaller) {
-            // On create, enforce the max detectors limit for user-created detectors.
-            this.validateMaxDetectors(
-                    listener, () -> this.checkIndicesAndExecute(task, request, listener, user));
+            // On create, serialize the limit-check-then-create sequence so concurrent requests
+            // cannot all observe a stale count and overshoot max_detectors. The lock is released
+            // via the wrapped listener once the whole (async) creation pipeline completes.
+            this.resourceLockService.acquire(
+                    MAX_DETECTORS_LOCK_ID,
+                    ActionListener.wrap(
+                            lockId -> {
+                                ActionListener<IndexDetectorResponse> releasingListener =
+                                        ActionListener.runAfter(
+                                                listener, () -> this.resourceLockService.release(lockId));
+                                this.validateMaxDetectors(
+                                        releasingListener,
+                                        () -> this.checkIndicesAndExecute(task, request, releasingListener, user));
+                            },
+                            e -> listener.onFailure(SecurityAnalyticsException.wrap(e))));
         } else {
             this.checkIndicesAndExecute(task, request, listener, user);
         }
@@ -451,14 +479,14 @@ public class TransportIndexDetectorAction
      * Returns an error message if any detector input exceeds the maximum allowed rule count, or
      * {@code null} if all inputs are within the limit.
      */
-    static String validateRuleCount(Detector detector) {
+    static String validateRuleCount(Detector detector, int maxRulesPerDetector) {
         for (DetectorInput input : detector.getInputs()) {
             int ruleCount = Math.max(input.getCustomRules().size(), input.getPrePackagedRules().size());
-            if (ruleCount > MAX_RULES_PER_DETECTOR) {
+            if (ruleCount > maxRulesPerDetector) {
                 return String.format(
                         Locale.ROOT,
                         "Detector cannot have more than %d rules, but found %d",
-                        MAX_RULES_PER_DETECTOR,
+                        maxRulesPerDetector,
                         ruleCount);
             }
         }

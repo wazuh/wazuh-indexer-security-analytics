@@ -203,6 +203,27 @@ public class SecurityAnalyticsSettings {
                     0,
                     Setting.Property.NodeScope);
 
+    private static final int MAXIMUM_MAX_RULES_PER_DETECTOR = 50;
+    public static final int DEFAULT_MAX_RULES_PER_DETECTOR = MAXIMUM_MAX_RULES_PER_DETECTOR;
+    private static final int MINIMUM_MAX_RULES_PER_DETECTOR = 0;
+
+    /**
+     * Maximum number of rules allowed per detector input. Requests that would exceed this limit are
+     * rejected with a 400 error.
+     */
+    public static final Setting<Integer> MAX_RULES_PER_DETECTOR =
+            Setting.intSetting(
+                    "plugins.security_analytics.max_rules_per_detector",
+                    DEFAULT_MAX_RULES_PER_DETECTOR,
+                    MINIMUM_MAX_RULES_PER_DETECTOR,
+                    MAXIMUM_MAX_RULES_PER_DETECTOR,
+                    Setting.Property.NodeScope,
+                    Setting.Property.Dynamic);
+
+    private static final int MAXIMUM_MAX_DETECTORS = 10;
+    public static final int DEFAULT_MAX_DETECTORS = MAXIMUM_MAX_DETECTORS;
+    private static final int MINIMUM_MAX_DETECTORS = 0;
+
     /**
      * Maximum number of user-created threat detectors allowed. Standard detectors created by the
      * Content Manager plugin are not counted towards this limit.
@@ -210,8 +231,9 @@ public class SecurityAnalyticsSettings {
     public static final Setting<Integer> MAX_DETECTORS =
             Setting.intSetting(
                     "plugins.security_analytics.max_detectors",
-                    10,
-                    0,
+                    DEFAULT_MAX_DETECTORS,
+                    MINIMUM_MAX_DETECTORS,
+                    MAXIMUM_MAX_DETECTORS,
                     Setting.Property.NodeScope,
                     Setting.Property.Dynamic);
 
@@ -244,6 +266,19 @@ public class SecurityAnalyticsSettings {
                     Setting.Property.Dynamic);
 
     /**
+     * Maximum number of findings allowed to wait in the correlation backlog (the pending queue) in
+     * {@code TransportCorrelateFindingAction}.
+     */
+    public static final Setting<Integer> CORRELATION_MAX_PENDING_FINDINGS =
+            Setting.intSetting(
+                    "plugins.security_analytics.correlation.max_pending_findings",
+                    10000,
+                    1,
+                    1000000,
+                    Setting.Property.NodeScope,
+                    Setting.Property.Dynamic);
+
+    /**
      * TTL for the in-memory caches of slow-changing correlation metadata (log type list and
      * correlation rules by detector type). Each cached lookup eliminates a per-finding {@code size:
      * 10000} search against the corresponding system index. Set to zero to disable both caches.
@@ -253,6 +288,114 @@ public class SecurityAnalyticsSettings {
                     "plugins.security_analytics.correlation.metadata_cache_ttl",
                     TimeValue.timeValueMinutes(5),
                     TimeValue.timeValueSeconds(0),
+                    Setting.Property.NodeScope,
+                    Setting.Property.Dynamic);
+
+    /**
+     * Whether to apply ingestion backpressure by write-blocking the events indices when the
+     * correlation backlog fills. When the backlog reaches {@link
+     * #EVENTS_BACKPRESSURE_HIGH_WATERMARK_PERCENT} of {@link #CORRELATION_MAX_PENDING_FINDINGS}, the
+     * events indices are made read-only so no new events (and therefore no new findings) are
+     * ingested, letting the backlog drain; when it falls back to {@link
+     * #EVENTS_BACKPRESSURE_LOW_WATERMARK_PERCENT}, the block is lifted.
+     */
+    public static final Setting<Boolean> EVENTS_BACKPRESSURE_ENABLED =
+            Setting.boolSetting(
+                    "plugins.security_analytics.correlation.events_backpressure.enabled",
+                    true,
+                    Setting.Property.NodeScope,
+                    Setting.Property.Dynamic);
+
+    /**
+     * Correlation-backlog level, as a percentage of {@link #CORRELATION_MAX_PENDING_FINDINGS}, at or
+     * above which the events indices are write-blocked. Default 100 (block when the backlog is full).
+     */
+    public static final Setting<Integer> EVENTS_BACKPRESSURE_HIGH_WATERMARK_PERCENT =
+            Setting.intSetting(
+                    "plugins.security_analytics.correlation.events_backpressure.high_watermark_percent",
+                    100,
+                    1,
+                    100,
+                    Setting.Property.NodeScope,
+                    Setting.Property.Dynamic);
+
+    /**
+     * Correlation-backlog level, as a percentage of {@link #CORRELATION_MAX_PENDING_FINDINGS}, at or
+     * below which the events-index write block is lifted (reopened).
+     */
+    public static final Setting<Integer> EVENTS_BACKPRESSURE_LOW_WATERMARK_PERCENT =
+            Setting.intSetting(
+                    "plugins.security_analytics.correlation.events_backpressure.low_watermark_percent",
+                    60,
+                    0,
+                    99,
+                    Setting.Property.NodeScope,
+                    Setting.Property.Dynamic);
+
+    /**
+     * Number of enriched findings accumulated before a bulk index request is fired by {@code
+     * WazuhEnrichedFindingService}.
+     */
+    public static final Setting<Integer> ENRICHED_FINDINGS_BULK_SIZE =
+            Setting.intSetting(
+                    "plugins.security_analytics.enriched_findings_bulk_size",
+                    100,
+                    10,
+                    1000,
+                    Setting.Property.NodeScope,
+                    Setting.Property.Dynamic);
+
+    /**
+     * Maximum number of concurrent async enrichment chains in {@code WazuhEnrichedFindingService}.
+     * Bounds peak demand on the transport layer when many findings are published at once.
+     */
+    public static final Setting<Integer> ENRICHED_FINDINGS_MAX_IN_FLIGHT =
+            Setting.intSetting(
+                    "plugins.security_analytics.enriched_findings_max_in_flight",
+                    5,
+                    1,
+                    10,
+                    Setting.Property.NodeScope,
+                    Setting.Property.Dynamic);
+
+    /**
+     * Interval in seconds at which leftover pending index requests are flushed by {@code
+     * WazuhEnrichedFindingService} regardless of batch size.
+     */
+    public static final Setting<Integer> ENRICHED_FINDINGS_FLUSH_INTERVAL =
+            Setting.intSetting(
+                    "plugins.security_analytics.enriched_findings_flush_interval",
+                    5,
+                    1,
+                    60,
+                    Setting.Property.NodeScope,
+                    Setting.Property.Dynamic);
+
+    /**
+     * Maximum number of findings drained from the queue per in-flight permit in {@code
+     * WazuhEnrichedFindingService}. The batch's triggering events are fetched in a single combined
+     * source-doc MultiGet instead of one MultiGet per finding, eliminating most round-trips to the
+     * event index under load.
+     */
+    public static final Setting<Integer> ENRICHED_FINDINGS_ENRICH_BATCH_SIZE =
+            Setting.intSetting(
+                    "plugins.security_analytics.enriched_findings_enrich_batch_size",
+                    100,
+                    1,
+                    1000,
+                    Setting.Property.NodeScope,
+                    Setting.Property.Dynamic);
+
+    /**
+     * Maximum number of findings that can be updated in a single request to {@code
+     * RestUpdateFindingsAction}. A value of 0 disables the case management bulk update endpoint.
+     */
+    public static final Setting<Integer> MAX_CASE_MANAGEMENT_BULK_SIZE =
+            Setting.intSetting(
+                    "plugins.security_analytics.max_case_management_bulk_size",
+                    10,
+                    0,
+                    100,
                     Setting.Property.NodeScope,
                     Setting.Property.Dynamic);
 }
