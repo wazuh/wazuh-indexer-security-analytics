@@ -25,11 +25,14 @@ import org.opensearch.ResourceAlreadyExistsException;
 import org.opensearch.ResourceNotFoundException;
 import org.opensearch.action.ActionRequest;
 import org.opensearch.action.ActionRunnable;
+import org.opensearch.action.admin.indices.settings.put.UpdateSettingsRequest;
 import org.opensearch.action.index.IndexRequest;
 import org.opensearch.action.search.SearchRequest;
 import org.opensearch.action.support.ActionFilters;
 import org.opensearch.action.support.HandledTransportAction;
+import org.opensearch.action.support.IndicesOptions;
 import org.opensearch.action.support.WriteRequest;
+import org.opensearch.action.support.clustermanager.AcknowledgedResponse;
 import org.opensearch.cluster.routing.Preference;
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.inject.Inject;
@@ -88,6 +91,8 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
@@ -145,8 +150,49 @@ public class TransportCorrelateFindingAction
     private final ConcurrentLinkedQueue<AsyncCorrelateFindingAction> pendingStarts =
             new ConcurrentLinkedQueue<>();
 
+    /**
+     * Size of {@link #pendingStarts}. Incremented when an action is queued, decremented when one is
+     * drained.
+     */
+    private final AtomicInteger pendingCount = new AtomicInteger();
+
+    /**
+     * Maximum allowed correlation backlog. When {@link #pendingCount} reaches this, new findings are
+     * shed instead of growing the queue {@code
+     * plugins.security_analytics.correlation.max_pending_findings}.
+     */
+    private volatile int maxPendingFindings;
+
+    /** Count of findings shed due to a full correlation backlog (for an occasional WARN log). */
+    private final AtomicLong droppedFindings = new AtomicLong();
+
     /** Tracks the current configured permit count to compute deltas on dynamic updates. */
     private volatile int currentMaxInFlight;
+
+    // When the correlation backlog fills, write-block the events indices so no new events are
+    // ingested. When it falls back to the low watermark, the block is lifted.
+
+    /** Whether the events-index backpressure mechanism is active. */
+    private volatile boolean eventsBackpressureEnabled;
+
+    /** Block the events indices when the backlog reaches this %% of {@link #maxPendingFindings}. */
+    private volatile int eventsHighWatermarkPercent;
+
+    /** Lift the block when the backlog falls to this %% of {@link #maxPendingFindings}. */
+    private volatile int eventsLowWatermarkPercent;
+
+    /**
+     * Index/data-stream pattern of the events indices to write-block. Fixed by design — the events
+     * data stream is always {@code wazuh-events-v5-*}; making it configurable risks blocking the
+     * wrong indices (or none), so it is intentionally not a setting.
+     */
+    private static final String EVENTS_INDEX_PATTERN = "wazuh-events-v5-*";
+
+    /** Current applied state of the events write block (true = blocked). */
+    private final AtomicBoolean eventsBlocked = new AtomicBoolean(false);
+
+    /** Guards against firing overlapping block/unblock cluster updates. */
+    private final AtomicBoolean blockTransitionInFlight = new AtomicBoolean(false);
 
     static Map<String, CustomLogType> buildLogTypesFromHits(
             SearchHit[] hits, String monitorId, String findingId) {
@@ -225,6 +271,8 @@ public class TransportCorrelateFindingAction
         this.correlationRulesCache = correlationRulesCache;
         this.currentMaxInFlight =
                 SecurityAnalyticsSettings.CORRELATION_MAX_IN_FLIGHT_FINDINGS.get(settings);
+        this.maxPendingFindings =
+                SecurityAnalyticsSettings.CORRELATION_MAX_PENDING_FINDINGS.get(settings);
         this.correlationPermits = new AdjustableSemaphore(this.currentMaxInFlight);
         this.threadPool = this.detectorIndices.getThreadPool();
 
@@ -262,11 +310,37 @@ public class TransportCorrelateFindingAction
         this.clusterService
                 .getClusterSettings()
                 .addSettingsUpdateConsumer(
+                        SecurityAnalyticsSettings.CORRELATION_MAX_PENDING_FINDINGS,
+                        newMax -> this.maxPendingFindings = newMax);
+        this.clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
                         SecurityAnalyticsSettings.CORRELATION_METADATA_CACHE_TTL,
                         ttl -> {
                             logTypeListCache.setTtl(ttl);
                             correlationRulesCache.setTtl(ttl);
                         });
+        this.eventsBackpressureEnabled =
+                SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_ENABLED.get(this.settings);
+        this.eventsHighWatermarkPercent =
+                SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_HIGH_WATERMARK_PERCENT.get(this.settings);
+        this.eventsLowWatermarkPercent =
+                SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_LOW_WATERMARK_PERCENT.get(this.settings);
+        this.clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_ENABLED,
+                        it -> this.eventsBackpressureEnabled = it);
+        this.clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_HIGH_WATERMARK_PERCENT,
+                        it -> this.eventsHighWatermarkPercent = it);
+        this.clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_LOW_WATERMARK_PERCENT,
+                        it -> this.eventsLowWatermarkPercent = it);
         this.setupTimestamp = System.currentTimeMillis();
     }
 
@@ -276,7 +350,20 @@ public class TransportCorrelateFindingAction
      * AsyncCorrelateFindingAction#onFailures(Exception)}) release the permit.
      */
     private void scheduleCorrelation(AsyncCorrelateFindingAction action) {
+        if (pendingCount.get() >= maxPendingFindings) {
+            long n = droppedFindings.incrementAndGet();
+            if (n == 1 || n % 10000 == 0) {
+                log.warn(
+                        "Correlation queue capacity reached ({} pending). Dropping correlation and enrichment for the current finding. Total dropped so far: {}",
+                        maxPendingFindings,
+                        n);
+            }
+            action.dropForBackpressure();
+            return;
+        }
+        pendingCount.incrementAndGet();
         pendingStarts.add(action);
+        evaluateBackpressure();
         drainPending();
     }
 
@@ -287,14 +374,84 @@ public class TransportCorrelateFindingAction
                 correlationPermits.release();
                 return;
             }
+            pendingCount.decrementAndGet();
             next.markPermitAcquired();
             next.doStart();
         }
+        evaluateBackpressure();
     }
 
     private void releasePermitAndDrain() {
         correlationPermits.release();
         drainPending();
+    }
+
+    /**
+     * Applies ingestion backpressure based on the current correlation backlog: at/above the high
+     * watermark, write-block the events indices; at/below the low watermark, lift the block.
+     */
+    private void evaluateBackpressure() {
+        if (!eventsBackpressureEnabled) {
+            // If it got disabled while a block is applied, make sure we release it.
+            if (eventsBlocked.get()) {
+                setEventsWriteBlock(false);
+            }
+            return;
+        }
+        int max = maxPendingFindings;
+        int pending = pendingCount.get();
+        long high = (long) max * eventsHighWatermarkPercent / 100L;
+        long low = (long) max * eventsLowWatermarkPercent / 100L;
+
+        if (!eventsBlocked.get() && pending >= high) {
+            setEventsWriteBlock(true);
+        } else if (eventsBlocked.get() && pending <= low) {
+            setEventsWriteBlock(false);
+        }
+    }
+
+    /**
+     * Fires a single async cluster-settings update to set or clear {@code index.blocks.write} on the
+     * events indices. At most one transition is in flight at a time; {@link #eventsBlocked} flips
+     * only after the update is acknowledged, so a failed update is retried on the next backlog
+     * change.
+     */
+    private void setEventsWriteBlock(boolean block) {
+        if (!blockTransitionInFlight.compareAndSet(false, true)) {
+            return; // a transition is already in flight
+        }
+        UpdateSettingsRequest request =
+                new UpdateSettingsRequest(EVENTS_INDEX_PATTERN)
+                        .settings(Settings.builder().put("index.blocks.write", block).build())
+                        .indicesOptions(IndicesOptions.lenientExpandOpen());
+        log.warn(
+                "Events ingestion backpressure: {} write block on '{}' (correlation backlog {}/{})",
+                block ? "Applying" : "Lifting",
+                EVENTS_INDEX_PATTERN,
+                pendingCount.get(),
+                maxPendingFindings);
+        client
+                .admin()
+                .indices()
+                .updateSettings(
+                        request,
+                        new ActionListener<>() {
+                            @Override
+                            public void onResponse(AcknowledgedResponse response) {
+                                eventsBlocked.set(block);
+                                blockTransitionInFlight.set(false);
+                                evaluateBackpressure();
+                            }
+
+                            @Override
+                            public void onFailure(Exception e) {
+                                log.error(
+                                        "Failed to {} events write block on '{}'",
+                                        block ? "Apply" : "Lift",
+                                        EVENTS_INDEX_PATTERN);
+                                blockTransitionInFlight.set(false);
+                            }
+                        });
     }
 
     private synchronized void adjustMaxInFlight(int newMax) {
@@ -932,6 +1089,18 @@ public class TransportCorrelateFindingAction
                     releasePermitAndDrain();
                 }
                 finishHim(null);
+            }
+        }
+
+        /**
+         * Completes this finding without correlation or enrichment because the correlation backlog is
+         * full (H-11 load shedding). No permit was acquired, so none is released. Responds success —
+         * the finding itself was already produced; only the optional downstream work is skipped.
+         * Completed inline (no thread-pool hop) so shedding stays cheap under overload.
+         */
+        void dropForBackpressure() {
+            if (counter.compareAndSet(false, true)) {
+                listener.onResponse(new SubscribeFindingsResponse(RestStatus.OK));
             }
         }
 

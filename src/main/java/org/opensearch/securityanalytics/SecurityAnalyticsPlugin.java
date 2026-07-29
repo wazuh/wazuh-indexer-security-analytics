@@ -140,6 +140,7 @@ import org.opensearch.securityanalytics.transport.WTransportIndexCustomRuleActio
 import org.opensearch.securityanalytics.transport.WTransportIndexDetectorAction;
 import org.opensearch.securityanalytics.transport.WTransportIndexIntegrationAction;
 import org.opensearch.securityanalytics.transport.WTransportIndexRuleAction;
+import org.opensearch.securityanalytics.transport.WTransportSetDetectorEnabledAction;
 import org.opensearch.securityanalytics.util.CorrelationIndices;
 import org.opensearch.securityanalytics.util.CorrelationRuleIndices;
 import org.opensearch.securityanalytics.util.CustomLogTypeIndices;
@@ -168,6 +169,7 @@ import com.wazuh.securityanalytics.action.WIndexCustomRuleAction;
 import com.wazuh.securityanalytics.action.WIndexDetectorAction;
 import com.wazuh.securityanalytics.action.WIndexIntegrationAction;
 import com.wazuh.securityanalytics.action.WIndexRuleAction;
+import com.wazuh.securityanalytics.action.WSetDetectorEnabledAction;
 
 import static org.opensearch.securityanalytics.util.CorrelationIndices.CORRELATION_ALERT_INDEX;
 
@@ -286,7 +288,8 @@ public class SecurityAnalyticsPlugin extends Plugin
                         SecurityAnalyticsSettings.INDEX_TIMEOUT.get(environment.settings()),
                         threadPool,
                         SecurityAnalyticsSettings.ENRICHED_FINDINGS_RULE_CACHE_MAX_SIZE.get(
-                                environment.settings()));
+                                environment.settings()),
+                        clusterService);
         DetectorLookupCache detectorLookupCache =
                 new DetectorLookupCache(
                         SecurityAnalyticsSettings.CORRELATION_DETECTOR_CACHE_TTL.get(environment.settings()));
@@ -388,7 +391,7 @@ public class SecurityAnalyticsPlugin extends Plugin
                 // new RestDeleteCustomLogTypeAction(),
                 new RestGetCorrelationsAlertsAction(),
                 new RestAcknowledgeCorrelationAlertsAction(),
-                new RestUpdateFindingsAction());
+                new RestUpdateFindingsAction(clusterSettings));
     }
 
     @Override
@@ -456,10 +459,20 @@ public class SecurityAnalyticsPlugin extends Plugin
                 SecurityAnalyticsSettings.ENABLE_DETECTORS_WITH_DEDICATED_QUERY_INDICES,
                 SecurityAnalyticsSettings.ENRICHED_FINDINGS_ENABLED,
                 SecurityAnalyticsSettings.ENRICHED_FINDINGS_RULE_CACHE_MAX_SIZE,
+                SecurityAnalyticsSettings.ENRICHED_FINDINGS_BULK_SIZE,
+                SecurityAnalyticsSettings.ENRICHED_FINDINGS_MAX_IN_FLIGHT,
+                SecurityAnalyticsSettings.ENRICHED_FINDINGS_FLUSH_INTERVAL,
+                SecurityAnalyticsSettings.ENRICHED_FINDINGS_ENRICH_BATCH_SIZE,
                 SecurityAnalyticsSettings.CORRELATION_DETECTOR_CACHE_TTL,
                 SecurityAnalyticsSettings.CORRELATION_MAX_IN_FLIGHT_FINDINGS,
+                SecurityAnalyticsSettings.CORRELATION_MAX_PENDING_FINDINGS,
                 SecurityAnalyticsSettings.CORRELATION_METADATA_CACHE_TTL,
-                SecurityAnalyticsSettings.MAX_DETECTORS);
+                SecurityAnalyticsSettings.MAX_RULES_PER_DETECTOR,
+                SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_ENABLED,
+                SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_HIGH_WATERMARK_PERCENT,
+                SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_LOW_WATERMARK_PERCENT,
+                SecurityAnalyticsSettings.MAX_DETECTORS,
+                SecurityAnalyticsSettings.MAX_CASE_MANAGEMENT_BULK_SIZE);
     }
 
     @Override
@@ -532,7 +545,9 @@ public class SecurityAnalyticsPlugin extends Plugin
                 new ActionPlugin.ActionHandler<>(
                         AckCorrelationAlertsAction.INSTANCE, TransportAckCorrelationAlertsAction.class),
                 new ActionPlugin.ActionHandler<>(
-                        WIndexDetectorAction.INSTANCE, WTransportIndexDetectorAction.class));
+                        WIndexDetectorAction.INSTANCE, WTransportIndexDetectorAction.class),
+                new ActionPlugin.ActionHandler<>(
+                        WSetDetectorEnabledAction.INSTANCE, WTransportSetDetectorEnabledAction.class));
     }
 
     @Override
