@@ -95,7 +95,8 @@ public class TransportIndexDetectorActionTests extends OpenSearchTestCase {
                                 SecurityAnalyticsSettings.FILTER_BY_BACKEND_ROLES,
                                 SecurityAnalyticsSettings.ENABLE_WORKFLOW_USAGE,
                                 SecurityAnalyticsSettings.ENABLE_DETECTORS_WITH_DEDICATED_QUERY_INDICES,
-                                SecurityAnalyticsSettings.MAX_DETECTORS));
+                                SecurityAnalyticsSettings.MAX_DETECTORS,
+                                SecurityAnalyticsSettings.MAX_RULES_PER_DETECTOR));
         when(clusterService.getClusterSettings())
                 .thenReturn(new ClusterSettings(Settings.EMPTY, settings));
         when(detectorIndices.getThreadPool()).thenReturn(threadPool);
@@ -148,48 +149,61 @@ public class TransportIndexDetectorActionTests extends OpenSearchTestCase {
                 new DetectorInput("test", List.of("index-1"), Collections.emptyList(), rules);
         Detector detector = randomDetectorWithInputs(List.of(input));
 
-        assertNull(TransportIndexDetectorAction.validateRuleCount(detector));
+        assertNull(
+                TransportIndexDetectorAction.validateRuleCount(
+                        detector, SecurityAnalyticsSettings.DEFAULT_MAX_RULES_PER_DETECTOR));
     }
 
     public void testValidateRuleCount_atLimit_returnsNull() {
         List<DetectorRule> rules =
-                IntStream.rangeClosed(1, 100)
+                IntStream.rangeClosed(1, SecurityAnalyticsSettings.DEFAULT_MAX_RULES_PER_DETECTOR)
                         .mapToObj(i -> new DetectorRule("rule-" + i))
                         .collect(Collectors.toList());
         DetectorInput input =
                 new DetectorInput("test", List.of("index-1"), Collections.emptyList(), rules);
         Detector detector = randomDetectorWithInputs(List.of(input));
 
-        assertNull(TransportIndexDetectorAction.validateRuleCount(detector));
+        assertNull(
+                TransportIndexDetectorAction.validateRuleCount(
+                        detector, SecurityAnalyticsSettings.DEFAULT_MAX_RULES_PER_DETECTOR));
     }
 
     public void testValidateRuleCount_exceedsLimit_returnsError() {
+        int overLimit = SecurityAnalyticsSettings.DEFAULT_MAX_RULES_PER_DETECTOR + 1;
         List<DetectorRule> rules =
-                IntStream.rangeClosed(1, 101)
+                IntStream.rangeClosed(1, overLimit)
                         .mapToObj(i -> new DetectorRule("rule-" + i))
                         .collect(Collectors.toList());
         DetectorInput input =
                 new DetectorInput("test", List.of("index-1"), Collections.emptyList(), rules);
         Detector detector = randomDetectorWithInputs(List.of(input));
 
-        String error = TransportIndexDetectorAction.validateRuleCount(detector);
+        String error =
+                TransportIndexDetectorAction.validateRuleCount(
+                        detector, SecurityAnalyticsSettings.DEFAULT_MAX_RULES_PER_DETECTOR);
         assertNotNull(error);
-        assertTrue(error.contains("more than 100 rules"));
-        assertTrue(error.contains("101"));
+        assertTrue(
+                error.contains(
+                        "more than " + SecurityAnalyticsSettings.DEFAULT_MAX_RULES_PER_DETECTOR + " rules"));
+        assertTrue(error.contains(String.valueOf(overLimit)));
     }
 
     public void testValidateRuleCount_customRulesExceedsLimit_returnsError() {
         List<DetectorRule> customRules =
-                IntStream.rangeClosed(1, 101)
+                IntStream.rangeClosed(1, SecurityAnalyticsSettings.DEFAULT_MAX_RULES_PER_DETECTOR + 1)
                         .mapToObj(i -> new DetectorRule("custom-rule-" + i))
                         .collect(Collectors.toList());
         DetectorInput input =
                 new DetectorInput("test", List.of("index-1"), customRules, Collections.emptyList());
         Detector detector = randomDetectorWithInputs(List.of(input));
 
-        String error = TransportIndexDetectorAction.validateRuleCount(detector);
+        String error =
+                TransportIndexDetectorAction.validateRuleCount(
+                        detector, SecurityAnalyticsSettings.DEFAULT_MAX_RULES_PER_DETECTOR);
         assertNotNull(error);
-        assertTrue(error.contains("more than 100 rules"));
+        assertTrue(
+                error.contains(
+                        "more than " + SecurityAnalyticsSettings.DEFAULT_MAX_RULES_PER_DETECTOR + " rules"));
     }
 
     public void testValidateRuleCount_emptyRules_returnsNull() {
@@ -198,7 +212,9 @@ public class TransportIndexDetectorActionTests extends OpenSearchTestCase {
                         "test", List.of("index-1"), Collections.emptyList(), Collections.emptyList());
         Detector detector = randomDetectorWithInputs(List.of(input));
 
-        assertNull(TransportIndexDetectorAction.validateRuleCount(detector));
+        assertNull(
+                TransportIndexDetectorAction.validateRuleCount(
+                        detector, SecurityAnalyticsSettings.DEFAULT_MAX_RULES_PER_DETECTOR));
     }
 
     public void testValidateSingleRuleSpace_onlyPrePackaged_returnsNull() {
