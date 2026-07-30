@@ -51,6 +51,7 @@ import org.opensearch.threadpool.ThreadPool;
 import org.opensearch.transport.TransportService;
 import org.opensearch.transport.client.Client;
 
+import java.lang.reflect.Field;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collections;
@@ -59,6 +60,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Semaphore;
 
 import org.mockito.ArgumentCaptor;
 
@@ -219,6 +221,16 @@ public class TransportCorrelateFindingActionTests extends OpenSearchTestCase {
         .new AsyncCorrelateFindingAction(mock(Task.class), request, null, listener);
     }
 
+    /**
+     * Reaches into the private in-flight semaphore so tests can assert skipCorrelation() releases
+     * exactly the permits it should — no more, no less.
+     */
+    private static Semaphore correlationPermits(TestSetup s) throws Exception {
+        Field f = TransportCorrelateFindingAction.class.getDeclaredField("correlationPermits");
+        f.setAccessible(true);
+        return (Semaphore) f.get(s.transportAction);
+    }
+
     @SuppressWarnings("unchecked")
     public void testGetTimestampFeature_resourceAlreadyExists_retriesAndProceeds() throws Exception {
         TestSetup s = buildTestSetup();
@@ -251,7 +263,7 @@ public class TransportCorrelateFindingActionTests extends OpenSearchTestCase {
     }
 
     @SuppressWarnings("unchecked")
-    public void testGetTimestampFeature_otherException_callsOnFailures() throws Exception {
+    public void testGetTimestampFeature_otherException_skipsCorrelationGracefully() throws Exception {
         TestSetup s = buildTestSetup();
         ActionListener<SubscribeFindingsResponse> listener = mock(ActionListener.class);
         TransportCorrelateFindingAction.AsyncCorrelateFindingAction asyncAction =
@@ -270,7 +282,85 @@ public class TransportCorrelateFindingActionTests extends OpenSearchTestCase {
         asyncAction.getTimestampFeature(
                 "windows", Collections.emptyMap(), null, Collections.emptyList());
 
-        verify(listener).onFailure(any());
+        ArgumentCaptor<SubscribeFindingsResponse> responseCaptor =
+                ArgumentCaptor.forClass(SubscribeFindingsResponse.class);
+        verify(listener).onResponse(responseCaptor.capture());
+        assertEquals(org.opensearch.core.rest.RestStatus.OK, responseCaptor.getValue().getStatus());
+        verify(listener, never()).onFailure(any());
+        verify(s.client, never()).search(any(), any());
+    }
+
+    @SuppressWarnings("unchecked")
+    public void testSkipCorrelation_afterPermitAcquired_releasesExactlyOnePermit() throws Exception {
+        TestSetup s = buildTestSetup();
+        ActionListener<SubscribeFindingsResponse> listener = mock(ActionListener.class);
+        TransportCorrelateFindingAction.AsyncCorrelateFindingAction asyncAction =
+                buildAsyncAction(s, listener);
+
+        // Simulates the real doStart() path: drainPending() marks the permit acquired before
+        // running the pipeline that eventually reaches JoinEngine -> initCorrelationIndex ->
+        // getTimestampFeature.
+        Semaphore permits = correlationPermits(s);
+        assertTrue("expected a free permit to acquire for this test", permits.tryAcquire());
+        int permitsHeld = permits.availablePermits();
+        asyncAction.markPermitAcquired();
+
+        when(s.correlationIndices.correlationMetadataIndexExists()).thenReturn(false);
+        doAnswer(
+                        inv -> {
+                            ActionListener<CreateIndexResponse> l = inv.getArgument(0);
+                            l.onFailure(new RuntimeException("cluster state update timed out"));
+                            return null;
+                        })
+                .when(s.correlationIndices)
+                .initCorrelationMetadataIndex(any());
+
+        asyncAction.getTimestampFeature(
+                "windows", Collections.emptyMap(), null, Collections.emptyList());
+
+        assertEquals(
+                "skipCorrelation() must release the permit start() acquired, exactly once",
+                permitsHeld + 1,
+                permits.availablePermits());
+        verify(listener).onResponse(any());
+        verify(listener, never()).onFailure(any());
+
+        // A second call to any terminal method (onFailures/onOperation/skipCorrelation) on the same
+        // pipeline instance must be a no-op: the shared `counter` guard blocks re-entry, so a
+        // duplicate completion signal cannot release the same permit twice.
+        asyncAction.onFailures(new RuntimeException("duplicate completion signal"));
+        assertEquals(
+                "a second terminal call on the same pipeline must not release again",
+                permitsHeld + 1,
+                permits.availablePermits());
+    }
+
+    @SuppressWarnings("unchecked")
+    public void testGetTimestampFeature_metadataIndexNotAcknowledged_skipsCorrelationGracefully()
+            throws Exception {
+        TestSetup s = buildTestSetup();
+        ActionListener<SubscribeFindingsResponse> listener = mock(ActionListener.class);
+        TransportCorrelateFindingAction.AsyncCorrelateFindingAction asyncAction =
+                buildAsyncAction(s, listener);
+
+        when(s.correlationIndices.correlationMetadataIndexExists()).thenReturn(false);
+        doAnswer(
+                        inv -> {
+                            ActionListener<CreateIndexResponse> l = inv.getArgument(0);
+                            l.onResponse(new CreateIndexResponse(false, false, "metadata-index-1"));
+                            return null;
+                        })
+                .when(s.correlationIndices)
+                .initCorrelationMetadataIndex(any());
+
+        asyncAction.getTimestampFeature(
+                "windows", Collections.emptyMap(), null, Collections.emptyList());
+
+        ArgumentCaptor<SubscribeFindingsResponse> responseCaptor =
+                ArgumentCaptor.forClass(SubscribeFindingsResponse.class);
+        verify(listener).onResponse(responseCaptor.capture());
+        assertEquals(org.opensearch.core.rest.RestStatus.OK, responseCaptor.getValue().getStatus());
+        verify(listener, never()).onFailure(any());
         verify(s.client, never()).search(any(), any());
     }
 
@@ -325,6 +415,9 @@ public class TransportCorrelateFindingActionTests extends OpenSearchTestCase {
                 .when(s.correlationIndices)
                 .initCorrelationIndex(any());
 
+        Semaphore permits = correlationPermits(s);
+        int permitsBefore = permits.availablePermits();
+
         Finding finding =
                 new Finding(
                         "finding-1",
@@ -347,6 +440,9 @@ public class TransportCorrelateFindingActionTests extends OpenSearchTestCase {
         assertEquals(org.opensearch.core.rest.RestStatus.OK, responseCaptor.getValue().getStatus());
         verify(listener, never()).onFailure(any());
         verify(s.detectorIndices, never()).detectorIndexExists();
+        // This failure fires before start() ever acquires a permit, so skipCorrelation() must not
+        // touch the semaphore — verifies the `if (permitAcquired)` guard isn't over-releasing here.
+        assertEquals(permitsBefore, permits.availablePermits());
     }
 
     @SuppressWarnings("unchecked")

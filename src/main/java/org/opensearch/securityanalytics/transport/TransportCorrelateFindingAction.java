@@ -795,19 +795,20 @@ public class TransportCorrelateFindingAction
                                             IndexUtils.correlationIndexUpdated();
                                             getTimestampFeature(detectorType, correlatedFindings, null, correlationRules);
                                         } else {
-                                            onFailures(
+                                            skipCorrelation(
+                                                    "correlation index mapping update was not acknowledged",
                                                     new OpenSearchStatusException(
                                                             "Failed to create correlation Index",
                                                             RestStatus.INTERNAL_SERVER_ERROR));
                                         }
                                     },
-                                    this::onFailures),
+                                    e -> skipCorrelation("failed to update correlation index mapping", e)),
                             true);
                 } else {
                     getTimestampFeature(detectorType, correlatedFindings, null, correlationRules);
                 }
             } catch (Exception ex) {
-                onFailures(ex);
+                skipCorrelation("failed to update correlation index mapping", ex);
             }
         }
 
@@ -910,11 +911,11 @@ public class TransportCorrelateFindingAction
                                                             },
                                                             this::onFailures));
                                         } else {
-                                            Exception e =
+                                            skipCorrelation(
+                                                    "correlation metadata index creation was not acknowledged",
                                                     new OpenSearchStatusException(
                                                             "Failed to create correlation metadata Index",
-                                                            RestStatus.INTERNAL_SERVER_ERROR);
-                                            onFailures(e);
+                                                            RestStatus.INTERNAL_SERVER_ERROR));
                                         }
                                     },
                                     e -> {
@@ -925,7 +926,7 @@ public class TransportCorrelateFindingAction
                                             getTimestampFeature(
                                                     detectorType, correlatedFindings, orphanFinding, correlationRules);
                                         } else {
-                                            onFailures(e);
+                                            skipCorrelation("failed to create correlation metadata index", e);
                                         }
                                     }));
                 } else {
@@ -1117,14 +1118,16 @@ public class TransportCorrelateFindingAction
         }
 
         /**
-         * Skips correlation for this finding without failing the monitor execution, because the
-         * one-time bootstrap of the correlation index/metadata/alert indices did not succeed for a
-         * reason other than "already exists" (e.g. transient cluster-state contention right after a
-         * clean install, while many other Security Analytics config indices are being created at the
-         * same time). The finding itself was already indexed by the monitor before correlation ever
-         * ran; only this optional enrichment step is skipped, and it is retried automatically on the
-         * next finding once the cluster settles and the bootstrap succeeds. No permit was acquired yet
-         * at this point in {@link #doExecute}, so none is released here.
+         * Skips correlation for this finding without failing the monitor execution, because bootstrap
+         * of the correlation index/metadata/alert indices did not succeed for a reason other than
+         * "already exists" (e.g. transient cluster-state contention right after a clean install, while
+         * many other Security Analytics config indices are being created at the same time). The finding
+         * itself was already indexed by the monitor before correlation ever ran; only this optional
+         * enrichment step is skipped, and it is retried automatically on the next finding once the
+         * cluster settles and the bootstrap succeeds. This is also reached from {@link
+         * #initCorrelationIndex} / {@link #getTimestampFeature}, i.e. after {@link #start} already
+         * acquired a permit, so the permit must be released here too when that happened — otherwise the
+         * in-flight semaphore leaks a permit every time bootstrap fails on that later path.
          */
         void skipCorrelation(String reason, Exception cause) {
             log.warn(
@@ -1134,6 +1137,9 @@ public class TransportCorrelateFindingAction
                     reason,
                     cause);
             if (counter.compareAndSet(false, true)) {
+                if (permitAcquired) {
+                    releasePermitAndDrain();
+                }
                 listener.onResponse(new SubscribeFindingsResponse(RestStatus.OK));
             }
         }
