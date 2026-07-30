@@ -48,6 +48,22 @@ import java.util.Set;
  *       - Account Manipulation
  * }</pre>
  *
+ * <p>Each category may equivalently be given as an array holding one {@code id}/{@code name} object
+ * per ATT&amp;CK entry, which pairs each ID with its name directly:
+ *
+ * <pre>{@code
+ * mitre:
+ *   tactic:
+ *     - id: TA0003
+ *       name: Persistence
+ *   technique:
+ *     - id: T1098
+ *       name: Account Manipulation
+ * }</pre>
+ *
+ * <p>Because the parsed IDs and names are held as parallel arrays, {@code name} must be supplied
+ * for every entry of a category or for none of them.
+ *
  * <p>A deprecated shorthand in which each category is a plain array of ID strings is also accepted,
  * and is equivalent to supplying only {@code id}:
  *
@@ -62,10 +78,10 @@ import java.util.Set;
  * <p>This shorthand was the documented format before the {@code id}/{@code name} structure was
  * introduced. It is parsed for backwards compatibility with rules authored against those docs, but
  * it cannot carry ATT&amp;CK names, so {@code tactic.name}, {@code technique.name} and {@code
- * subtechnique.name} are left empty. New rules should use the nested form.
+ * subtechnique.name} are left empty. New rules should use one of the two named forms.
  *
- * <p>A {@code mitre} block that cannot be interpreted as either form raises a {@link SigmaError}
- * rather than being silently discarded.
+ * <p>A {@code mitre} block that cannot be interpreted as one of these forms raises a {@link
+ * SigmaError} rather than being silently discarded.
  */
 public class SigmaMitre {
 
@@ -114,9 +130,10 @@ public class SigmaMitre {
      * ({@code tactic}, {@code technique}, {@code subtechnique}) is expected to be an object with
      * {@code id} and {@code name} array fields.
      *
-     * <p>Each category may be supplied either as an object with {@code id} and {@code name} arrays
-     * (the current format) or as a plain array of ID strings (the deprecated shorthand). Any other
-     * structure, or an unrecognized key, is reported as an error instead of being ignored.
+     * <p>Each category may be supplied as an object with {@code id} and {@code name} arrays, as an
+     * array of per-entry {@code id}/{@code name} objects, or as a plain array of ID strings (the
+     * deprecated shorthand). Any other structure, or an unrecognized key, is reported as an error
+     * instead of being ignored.
      *
      * @param map the map containing 'tactic', 'technique', and 'subtechnique' keys
      * @return a new SigmaMitre instance, or null if the input map is null
@@ -184,8 +201,8 @@ public class SigmaMitre {
     }
 
     /**
-     * Parses a single MITRE category, accepting both the nested {@code id}/{@code name} object and
-     * the deprecated plain array of ID strings.
+     * Parses a single MITRE category, accepting the parallel {@code id}/{@code name} arrays, an array
+     * of per-entry {@code id}/{@code name} objects, and the deprecated plain array of ID strings.
      *
      * @param category the category name, used for error messages
      * @param value the raw value for the category, may be {@code null}
@@ -201,13 +218,7 @@ public class SigmaMitre {
 
         if (value instanceof Map) {
             Map<?, ?> categoryMap = (Map<?, ?>) value;
-            List<String> unsupported = new ArrayList<>();
-            for (Object key : categoryMap.keySet()) {
-                String name = String.valueOf(key);
-                if (!CATEGORY_KEYS.contains(name)) {
-                    unsupported.add(name);
-                }
-            }
+            List<String> unsupported = unsupportedKeys(categoryMap);
             if (!unsupported.isEmpty()) {
                 problems.add(
                         "'mitre."
@@ -218,29 +229,202 @@ public class SigmaMitre {
                 return Category.EMPTY;
             }
             return new Category(
-                    toStringList(categoryMap.get("id")), toStringList(categoryMap.get("name")));
+                    toStringList("mitre." + category + ".id", categoryMap.get("id"), problems),
+                    toStringList("mitre." + category + ".name", categoryMap.get("name"), problems));
         }
 
         if (value instanceof List) {
-            List<String> ids = toStringList(value);
-            if (!ids.isEmpty()) {
-                legacyCategories.add(category);
-            }
-            return new Category(ids, Collections.emptyList());
+            return parseCategoryArray(category, (List<?>) value, problems, legacyCategories);
         }
 
-        if (value instanceof String || value instanceof Number || value instanceof Boolean) {
+        if (isScalar(value)) {
             legacyCategories.add(category);
-            return new Category(toStringList(value), Collections.emptyList());
+            return new Category(
+                    toStringList("mitre." + category, value, problems), Collections.emptyList());
         }
 
         problems.add(
                 "'mitre."
                         + category
-                        + "' must be an array of ID strings or an object with 'id'/'name' arrays, but"
-                        + " was "
-                        + value.getClass().getSimpleName());
+                        + "' must be an array or an object with 'id'/'name' arrays, but was "
+                        + describe(value));
         return Category.EMPTY;
+    }
+
+    /**
+     * Parses a MITRE category supplied as an array. The elements are either plain ID strings (the
+     * deprecated shorthand) or one {@code id}/{@code name} object per ATT&amp;CK entry. The two
+     * element kinds may not be mixed within a single array.
+     *
+     * @param category the category name, used for error messages
+     * @param values the array elements, never {@code null}
+     * @param problems accumulator for validation problems found while parsing
+     * @param legacyCategories accumulator for categories supplied in the deprecated shorthand
+     * @return the parsed IDs and names, never {@code null}
+     */
+    private static Category parseCategoryArray(
+            String category, List<?> values, List<String> problems, Set<String> legacyCategories) {
+        if (values.isEmpty()) {
+            return Category.EMPTY;
+        }
+
+        boolean hasEntries = false;
+        boolean hasIds = false;
+        for (Object element : values) {
+            if (element instanceof Map) {
+                hasEntries = true;
+            } else if (isScalar(element)) {
+                hasIds = true;
+            } else {
+                problems.add(
+                        "'mitre."
+                                + category
+                                + "' contains an element of type "
+                                + describe(element)
+                                + "; expected an ID string or an object with 'id'/'name'");
+                return Category.EMPTY;
+            }
+        }
+
+        if (hasEntries && hasIds) {
+            problems.add(
+                    "'mitre."
+                            + category
+                            + "' mixes ID strings with 'id'/'name' objects; use a single form for the"
+                            + " whole array");
+            return Category.EMPTY;
+        }
+
+        if (!hasEntries) {
+            legacyCategories.add(category);
+            return new Category(
+                    toStringList("mitre." + category, values, problems), Collections.emptyList());
+        }
+
+        return parseCategoryEntries(category, values, problems);
+    }
+
+    /**
+     * Flattens one {@code id}/{@code name} object per ATT&amp;CK entry into the parallel ID and name
+     * arrays the WCS mapping expects.
+     *
+     * <p>Every entry must carry an {@code id}. Because the target arrays are positional, {@code name}
+     * must be supplied for every entry or for none — a partially named array would leave the IDs and
+     * names misaligned, so it is reported as an error.
+     *
+     * @param category the category name, used for error messages
+     * @param values the array elements, each already known to be a {@link Map}
+     * @param problems accumulator for validation problems found while parsing
+     * @return the parsed IDs and names, never {@code null}
+     */
+    private static Category parseCategoryEntries(
+            String category, List<?> values, List<String> problems) {
+        List<String> ids = new ArrayList<>(values.size());
+        List<String> names = new ArrayList<>(values.size());
+        int unnamed = 0;
+
+        for (int i = 0; i < values.size(); i++) {
+            Map<?, ?> entry = (Map<?, ?>) values.get(i);
+            String location = "mitre." + category + "[" + i + "]";
+
+            List<String> unsupported = unsupportedKeys(entry);
+            if (!unsupported.isEmpty()) {
+                problems.add(
+                        "'"
+                                + location
+                                + "' contains unsupported key(s) "
+                                + unsupported
+                                + "; expected 'id' and/or 'name'");
+                continue;
+            }
+
+            Object idValue = entry.get("id");
+            if (idValue == null) {
+                problems.add("'" + location + "' is missing 'id'");
+                continue;
+            }
+            String id = scalarValue(location + ".id", idValue, problems);
+            if (id == null) {
+                continue;
+            }
+            ids.add(id);
+
+            Object nameValue = entry.get("name");
+            if (nameValue == null) {
+                unnamed++;
+                continue;
+            }
+            String name = scalarValue(location + ".name", nameValue, problems);
+            if (name != null) {
+                names.add(name);
+            }
+        }
+
+        if (unnamed > 0 && !names.isEmpty()) {
+            problems.add(
+                    "'mitre."
+                            + category
+                            + "' supplies 'name' for only some entries; the ID and name arrays are"
+                            + " positional, so 'name' must be given for every entry or for none");
+            return Category.EMPTY;
+        }
+
+        return new Category(ids, names);
+    }
+
+    /**
+     * Collects the keys of a MITRE category or entry object that are neither {@code id} nor {@code
+     * name}.
+     *
+     * @param map the object to inspect
+     * @return the unsupported keys, empty if all keys are recognized
+     */
+    private static List<String> unsupportedKeys(Map<?, ?> map) {
+        List<String> unsupported = new ArrayList<>();
+        for (Object key : map.keySet()) {
+            String name = String.valueOf(key);
+            if (!CATEGORY_KEYS.contains(name)) {
+                unsupported.add(name);
+            }
+        }
+        return unsupported;
+    }
+
+    /**
+     * Whether a parsed YAML value is a scalar, and therefore safe to render as a string.
+     *
+     * @param value the value to test, may be {@code null}
+     * @return true if the value is a string, number or boolean
+     */
+    private static boolean isScalar(Object value) {
+        return value instanceof String || value instanceof Number || value instanceof Boolean;
+    }
+
+    /**
+     * Renders a scalar value as a string, reporting a problem when the value is a collection. This
+     * prevents a nested structure from being silently stringified into a bogus ID or name.
+     *
+     * @param location the dotted path of the value, used for error messages
+     * @param value the value to render
+     * @param problems accumulator for validation problems found while parsing
+     * @return the string form of the value, or {@code null} if it was not a scalar
+     */
+    private static String scalarValue(String location, Object value, List<String> problems) {
+        if (isScalar(value)) {
+            return value.toString();
+        }
+        problems.add("'" + location + "' must be a single value, but was " + describe(value));
+        return null;
+    }
+
+    /**
+     * Names the type of an unexpected value for use in error messages.
+     *
+     * @param value the value to describe, may be {@code null}
+     * @return the simple class name, or {@code "null"}
+     */
+    private static String describe(Object value) {
+        return value == null ? "null" : value.getClass().getSimpleName();
     }
 
     /**
@@ -293,25 +477,32 @@ public class SigmaMitre {
     }
 
     /**
-     * Utility method to convert an object (which could be a single String or a List) into a List of
-     * Strings.
+     * Converts a value that may be either a single scalar or an array of scalars into a list of
+     * strings. Non-scalar elements are reported as problems and dropped rather than being rendered
+     * via {@link Object#toString()}, which would yield a bogus ID or name.
      *
-     * @param obj the object to convert
-     * @return a list of strings representation of the input object
+     * @param location the dotted path of the value, used for error messages
+     * @param value the value to convert, may be {@code null}
+     * @param problems accumulator for validation problems found while parsing
+     * @return the string values, never {@code null}
      */
-    @SuppressWarnings("unchecked")
-    private static List<String> toStringList(Object obj) {
-        if (obj == null) {
+    private static List<String> toStringList(String location, Object value, List<String> problems) {
+        if (value == null) {
             return Collections.emptyList();
         }
-        if (obj instanceof List) {
-            List<String> result = new ArrayList<>();
-            for (Object o : (List<Object>) obj) {
-                result.add(o.toString());
+        if (value instanceof List) {
+            List<?> values = (List<?>) value;
+            List<String> result = new ArrayList<>(values.size());
+            for (int i = 0; i < values.size(); i++) {
+                String scalar = scalarValue(location + "[" + i + "]", values.get(i), problems);
+                if (scalar != null) {
+                    result.add(scalar);
+                }
             }
             return result;
         }
-        return Collections.singletonList(obj.toString());
+        String scalar = scalarValue(location, value, problems);
+        return scalar == null ? Collections.emptyList() : Collections.singletonList(scalar);
     }
 
     /**

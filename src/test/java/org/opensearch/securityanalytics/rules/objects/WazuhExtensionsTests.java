@@ -572,4 +572,175 @@ public class WazuhExtensionsTests extends OpenSearchTestCase {
         Map<String, Object> techniqueMap = (Map<String, Object>) mitreMap.get("technique");
         Assert.assertEquals(List.of("T1518"), techniqueMap.get("id"));
     }
+
+    /**
+     * Each category may be an array of per-entry {id, name} objects, which pairs every ATT&amp;CK ID
+     * with its name directly. It must flatten into the same parallel arrays as the nested form, and
+     * must not be mistaken for the deprecated ID-string shorthand.
+     */
+    public void testMitreEntryObjectArrayIsParsed() {
+        String yaml =
+                ruleWithMitreBlock(
+                        "mitre:\n"
+                                + "    tactic:\n"
+                                + "        - id: TA0006\n"
+                                + "          name: Credential Access\n"
+                                + "    technique:\n"
+                                + "        - id: T1555\n"
+                                + "          name: Credentials from Password Stores\n"
+                                + "    subtechnique:\n"
+                                + "        - id: T1555.005\n"
+                                + "          name: Password Managers\n");
+
+        SigmaRule rule = SigmaRule.fromYaml(yaml, true);
+        Assert.assertTrue(rule.getErrors().getErrors().isEmpty());
+
+        SigmaMitre mitre = rule.getMitre();
+        Assert.assertEquals(List.of("TA0006"), mitre.getTacticId());
+        Assert.assertEquals(List.of("Credential Access"), mitre.getTacticName());
+        Assert.assertEquals(List.of("T1555"), mitre.getTechniqueId());
+        Assert.assertEquals(List.of("Credentials from Password Stores"), mitre.getTechniqueName());
+        Assert.assertEquals(List.of("T1555.005"), mitre.getSubtechniqueId());
+        Assert.assertEquals(List.of("Password Managers"), mitre.getSubtechniqueName());
+
+        Map<String, Object> mitreMap = mitre.toMitreMap();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> tacticMap = (Map<String, Object>) mitreMap.get("tactic");
+        Assert.assertEquals(List.of("TA0006"), tacticMap.get("id"));
+        Assert.assertEquals(List.of("Credential Access"), tacticMap.get("name"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> techniqueMap = (Map<String, Object>) mitreMap.get("technique");
+        Assert.assertEquals(List.of("T1555", "T1555.005"), techniqueMap.get("id"));
+        Assert.assertEquals(
+                List.of("Credentials from Password Stores", "Password Managers"), techniqueMap.get("name"));
+    }
+
+    /** Several entries in one category must preserve their order across the id and name arrays. */
+    public void testMitreEntryObjectArrayWithMultipleEntries() {
+        String yaml =
+                ruleWithMitreBlock(
+                        "mitre:\n"
+                                + "    tactic:\n"
+                                + "        - id: TA0006\n"
+                                + "          name: Credential Access\n"
+                                + "        - id: TA0007\n"
+                                + "          name: Discovery\n");
+
+        SigmaRule rule = SigmaRule.fromYaml(yaml, true);
+        Assert.assertTrue(rule.getErrors().getErrors().isEmpty());
+        Assert.assertEquals(List.of("TA0006", "TA0007"), rule.getMitre().getTacticId());
+        Assert.assertEquals(List.of("Credential Access", "Discovery"), rule.getMitre().getTacticName());
+    }
+
+    /** Entry objects carrying only an id are valid and leave the name array empty. */
+    public void testMitreEntryObjectArrayWithoutNames() {
+        String yaml =
+                ruleWithMitreBlock(
+                        "mitre:\n" + "    tactic:\n" + "        - id: TA0006\n" + "        - id: TA0007\n");
+
+        SigmaRule rule = SigmaRule.fromYaml(yaml, true);
+        Assert.assertTrue(rule.getErrors().getErrors().isEmpty());
+        Assert.assertEquals(List.of("TA0006", "TA0007"), rule.getMitre().getTacticId());
+        Assert.assertEquals(List.of(), rule.getMitre().getTacticName());
+    }
+
+    /**
+     * The id and name arrays are positional, so naming only some entries would misalign them. That
+     * must be reported instead of silently producing arrays of different lengths.
+     */
+    public void testMitrePartiallyNamedEntriesAreReported() {
+        String yaml =
+                ruleWithMitreBlock(
+                        "mitre:\n"
+                                + "    tactic:\n"
+                                + "        - id: TA0006\n"
+                                + "          name: Credential Access\n"
+                                + "        - id: TA0007\n");
+
+        SigmaRule rule = SigmaRule.fromYaml(yaml, true);
+        assertErrorContaining(rule, "'name' for only some entries");
+    }
+
+    /** An entry object without an id carries no usable ATT&amp;CK reference and must be reported. */
+    public void testMitreEntryObjectWithoutIdIsReported() {
+        String yaml =
+                ruleWithMitreBlock("mitre:\n" + "    tactic:\n" + "        - name: Credential Access\n");
+
+        SigmaRule rule = SigmaRule.fromYaml(yaml, true);
+        assertErrorContaining(rule, "is missing 'id'");
+    }
+
+    /** A misspelled key inside an entry object must be reported, as it is for the nested form. */
+    public void testMitreEntryObjectUnknownKeyIsReported() {
+        String yaml =
+                ruleWithMitreBlock(
+                        "mitre:\n"
+                                + "    tactic:\n"
+                                + "        - id: TA0006\n"
+                                + "          label: Credential Access\n");
+
+        SigmaRule rule = SigmaRule.fromYaml(yaml, true);
+        assertErrorContaining(rule, "label");
+    }
+
+    /**
+     * Mixing bare ID strings with entry objects in one array is ambiguous — the names could not be
+     * aligned with the IDs — so it must be reported rather than partially parsed.
+     */
+    public void testMitreMixedArrayElementsAreReported() {
+        String yaml =
+                ruleWithMitreBlock(
+                        "mitre:\n"
+                                + "    tactic:\n"
+                                + "        - TA0006\n"
+                                + "        - id: TA0007\n"
+                                + "          name: Discovery\n");
+
+        SigmaRule rule = SigmaRule.fromYaml(yaml, true);
+        assertErrorContaining(rule, "mixes ID strings");
+    }
+
+    /**
+     * A nested id/name array holding objects instead of scalars must be reported. Previously such
+     * values were rendered with {@code toString()}, indexing a literal "{id=..., name=...}" as the
+     * ATT&amp;CK ID.
+     */
+    public void testMitreNestedArrayOfObjectsIsReported() {
+        String yaml =
+                ruleWithMitreBlock(
+                        "mitre:\n"
+                                + "    tactic:\n"
+                                + "        id:\n"
+                                + "            - id: TA0006\n"
+                                + "              name: Credential Access\n");
+
+        SigmaRule rule = SigmaRule.fromYaml(yaml, true);
+        assertErrorContaining(rule, "must be a single value");
+    }
+
+    /** No parsed ID or name may ever contain a stringified map, whichever form was supplied. */
+    public void testMitreNeverStringifiesStructures() {
+        String yaml =
+                ruleWithMitreBlock(
+                        "mitre:\n"
+                                + "    tactic:\n"
+                                + "        - id: TA0006\n"
+                                + "          name: Credential Access\n"
+                                + "    technique:\n"
+                                + "        - id: T1555\n"
+                                + "          name: Credentials from Password Stores\n");
+
+        SigmaRule rule = SigmaRule.fromYaml(yaml, true);
+        SigmaMitre mitre = rule.getMitre();
+
+        List<String> values = new java.util.ArrayList<>();
+        values.addAll(mitre.getTacticId());
+        values.addAll(mitre.getTacticName());
+        values.addAll(mitre.getTechniqueId());
+        values.addAll(mitre.getTechniqueName());
+        Assert.assertFalse(values.isEmpty());
+        for (String value : values) {
+            Assert.assertFalse("value was stringified from a structure: " + value, value.contains("id="));
+        }
+    }
 }
