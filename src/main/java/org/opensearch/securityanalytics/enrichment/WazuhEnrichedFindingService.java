@@ -30,6 +30,7 @@ import org.opensearch.common.xcontent.XContentType;
 import org.opensearch.commons.alerting.model.DocLevelQuery;
 import org.opensearch.commons.alerting.model.Finding;
 import org.opensearch.core.action.ActionListener;
+import org.opensearch.search.fetch.subphase.FetchSourceContext;
 import org.opensearch.securityanalytics.config.monitors.DetectorMonitorConfig;
 import org.opensearch.securityanalytics.model.LOG_CATEGORY;
 import org.opensearch.securityanalytics.model.Rule;
@@ -89,6 +90,10 @@ public class WazuhEnrichedFindingService implements Closeable {
      * Interval in seconds at which leftover pending requests are flushed regardless of batch size.
      */
     private volatile int flushIntervalSeconds;
+
+    private static final FetchSourceContext RULE_SOURCE_FILTER =
+            new FetchSourceContext(
+                    true, new String[] {"rule.level", "rule.status", "rule.compliance", "rule.mitre"}, null);
 
     /** Valid base categories derived from {@link LOG_CATEGORY}. */
     private static final Set<String> VALID_CATEGORIES =
@@ -481,8 +486,12 @@ public class WazuhEnrichedFindingService implements Closeable {
         // Fetch all uncached rules in a single MultiGet (2 index lookups per rule)
         MultiGetRequest mget = new MultiGetRequest();
         for (String ruleId : uncachedRuleIds) {
-            mget.add(new MultiGetRequest.Item(Rule.PRE_PACKAGED_RULES_INDEX, ruleId));
-            mget.add(new MultiGetRequest.Item(Rule.CUSTOM_RULES_INDEX, ruleId));
+            mget.add(
+                    new MultiGetRequest.Item(Rule.PRE_PACKAGED_RULES_INDEX, ruleId)
+                            .fetchSourceContext(RULE_SOURCE_FILTER));
+            mget.add(
+                    new MultiGetRequest.Item(Rule.CUSTOM_RULES_INDEX, ruleId)
+                            .fetchSourceContext(RULE_SOURCE_FILTER));
         }
 
         try {
