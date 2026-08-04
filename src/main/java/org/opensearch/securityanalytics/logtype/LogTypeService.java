@@ -253,6 +253,7 @@ public class LogTypeService {
             List<FieldMappingDoc> fieldMappingDocs, ActionListener<Void> listener) {
         if (fieldMappingDocs.isEmpty()) {
             listener.onResponse(null);
+            return;
         }
         this.getAllFieldMappings(
                 ActionListener.wrap(
@@ -657,7 +658,7 @@ public class LogTypeService {
                                     if (ExceptionsHelper.unwrapCause(e) instanceof ResourceAlreadyExistsException) {
                                         LogTypeService.this.waitForIndexShardsAndLoad(listener);
                                     } else {
-                                        logger.error("Failed creating {}: {}", LOG_TYPE_INDEX, e.getMessage());
+                                        logger.error("Failed creating {}", LOG_TYPE_INDEX, e);
                                         listener.onFailure(e);
                                     }
                                 }
@@ -673,36 +674,25 @@ public class LogTypeService {
                         .setSource(this.logTypeIndexMapping(), XContentType.JSON)
                         .execute(
                                 ActionListener.delegateFailure(
-                                        listener,
-                                        (l, r) -> {
-                                            this.loadBuiltinLogTypes(
-                                                    ActionListener.delegateFailure(
-                                                            listener,
-                                                            (delegatedListener, unused) -> {
-                                                                isConfigIndexInitialized = true;
-                                                                this.doIndexLogTypeMetadata(listener);
-                                                            }));
-                                        }));
+                                        listener, (l, r) -> this.waitForIndexShardsAndLoad(listener)));
             } else {
                 if (isConfigIndexInitialized) {
                     this.doIndexLogTypeMetadata(listener);
                     return;
                 }
-                this.loadBuiltinLogTypes(
-                        ActionListener.delegateFailure(
-                                listener,
-                                (delegatedListener, unused) -> {
-                                    isConfigIndexInitialized = true;
-                                    this.doIndexLogTypeMetadata(listener);
-                                }));
+                // The index exists but this node hasn't loaded it yet (e.g. right after node start).
+                // Its shards may still be recovering, so wait for an active shard before searching it,
+                // otherwise the searches below fail with "all shards failed".
+                this.waitForIndexShardsAndLoad(listener);
             }
         }
     }
 
     /**
      * Waits for at least one active shard on LOG_TYPE_INDEX before loading built-in log types. This
-     * prevents "all shards failed" errors that occur when index creation is acknowledged but the
-     * primary shard is not yet assigned/started.
+     * prevents "all shards failed" errors that occur when the index is present in the cluster state
+     * but its primary shard is not yet assigned/started: either because creation was just
+     * acknowledged, or because the shards are still recovering when the node starts up.
      */
     private void waitForIndexShardsAndLoad(ActionListener<Void> listener) {
         ClusterHealthRequest healthRequest =
@@ -730,10 +720,7 @@ public class LogTypeService {
                             @Override
                             public void onFailure(Exception e) {
                                 isConfigIndexInitialized = false;
-                                logger.error(
-                                        "Failed waiting for {} shards to become active: {}",
-                                        LOG_TYPE_INDEX,
-                                        e.getMessage());
+                                logger.error("Failed waiting for {} shards to become active", LOG_TYPE_INDEX, e);
                                 listener.onFailure(e);
                             }
                         });
