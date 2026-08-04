@@ -19,6 +19,7 @@ package org.opensearch.securityanalytics.transport;
 import org.opensearch.ResourceAlreadyExistsException;
 import org.opensearch.action.admin.indices.create.CreateIndexResponse;
 import org.opensearch.action.search.SearchRequest;
+import org.opensearch.action.search.SearchResponse;
 import org.opensearch.action.support.ActionFilters;
 import org.opensearch.cluster.ClusterName;
 import org.opensearch.cluster.ClusterState;
@@ -32,6 +33,7 @@ import org.opensearch.commons.alerting.action.SubscribeFindingsResponse;
 import org.opensearch.commons.alerting.model.Finding;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.xcontent.NamedXContentRegistry;
+import org.opensearch.search.SearchHits;
 import org.opensearch.securityanalytics.correlation.CorrelationRulesCache;
 import org.opensearch.securityanalytics.correlation.DetectorLookupCache;
 import org.opensearch.securityanalytics.correlation.LogTypeListCache;
@@ -222,6 +224,26 @@ public class TransportCorrelateFindingActionTests extends OpenSearchTestCase {
     }
 
     /**
+     * Stubs the detector lookup that {@code doStart()} issues, answering with no hits. The pipeline
+     * then treats the finding as not owned by a SAP detector and completes successfully. Enough to
+     * assert that an enrichment-only restart reached {@code doStart()}, without having to build a
+     * parseable Detector document.
+     */
+    @SuppressWarnings("unchecked")
+    private static void stubDetectorLookupWithNoHits(TestSetup s) {
+        SearchResponse response = mock(SearchResponse.class);
+        when(response.isTimedOut()).thenReturn(false);
+        when(response.getHits()).thenReturn(SearchHits.empty());
+        doAnswer(
+                        inv -> {
+                            ((ActionListener<SearchResponse>) inv.getArgument(1)).onResponse(response);
+                            return null;
+                        })
+                .when(s.client)
+                .search(any(), any());
+    }
+
+    /**
      * Reaches into the private in-flight semaphore so tests can assert skipCorrelation() releases
      * exactly the permits it should — no more, no less.
      */
@@ -268,6 +290,11 @@ public class TransportCorrelateFindingActionTests extends OpenSearchTestCase {
         ActionListener<SubscribeFindingsResponse> listener = mock(ActionListener.class);
         TransportCorrelateFindingAction.AsyncCorrelateFindingAction asyncAction =
                 buildAsyncAction(s, listener);
+
+        // getTimestampFeature() only ever runs after drainPending() marked the permit acquired and
+        // called doStart(), so reproduce that state: it is what routes skipCorrelation() to the
+        // complete-and-release branch rather than to an enrichment-only restart.
+        asyncAction.markPermitAcquired();
 
         when(s.correlationIndices.correlationMetadataIndexExists()).thenReturn(false);
         doAnswer(
@@ -343,6 +370,9 @@ public class TransportCorrelateFindingActionTests extends OpenSearchTestCase {
         TransportCorrelateFindingAction.AsyncCorrelateFindingAction asyncAction =
                 buildAsyncAction(s, listener);
 
+        // Same as above: this path is only reachable with a permit already held.
+        asyncAction.markPermitAcquired();
+
         when(s.correlationIndices.correlationMetadataIndexExists()).thenReturn(false);
         doAnswer(
                         inv -> {
@@ -414,6 +444,8 @@ public class TransportCorrelateFindingActionTests extends OpenSearchTestCase {
                         })
                 .when(s.correlationIndices)
                 .initCorrelationIndex(any());
+        when(s.detectorIndices.detectorIndexExists()).thenReturn(true);
+        stubDetectorLookupWithNoHits(s);
 
         Semaphore permits = correlationPermits(s);
         int permitsBefore = permits.availablePermits();
@@ -439,9 +471,12 @@ public class TransportCorrelateFindingActionTests extends OpenSearchTestCase {
         verify(listener).onResponse(responseCaptor.capture());
         assertEquals(org.opensearch.core.rest.RestStatus.OK, responseCaptor.getValue().getStatus());
         verify(listener, never()).onFailure(any());
-        verify(s.detectorIndices, never()).detectorIndexExists();
-        // This failure fires before start() ever acquires a permit, so skipCorrelation() must not
-        // touch the semaphore — verifies the `if (permitAcquired)` guard isn't over-releasing here.
+        // Bootstrap failed before start(), so the pipeline is restarted in enrichment-only mode
+        // instead of completing here: enrichment is what produces the wazuh-findings-v5-* document,
+        // and skipping it would drop the finding. doStart() must therefore be reached.
+        verify(s.detectorIndices).detectorIndexExists();
+        // That restart acquires a permit and releases it again on completion, so the semaphore must
+        // be back where it started — no leak, no over-release.
         assertEquals(permitsBefore, permits.availablePermits());
     }
 
@@ -458,6 +493,8 @@ public class TransportCorrelateFindingActionTests extends OpenSearchTestCase {
                         })
                 .when(s.correlationIndices)
                 .initCorrelationIndex(any());
+        when(s.detectorIndices.detectorIndexExists()).thenReturn(true);
+        stubDetectorLookupWithNoHits(s);
 
         Finding finding =
                 new Finding(
@@ -505,6 +542,8 @@ public class TransportCorrelateFindingActionTests extends OpenSearchTestCase {
                         })
                 .when(s.correlationIndices)
                 .initCorrelationMetadataIndex(any());
+        when(s.detectorIndices.detectorIndexExists()).thenReturn(true);
+        stubDetectorLookupWithNoHits(s);
 
         Finding finding =
                 new Finding(
@@ -527,9 +566,9 @@ public class TransportCorrelateFindingActionTests extends OpenSearchTestCase {
         verify(listener).onResponse(responseCaptor.capture());
         assertEquals(org.opensearch.core.rest.RestStatus.OK, responseCaptor.getValue().getStatus());
         verify(listener, never()).onFailure(any());
-        // start() never reached for this pipeline, so the detector-existence check in doStart()
-        // (the next step after a successful bootstrap) must never run.
-        verify(s.detectorIndices, never()).detectorIndexExists();
+        // Correlation is skipped, but the pipeline still runs doStart() so enrichment can produce
+        // the finding document.
+        verify(s.detectorIndices).detectorIndexExists();
     }
 
     @SuppressWarnings("unchecked")

@@ -636,6 +636,13 @@ public class TransportCorrelateFindingAction
          */
         private volatile boolean permitAcquired = false;
 
+        /**
+         * Set when correlation bootstrap failed before {@link #doStart()} ever ran. The pipeline is
+         * still queued and started, but only to resolve the detector and dispatch enrichment; it stops
+         * before handing the finding to {@link JoinEngine}. See {@link #skipCorrelation}.
+         */
+        private volatile boolean correlationSkipped = false;
+
         AsyncCorrelateFindingAction(
                 Task task,
                 PublishFindingsRequest request,
@@ -709,6 +716,10 @@ public class TransportCorrelateFindingAction
             Optional<Detector> cached = detectorLookupCache.get(monitorId);
             if (cached.isPresent()) {
                 dispatchEnrichment(finding);
+                if (correlationSkipped) {
+                    onOperation();
+                    return;
+                }
                 try {
                     joinEngine.onSearchDetectorResponse(cached.get(), finding);
                 } catch (Exception e) {
@@ -758,6 +769,10 @@ public class TransportCorrelateFindingAction
                                         Detector detector = Detector.docParse(xcp, hit.getId(), hit.getVersion());
                                         detectorLookupCache.put(monitorId, detector);
                                         dispatchEnrichment(finding);
+                                        if (correlationSkipped) {
+                                            onOperation();
+                                            return;
+                                        }
                                         joinEngine.onSearchDetectorResponse(detector, finding);
                                     } catch (Exception e) {
                                         log.error("Exception for request {}", searchRequest, e);
@@ -831,10 +846,16 @@ public class TransportCorrelateFindingAction
                                                     ActionListener.wrap(
                                                             bulkResponse -> {
                                                                 if (bulkResponse.hasFailures()) {
-                                                                    onFailures(
+                                                                    // Same bootstrap seeding as in doExecute(): without a
+                                                                    // score document there is nothing for the search
+                                                                    // below to find, so stop here instead of falling
+                                                                    // through into it.
+                                                                    skipCorrelation(
+                                                                            "failed to seed correlation metadata index",
                                                                             new OpenSearchStatusException(
                                                                                     bulkResponse.toString(),
                                                                                     RestStatus.INTERNAL_SERVER_ERROR));
+                                                                    return;
                                                                 }
 
                                                                 long findingTimestamp =
@@ -848,10 +869,16 @@ public class TransportCorrelateFindingAction
                                                                                 searchMetadataResponse -> {
                                                                                     if (searchMetadataResponse.getHits().getHits().length
                                                                                             == 0) {
-                                                                                        onFailures(
+                                                                                        // The score document was just seeded, so
+                                                                                        // this means the write is not searchable
+                                                                                        // yet. Reading hits[0] below would throw,
+                                                                                        // so stop and let the next finding retry.
+                                                                                        skipCorrelation(
+                                                                                                "correlation metadata index has no score document yet",
                                                                                                 new ResourceNotFoundException(
                                                                                                         "Failed to find hits in metadata index for finding id {}",
                                                                                                         request.getFinding().getId()));
+                                                                                        return;
                                                                                     }
 
                                                                                     String id =
@@ -907,9 +934,12 @@ public class TransportCorrelateFindingAction
                                                                                                 orphanFinding);
                                                                                     }
                                                                                 },
-                                                                                this::onFailures));
+                                                                                e ->
+                                                                                        skipCorrelation(
+                                                                                                "failed to read correlation metadata index", e)));
                                                             },
-                                                            this::onFailures));
+                                                            e ->
+                                                                    skipCorrelation("failed to seed correlation metadata index", e)));
                                         } else {
                                             skipCorrelation(
                                                     "correlation metadata index creation was not acknowledged",
@@ -938,7 +968,11 @@ public class TransportCorrelateFindingAction
                             ActionListener.wrap(
                                     response -> {
                                         if (response.getHits().getHits().length == 0) {
-                                            onFailures(
+                                            // The metadata index exists but its score document is not
+                                            // searchable yet, e.g. it was seeded moments ago by another
+                                            // finding. Transient, so skip instead of failing the run.
+                                            skipCorrelation(
+                                                    "correlation metadata index has no score document yet",
                                                     new ResourceNotFoundException(
                                                             "Failed to find hits in metadata index for finding id {}",
                                                             request.getFinding().getId()));
@@ -981,10 +1015,10 @@ public class TransportCorrelateFindingAction
                                             }
                                         }
                                     },
-                                    this::onFailures));
+                                    e -> skipCorrelation("failed to read correlation metadata index", e)));
                 }
             } catch (Exception ex) {
-                onFailures(ex);
+                skipCorrelation("failed to read correlation metadata index", ex);
             }
         }
 
@@ -1136,10 +1170,13 @@ public class TransportCorrelateFindingAction
                     request.getFinding().getId(),
                     reason,
                     cause);
+            if (!permitAcquired) {
+                correlationSkipped = true;
+                start();
+                return;
+            }
             if (counter.compareAndSet(false, true)) {
-                if (permitAcquired) {
-                    releasePermitAndDrain();
-                }
+                releasePermitAndDrain();
                 listener.onResponse(new SubscribeFindingsResponse(RestStatus.OK));
             }
         }
