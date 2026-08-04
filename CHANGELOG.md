@@ -52,6 +52,7 @@
 - RCA: missing findings [(#168)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/168)
 - ClassCastException during Security Analytics space resource deletion on startup [(#1150)](https://github.com/wazuh/wazuh-indexer-plugins/issues/1150)
 - Correlations logged errors when index bootstrap failed transiently [(#1730)](https://github.com/wazuh/wazuh-indexer/issues/1730))
+- Findings are missing structured MITRE tactics and technique fields [(#37939)](https://github.com/wazuh/wazuh/issues/37939)
 
 ## Prior versions
 - []()
