@@ -1,23 +1,30 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.rules.objects;
 
+import org.opensearch.securityanalytics.rules.exceptions.CompositeSigmaErrors;
 import org.opensearch.securityanalytics.rules.exceptions.SigmaDateError;
 import org.opensearch.securityanalytics.rules.exceptions.SigmaDetectionError;
 import org.opensearch.securityanalytics.rules.exceptions.SigmaError;
 import org.opensearch.securityanalytics.rules.exceptions.SigmaIdentifierError;
-import org.opensearch.securityanalytics.rules.exceptions.CompositeSigmaErrors;
 import org.opensearch.securityanalytics.rules.exceptions.SigmaLevelError;
 import org.opensearch.securityanalytics.rules.exceptions.SigmaLogsourceError;
-import org.opensearch.securityanalytics.rules.exceptions.SigmaTitleError;
 import org.opensearch.securityanalytics.rules.exceptions.SigmaStatusError;
-import org.yaml.snakeyaml.DumperOptions;
-import org.yaml.snakeyaml.LoaderOptions;
-import org.yaml.snakeyaml.Yaml;
-import org.yaml.snakeyaml.constructor.SafeConstructor;
-import org.yaml.snakeyaml.representer.Representer;
+import org.opensearch.securityanalytics.rules.exceptions.SigmaTitleError;
 
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -26,6 +33,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+
+import org.yaml.snakeyaml.DumperOptions;
+import org.yaml.snakeyaml.LoaderOptions;
+import org.yaml.snakeyaml.Yaml;
+import org.yaml.snakeyaml.constructor.SafeConstructor;
+import org.yaml.snakeyaml.representer.Representer;
 
 public class SigmaRule {
 
@@ -63,17 +76,59 @@ public class SigmaRule {
 
     private SigmaCompliance compliance;
 
-    public SigmaRule(String title, SigmaLogSource logSource, SigmaDetections detection, UUID id, SigmaStatus status,
-                     String description, List<String> references, List<SigmaRuleTag> tags, String author, Date date,
-                     List<String> fields, List<String> falsePositives, SigmaLevel level, CompositeSigmaErrors errors) {
-        this(title, logSource, detection, id, status, description, references, tags, author, date,
-                fields, falsePositives, level, errors, null, null, null);
+    public SigmaRule(
+            String title,
+            SigmaLogSource logSource,
+            SigmaDetections detection,
+            UUID id,
+            SigmaStatus status,
+            String description,
+            List<String> references,
+            List<SigmaRuleTag> tags,
+            String author,
+            Date date,
+            List<String> fields,
+            List<String> falsePositives,
+            SigmaLevel level,
+            CompositeSigmaErrors errors) {
+        this(
+                title,
+                logSource,
+                detection,
+                id,
+                status,
+                description,
+                references,
+                tags,
+                author,
+                date,
+                fields,
+                falsePositives,
+                level,
+                errors,
+                null,
+                null,
+                null);
     }
 
-    public SigmaRule(String title, SigmaLogSource logSource, SigmaDetections detection, UUID id, SigmaStatus status,
-                     String description, List<String> references, List<SigmaRuleTag> tags, String author, Date date,
-                     List<String> fields, List<String> falsePositives, SigmaLevel level, CompositeSigmaErrors errors,
-                     SigmaMetadata metadata, SigmaMitre mitre, SigmaCompliance compliance) {
+    public SigmaRule(
+            String title,
+            SigmaLogSource logSource,
+            SigmaDetections detection,
+            UUID id,
+            SigmaStatus status,
+            String description,
+            List<String> references,
+            List<SigmaRuleTag> tags,
+            String author,
+            Date date,
+            List<String> fields,
+            List<String> falsePositives,
+            SigmaLevel level,
+            CompositeSigmaErrors errors,
+            SigmaMetadata metadata,
+            SigmaMitre mitre,
+            SigmaCompliance compliance) {
         this.title = title;
         this.logSource = logSource;
         this.detection = detection;
@@ -173,7 +228,8 @@ public class SigmaRule {
 
         // 3. Extract Date (Metadata takes precedence)
         Date ruleDate = null;
-        Object dateObj = (metadata != null && metadata.getDate() != null) ? metadata.getDate() : rule.get("date");
+        Object dateObj =
+                (metadata != null && metadata.getDate() != null) ? metadata.getDate() : rule.get("date");
         if (dateObj != null) {
             try {
                 String dateStr = dateObj.toString();
@@ -185,7 +241,9 @@ public class SigmaRule {
                     ruleDate = formatter.parse(dateStr);
                 }
             } catch (Exception ex) {
-                errors.addError(new SigmaDateError("Rule date " + dateObj + " is invalid, must be yyyy/mm/dd or yyyy-mm-dd"));
+                errors.addError(
+                        new SigmaDateError(
+                                "Rule date " + dateObj + " is invalid, must be yyyy/mm/dd or yyyy-mm-dd"));
             }
         }
 
@@ -221,10 +279,18 @@ public class SigmaRule {
 
         SigmaMitre mitre = null;
         if (rule.containsKey("mitre")) {
-            try {
-                mitre = SigmaMitre.fromDict((Map<String, Object>) rule.get("mitre"));
-            } catch (SigmaError ex) {
-                errors.addError(ex);
+            Object mitreObj = rule.get("mitre");
+            if (mitreObj == null || mitreObj instanceof Map) {
+                try {
+                    mitre = SigmaMitre.fromDict((Map<String, Object>) mitreObj);
+                } catch (SigmaError ex) {
+                    errors.addError(ex);
+                }
+            } else {
+                errors.addError(
+                        new SigmaError(
+                                "Mitre block must be an object containing 'tactic', 'technique' and/or"
+                                        + " 'subtechnique'"));
             }
         }
 
@@ -238,7 +304,8 @@ public class SigmaRule {
                     errors.addError(ex);
                 }
             } else {
-                errors.addError(new SigmaError("Compliance block must be an object containing framework lists"));
+                errors.addError(
+                        new SigmaError("Compliance block must be an object containing framework lists"));
             }
         }
 
@@ -255,22 +322,51 @@ public class SigmaRule {
         }
 
         // 4. Extract remaining shared fields (Metadata takes precedence)
-        String description = (metadata != null && metadata.getDescription() != null) ? metadata.getDescription() : (rule.get("description") != null ? rule.get("description").toString() : null);
-        String author = (metadata != null && metadata.getAuthor() != null) ? metadata.getAuthor() : (rule.get("author") != null ? rule.get("author").toString() : null);
-        List<String> references = (metadata != null && metadata.getReferences() != null && !metadata.getReferences().isEmpty()) ? metadata.getReferences() : (rule.get("references") != null ? (List<String>) rule.get("references") : null);
+        String description =
+                (metadata != null && metadata.getDescription() != null)
+                        ? metadata.getDescription()
+                        : (rule.get("description") != null ? rule.get("description").toString() : null);
+        String author =
+                (metadata != null && metadata.getAuthor() != null)
+                        ? metadata.getAuthor()
+                        : (rule.get("author") != null ? rule.get("author").toString() : null);
+        List<String> references =
+                (metadata != null
+                                && metadata.getReferences() != null
+                                && !metadata.getReferences().isEmpty())
+                        ? metadata.getReferences()
+                        : (rule.get("references") != null ? (List<String>) rule.get("references") : null);
 
-        return new SigmaRule(title, logSource, detections, ruleId, status,
-                description, references, ruleTags, author, ruleDate,
-                rule.get("fields") != null? (List<String>) rule.get("fields"): null,
-                rule.get("falsepositives") != null? (List<String>) rule.get("falsepositives"): null, level, errors,
-                metadata, mitre, compliance);
+        return new SigmaRule(
+                title,
+                logSource,
+                detections,
+                ruleId,
+                status,
+                description,
+                references,
+                ruleTags,
+                author,
+                ruleDate,
+                rule.get("fields") != null ? (List<String>) rule.get("fields") : null,
+                rule.get("falsepositives") != null ? (List<String>) rule.get("falsepositives") : null,
+                level,
+                errors,
+                metadata,
+                mitre,
+                compliance);
     }
 
     public static SigmaRule fromYaml(String rule, boolean collectErrors) {
         LoaderOptions loaderOptions = new LoaderOptions();
         loaderOptions.setNestingDepthLimit(10);
 
-        Yaml yaml = new Yaml(new SafeConstructor(new LoaderOptions()), new Representer(new DumperOptions()), new DumperOptions(), loaderOptions);
+        Yaml yaml =
+                new Yaml(
+                        new SafeConstructor(new LoaderOptions()),
+                        new Representer(new DumperOptions()),
+                        new DumperOptions(),
+                        loaderOptions);
         Map<String, Object> ruleMap = yaml.load(rule);
         return fromDict(ruleMap, collectErrors);
     }
