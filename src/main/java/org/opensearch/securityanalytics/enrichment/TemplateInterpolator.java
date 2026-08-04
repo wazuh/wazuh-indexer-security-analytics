@@ -55,6 +55,10 @@ public final class TemplateInterpolator {
 
     private TemplateInterpolator() {}
 
+    private static boolean containsPlaceholder(String s) {
+        return s != null && s.contains("{{");
+    }
+
     // String interpolation
 
     /**
@@ -70,7 +74,7 @@ public final class TemplateInterpolator {
      * @return the interpolated string, or {@code null} if {@code template} is {@code null}
      */
     public static String interpolate(String template, Map<String, Object> source) {
-        if (template == null || source == null) {
+        if (template == null || source == null || !containsPlaceholder(template)) {
             return template;
         }
         Matcher matcher = PLACEHOLDER.matcher(template);
@@ -117,26 +121,35 @@ public final class TemplateInterpolator {
         if (items == null || items.isEmpty()) {
             return items == null ? null : List.of();
         }
+        boolean anyPlaceholder = false;
+        for (String item : items) {
+            if (containsPlaceholder(item)) {
+                anyPlaceholder = true;
+                break;
+            }
+        }
+        if (!anyPlaceholder) {
+            return items;
+        }
         LinkedHashSet<String> result = new LinkedHashSet<>();
         for (String item : items) {
             if (item == null) {
                 continue;
             }
+            if (!containsPlaceholder(item)) {
+                result.add(item);
+                continue;
+            }
             Matcher pureMatcher = PURE_PLACEHOLDER.matcher(item);
             if (pureMatcher.matches()) {
-                // Pure placeholder - eligible for array expansion
                 String path = pureMatcher.group(1);
                 Object value = resolvePath(path, source);
                 expandValue(value, result);
-            } else if (PLACEHOLDER.matcher(item).find()) {
-                // Mixed text + placeholders - normal string interpolation
+            } else {
                 String interpolated = interpolate(item, source);
                 if (interpolated != null && !interpolated.isEmpty()) {
                     result.add(interpolated);
                 }
-            } else {
-                // Plain string
-                result.add(item);
             }
         }
         return new ArrayList<>(result);
@@ -152,6 +165,7 @@ public final class TemplateInterpolator {
      * @param source the event {@code _source} map
      * @return a new map with interpolated values
      */
+    @SuppressWarnings("unchecked")
     public static Map<String, List<String>> interpolateMapOfLists(
             Map<String, ?> map, Map<String, Object> source) {
         if (map == null || map.isEmpty()) {
@@ -160,23 +174,33 @@ public final class TemplateInterpolator {
         LinkedHashMap<String, List<String>> result = new LinkedHashMap<>();
         for (Map.Entry<String, ?> entry : map.entrySet()) {
             Object rawValue = entry.getValue();
-            List<String> valueList;
-            if (rawValue instanceof List) {
-                // Coerce each element to String for safety (values may be stored as mixed types)
-                List<String> stringList = new ArrayList<>();
-                for (Object elem : (List<?>) rawValue) {
-                    stringList.add(elem == null ? null : elem.toString());
-                }
-                valueList = stringList;
-            } else {
+            if (!(rawValue instanceof List)) {
                 continue;
             }
+            List<?> rawList = (List<?>) rawValue;
+            List<String> valueList;
+            boolean allStrings = true;
+            for (Object elem : rawList) {
+                if (elem != null && !(elem instanceof String)) {
+                    allStrings = false;
+                    break;
+                }
+            }
+            valueList = allStrings ? (List<String>) rawValue : coerceToStringList(rawList);
             List<String> interpolated = interpolateList(valueList, source);
             if (interpolated != null && !interpolated.isEmpty()) {
                 result.put(entry.getKey(), interpolated);
             }
         }
         return result;
+    }
+
+    private static List<String> coerceToStringList(List<?> rawList) {
+        List<String> stringList = new ArrayList<>(rawList.size());
+        for (Object elem : rawList) {
+            stringList.add(elem == null ? null : elem.toString());
+        }
+        return stringList;
     }
 
     // Nested MITRE map interpolation

@@ -634,18 +634,18 @@ public class WazuhEnrichedFindingService implements Closeable {
         }
 
         Object existingWazuh = eventSource.get("wazuh");
+        Map<String, Object> wazuhObj = new HashMap<>();
+        if (existingWazuh instanceof Map) {
+            wazuhObj.putAll((Map<String, Object>) existingWazuh);
+        }
+        doc.put("wazuh", wazuhObj);
+
         for (DocLevelQuery query : queries) {
             try {
                 Map<String, Object> ruleMetadata =
                         this.ruleMetadataCache.getOrDefault(query.getId(), Map.of());
 
-                // wazuh.rule — merge into a fresh copy of the existing wazuh map per rule.
-                Map<String, Object> wazuhObj = new HashMap<>();
-                if (existingWazuh instanceof Map) {
-                    wazuhObj.putAll((Map<String, Object>) existingWazuh);
-                }
                 wazuhObj.put("rule", this.buildRuleObject(query, ruleMetadata, eventSource));
-                doc.put("wazuh", wazuhObj);
 
                 this.indexEnrichedFinding(category, doc);
             } catch (Exception e) {
