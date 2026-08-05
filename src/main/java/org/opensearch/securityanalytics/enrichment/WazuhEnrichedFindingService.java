@@ -55,7 +55,7 @@ import java.util.stream.Collectors;
 
 /**
  * Enriches Alerting findings with the full triggering event source and Sigma rule metadata, then
- * indexes the result into {@code wazuh-findings-v5-{category}-*}.
+ * indexes the result into {@code wazuh-findings-v5}.
  *
  * <p>Enrichment is fire-and-forget: failures are logged at WARN level and never propagate to the
  * caller. The existing {@code .opensearch-sap-{category}-findings-*} write path is unaffected.
@@ -699,7 +699,7 @@ public class WazuhEnrichedFindingService implements Closeable {
         return rule;
     }
 
-    // ── Step 4: buffer and bulk-index to wazuh-findings-v5-{category}-* ──────
+    // ── Step 4: buffer and bulk-index to wazuh-findings-v5 ────────────────────
 
     private void indexEnrichedFinding(String category, Map<String, Object> document) {
         String alias = DetectorMonitorConfig.getWazuhFindingsIndex(category);

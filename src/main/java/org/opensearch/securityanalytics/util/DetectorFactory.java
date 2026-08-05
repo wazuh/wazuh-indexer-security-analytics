@@ -32,7 +32,8 @@ import java.util.Locale;
  *
  * <p>This utility class provides methods to create pre-configured Detector objects for Wazuh
  * integrations. Detectors are configured with sensible defaults including a 2-minute interval
- * schedule and automatic data stream naming based on category.
+ * schedule and a data stream input that falls back to the unified events stream when none is
+ * supplied.
  */
 public class DetectorFactory {
 
@@ -43,8 +44,8 @@ public class DetectorFactory {
      * Creates a Detector object configured for the specified integration.
      *
      * <p>The detector is created with the following configuration: - Name: lowercase integration name
-     * - Description: "Detector for {integration} integration" - Data stream:
-     * "wazuh-events-v5-{category}" (lowercase) - Schedule: 2-minute interval - Enabled: true
+     * - Description: "Detector for {integration} integration" - Data stream: "wazuh-events-v5" when
+     * no sources are supplied - Schedule: 2-minute interval - Enabled: true
      *
      * @param integration the integration name (e.g., "apache", "nginx")
      * @param category the log category used for data stream naming
@@ -66,9 +67,7 @@ public class DetectorFactory {
         String name = integration.toLowerCase(Locale.ROOT);
         String description = "Detector for " + integration + " integration";
         List<String> inputs =
-                (sources != null && !sources.isEmpty())
-                        ? sources
-                        : List.of("wazuh-events-v5-" + category.toLowerCase(Locale.ROOT));
+                (sources != null && !sources.isEmpty()) ? sources : List.of("wazuh-events-v5");
         IntervalSchedule schedule = new IntervalSchedule(interval, ChronoUnit.MINUTES, null);
         DetectorInput detectorInput = new DetectorInput(description, inputs, new ArrayList<>(), rules);
         // Generate Detector object with this template

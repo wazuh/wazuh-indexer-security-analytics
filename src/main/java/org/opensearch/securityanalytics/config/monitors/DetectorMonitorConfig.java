@@ -60,7 +60,7 @@ public class DetectorMonitorConfig {
     }
 
     public static String getWazuhFindingsIndex(String logType) {
-        return String.format(Locale.getDefault(), "wazuh-findings-v5-%s", logType);
+        return "wazuh-findings-v5";
     }
 
     public static String getWazuhFindingsIndexPattern(String logType) {

@@ -65,11 +65,15 @@ public class DetectorFactoryTests extends OpenSearchTestCase {
                 DetectorFactory.createDetector(integration, category, ruleIds, null, 2, true);
 
         DetectorInput input = detector.getInputs().get(0);
-        String expectedDataStream = "wazuh-events-v5-network activity";
+        String expectedDataStream = "wazuh-events-v5";
         Assert.assertTrue(input.getIndices().contains(expectedDataStream));
     }
 
-    public void testCreateDetector_categoryIsLowercaseInDataStream() {
+    /**
+     * Verifies that the fallback data stream name is the unified stream regardless of the category
+     * value passed in (categories no longer map to distinct per-category streams).
+     */
+    public void testCreateDetector_dataStreamNameIsCategoryInvariant() {
         String integration = "apache";
         String category = "SECURITY";
         List<String> ruleIds = List.of("rule-1");
@@ -78,7 +82,7 @@ public class DetectorFactoryTests extends OpenSearchTestCase {
                 DetectorFactory.createDetector(integration, category, ruleIds, null, 2, true);
 
         DetectorInput input = detector.getInputs().get(0);
-        String expectedDataStream = "wazuh-events-v5-security";
+        String expectedDataStream = "wazuh-events-v5";
         Assert.assertTrue(input.getIndices().contains(expectedDataStream));
     }
 

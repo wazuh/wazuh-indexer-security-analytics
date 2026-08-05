@@ -183,10 +183,10 @@ public class TransportCorrelateFindingAction
 
     /**
      * Index/data-stream pattern of the events indices to write-block. Fixed by design — the events
-     * data stream is always {@code wazuh-events-v5-*}; making it configurable risks blocking the
+     * data stream is always {@code wazuh-events-v5}; making it configurable risks blocking the
      * wrong indices (or none), so it is intentionally not a setting.
      */
-    private static final String EVENTS_INDEX_PATTERN = "wazuh-events-v5-*";
+    private static final String EVENTS_INDEX_PATTERN = "wazuh-events-v5";
 
     /** Current applied state of the events write block (true = blocked). */
     private final AtomicBoolean eventsBlocked = new AtomicBoolean(false);
