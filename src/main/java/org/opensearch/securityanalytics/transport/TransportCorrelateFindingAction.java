@@ -59,6 +59,7 @@ import org.opensearch.index.query.QueryBuilders;
 import org.opensearch.search.SearchHit;
 import org.opensearch.search.SearchHits;
 import org.opensearch.search.builder.SearchSourceBuilder;
+import org.opensearch.securityanalytics.correlation.CorrelationMetadata;
 import org.opensearch.securityanalytics.correlation.CorrelationRulesCache;
 import org.opensearch.securityanalytics.correlation.DetectorLookupCache;
 import org.opensearch.securityanalytics.correlation.JoinEngine;
@@ -881,15 +882,9 @@ public class TransportCorrelateFindingAction
                                                                                         return;
                                                                                     }
 
-                                                                                    String id =
-                                                                                            searchMetadataResponse.getHits().getHits()[0].getId();
-                                                                                    Map<String, Object> hitSource =
-                                                                                            searchMetadataResponse
-                                                                                                    .getHits()
-                                                                                                    .getHits()[0]
-                                                                                                    .getSourceAsMap();
-                                                                                    long scoreTimestamp =
-                                                                                            (long) hitSource.get("scoreTimestamp");
+                                                                                    CorrelationMetadata corrMetadata =
+                                                                                            parseCorrelationMetadata(searchMetadataResponse);
+                                                                                    long scoreTimestamp = corrMetadata.scoreTimestamp;
 
                                                                                     long newScoreTimestamp =
                                                                                             findingTimestamp
@@ -898,7 +893,7 @@ public class TransportCorrelateFindingAction
                                                                                         try {
                                                                                             IndexRequest scoreIndexRequest =
                                                                                                     getCorrelationMetadataIndexRequest(
-                                                                                                            id, newScoreTimestamp);
+                                                                                                            corrMetadata.scoreDocId, newScoreTimestamp);
                                                                                             float fixedTimestampFeature =
                                                                                                     Long.valueOf(
                                                                                                                     CorrelationIndices
@@ -915,7 +910,8 @@ public class TransportCorrelateFindingAction
                                                                                                                             correlatedFindings,
                                                                                                                             detectorType,
                                                                                                                             correlationRules,
-                                                                                                                            orphanFinding),
+                                                                                                                            orphanFinding,
+                                                                                                                            corrMetadata),
                                                                                                             this::onFailures));
                                                                                         } catch (Exception ex) {
                                                                                             onFailures(ex);
@@ -931,7 +927,8 @@ public class TransportCorrelateFindingAction
                                                                                                 correlatedFindings,
                                                                                                 detectorType,
                                                                                                 correlationRules,
-                                                                                                orphanFinding);
+                                                                                                orphanFinding,
+                                                                                                corrMetadata);
                                                                                     }
                                                                                 },
                                                                                 e ->
@@ -977,16 +974,15 @@ public class TransportCorrelateFindingAction
                                                             "Failed to find hits in metadata index for finding id {}",
                                                             request.getFinding().getId()));
                                         } else {
-                                            String id = response.getHits().getHits()[0].getId();
-                                            Map<String, Object> hitSource =
-                                                    response.getHits().getHits()[0].getSourceAsMap();
-                                            long scoreTimestamp = (long) hitSource.get("scoreTimestamp");
+                                            CorrelationMetadata corrMetadata = parseCorrelationMetadata(response);
+                                            long scoreTimestamp = corrMetadata.scoreTimestamp;
 
                                             long newScoreTimestamp =
                                                     findingTimestamp - CorrelationIndices.FIXED_HISTORICAL_INTERVAL;
                                             if (newScoreTimestamp > scoreTimestamp) {
                                                 IndexRequest scoreIndexRequest =
-                                                        getCorrelationMetadataIndexRequest(id, newScoreTimestamp);
+                                                        getCorrelationMetadataIndexRequest(
+                                                                corrMetadata.scoreDocId, newScoreTimestamp);
                                                 float fixedTimestampFeature =
                                                         Long.valueOf(CorrelationIndices.FIXED_HISTORICAL_INTERVAL / 1000L)
                                                                 .floatValue();
@@ -1000,7 +996,8 @@ public class TransportCorrelateFindingAction
                                                                                 correlatedFindings,
                                                                                 detectorType,
                                                                                 correlationRules,
-                                                                                orphanFinding),
+                                                                                orphanFinding,
+                                                                                corrMetadata),
                                                                 this::onFailures));
                                             } else {
                                                 float timestampFeature =
@@ -1011,7 +1008,8 @@ public class TransportCorrelateFindingAction
                                                         correlatedFindings,
                                                         detectorType,
                                                         correlationRules,
-                                                        orphanFinding);
+                                                        orphanFinding,
+                                                        corrMetadata);
                                             }
                                         }
                                     },
@@ -1059,13 +1057,14 @@ public class TransportCorrelateFindingAction
                 Map<String, List<String>> correlatedFindings,
                 String detectorType,
                 List<String> correlationRules,
-                Finding orphanFinding) {
+                Finding orphanFinding,
+                CorrelationMetadata corrMetadata) {
             withLogTypes(
                     logTypes -> {
                         if (correlatedFindings != null) {
                             if (correlatedFindings.isEmpty()) {
                                 vectorEmbeddingsEngine.insertOrphanFindings(
-                                        detectorType, request.getFinding(), timestampFeature, logTypes);
+                                        detectorType, request.getFinding(), timestampFeature, logTypes, corrMetadata);
                             }
                             for (Map.Entry<String, List<String>> correlatedFinding :
                                     correlatedFindings.entrySet()) {
@@ -1076,11 +1075,12 @@ public class TransportCorrelateFindingAction
                                         correlatedFinding.getValue(),
                                         timestampFeature,
                                         correlationRules,
-                                        logTypes);
+                                        logTypes,
+                                        corrMetadata);
                             }
                         } else {
                             vectorEmbeddingsEngine.insertOrphanFindings(
-                                    detectorType, orphanFinding, timestampFeature, logTypes);
+                                    detectorType, orphanFinding, timestampFeature, logTypes, corrMetadata);
                         }
                     });
         }
@@ -1114,12 +1114,10 @@ public class TransportCorrelateFindingAction
         }
 
         private SearchRequest getSearchMetadataIndexRequest() {
-            BoolQueryBuilder queryBuilder =
-                    QueryBuilders.boolQuery().mustNot(QueryBuilders.termQuery("scoreTimestamp", 0L));
             SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
-            searchSourceBuilder.query(queryBuilder);
+            searchSourceBuilder.query(QueryBuilders.matchAllQuery());
             searchSourceBuilder.fetchSource(true);
-            searchSourceBuilder.size(1);
+            searchSourceBuilder.size(2);
             SearchRequest searchRequest = new SearchRequest();
             searchRequest.indices(CorrelationIndices.CORRELATION_METADATA_INDEX);
             searchRequest.source(searchSourceBuilder);
@@ -1127,6 +1125,37 @@ public class TransportCorrelateFindingAction
             searchRequest.setCancelAfterTimeInterval(TimeValue.timeValueSeconds(30L));
 
             return searchRequest;
+        }
+
+        private CorrelationMetadata parseCorrelationMetadata(
+                org.opensearch.action.search.SearchResponse response) {
+            String scoreDocId = null;
+            long scoreTimestamp = 0L;
+            String rootDocId = null;
+            long counter = 0L;
+            long timestamp = 0L;
+
+            for (SearchHit hit : response.getHits().getHits()) {
+                Map<String, Object> source = hit.getSourceAsMap();
+                Object rootFlag = source.get("root");
+                boolean isRoot =
+                        rootFlag instanceof Boolean
+                                ? (Boolean) rootFlag
+                                : Boolean.parseBoolean(String.valueOf(rootFlag));
+                if (isRoot) {
+                    rootDocId = hit.getId();
+                    Object c = source.get("counter");
+                    if (c != null) counter = Long.parseLong(c.toString());
+                    Object t = source.get("timestamp");
+                    if (t != null) timestamp = Long.parseLong(t.toString());
+                } else {
+                    scoreDocId = hit.getId();
+                    Object st = source.get("scoreTimestamp");
+                    if (st != null) scoreTimestamp = Long.parseLong(st.toString());
+                }
+            }
+
+            return new CorrelationMetadata(scoreDocId, scoreTimestamp, rootDocId, counter, timestamp);
         }
 
         public void onOperation() {

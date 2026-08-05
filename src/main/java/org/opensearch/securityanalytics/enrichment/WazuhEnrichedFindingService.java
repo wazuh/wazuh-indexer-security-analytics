@@ -26,10 +26,11 @@ import org.opensearch.action.index.IndexRequest;
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.unit.TimeValue;
 import org.opensearch.common.util.concurrent.ThreadContext;
-import org.opensearch.common.xcontent.XContentType;
+import org.opensearch.common.xcontent.XContentFactory;
 import org.opensearch.commons.alerting.model.DocLevelQuery;
 import org.opensearch.commons.alerting.model.Finding;
 import org.opensearch.core.action.ActionListener;
+import org.opensearch.core.xcontent.XContentBuilder;
 import org.opensearch.search.fetch.subphase.FetchSourceContext;
 import org.opensearch.securityanalytics.config.monitors.DetectorMonitorConfig;
 import org.opensearch.securityanalytics.model.LOG_CATEGORY;
@@ -293,9 +294,12 @@ public class WazuhEnrichedFindingService implements Closeable {
         // event referenced by multiple findings is fetched only once.
         MultiGetRequest mget = new MultiGetRequest();
         Set<String> seenKeys = new HashSet<>();
-        for (Finding finding : batch) {
+        for (int b = 0; b < batch.size(); b++) {
+            Finding finding = batch.get(b);
             String index = finding.getIndex();
-            for (String docId : finding.getRelatedDocIds()) {
+            List<String> relatedDocIds = finding.getRelatedDocIds();
+            for (int d = 0; d < relatedDocIds.size(); d++) {
+                String docId = relatedDocIds.get(d);
                 if (seenKeys.add(docKey(index, docId))) {
                     mget.add(new MultiGetRequest.Item(index, docId));
                 }
@@ -341,12 +345,15 @@ public class WazuhEnrichedFindingService implements Closeable {
 
                                 // Resolve each finding's valid docs from the shared lookup.
                                 List<FindingDocs> validEntries = new ArrayList<>(batch.size());
-                                for (Finding finding : batch) {
+                                for (int b = 0; b < batch.size(); b++) {
+                                    Finding finding = batch.get(b);
                                     String index = finding.getIndex();
                                     List<String> validDocIds = new ArrayList<>();
                                     List<Map<String, Object>> validSources = new ArrayList<>();
                                     List<String> validCategories = new ArrayList<>();
-                                    for (String docId : finding.getRelatedDocIds()) {
+                                    List<String> relatedDocIds = finding.getRelatedDocIds();
+                                    for (int d = 0; d < relatedDocIds.size(); d++) {
+                                        String docId = relatedDocIds.get(d);
                                         String key = docKey(index, docId);
                                         Map<String, Object> src = keyToSource.get(key);
                                         String cat = keyToCategory.get(key);
@@ -376,7 +383,8 @@ public class WazuhEnrichedFindingService implements Closeable {
                                             }
                                         };
 
-                                for (FindingDocs fd : validEntries) {
+                                for (int v = 0; v < validEntries.size(); v++) {
+                                    FindingDocs fd = validEntries.get(v);
                                     this.fetchRuleMetadataAndIndex(
                                             fd.finding, fd.docIds, fd.eventSources, fd.categories, onOneDone);
                                 }
@@ -596,13 +604,11 @@ public class WazuhEnrichedFindingService implements Closeable {
     // ── Step 3: assemble the enriched document ───────────────────────────────
 
     /**
-     * Builds and indexes the enriched documents for a single triggering event. The per-doc base (full
-     * event-source copy and the {@code event.*} object) is built once and reused across all N rules;
-     * only the {@code wazuh.rule} object varies per rule. When {@code queries} is empty the base doc
-     * is indexed once without rule fields.
-     *
-     * <p>Reusing the base map is safe because {@link #indexEnrichedFinding} serializes the document
-     * to bytes synchronously, so the map can be mutated for the next rule afterwards.
+     * Builds and indexes the enriched documents for a single triggering event. Serializes directly
+     * via {@link XContentBuilder} to avoid copying the event source into a new HashMap and to skip
+     * the expensive {@code ensureNoSelfReferences} walk that {@code IndexRequest.source(Map)} does.
+     * When {@code queries} is empty a single document is indexed without rule fields; otherwise one
+     * document per rule is produced.
      */
     @SuppressWarnings("unchecked")
     private void buildDocAndIndex(
@@ -612,13 +618,7 @@ public class WazuhEnrichedFindingService implements Closeable {
             String docId,
             List<DocLevelQuery> queries) {
 
-        // Per-doc base, built once and reused across all rules.
-        Map<String, Object> doc = new HashMap<>(eventSource);
-
-        // Top-level finding metadata — use the original event's timestamp
-        doc.put("@timestamp", eventSource.get("@timestamp"));
-
-        // event.* — merge existing event fields, then overlay doc_id and index
+        // Build the event overlay once (small map, reused across rules).
         Map<String, Object> eventObj = new HashMap<>();
         Object existingEvent = eventSource.get("event");
         if (existingEvent instanceof Map) {
@@ -626,28 +626,35 @@ public class WazuhEnrichedFindingService implements Closeable {
         }
         eventObj.put("doc_id", docId);
         eventObj.put("index", finding.getIndex());
-        doc.put("event", eventObj);
 
         if (queries.isEmpty()) {
-            this.indexEnrichedFinding(category, doc);
+            try {
+                XContentBuilder builder = buildEnrichedDoc(eventSource, eventObj, null);
+                this.indexEnrichedFinding(category, builder);
+            } catch (Exception e) {
+                log.warn(
+                        "Failed to build enriched finding for finding {} doc {}", finding.getId(), docId, e);
+            }
             return;
         }
 
+        Map<String, Object> wazuhBase = new HashMap<>();
         Object existingWazuh = eventSource.get("wazuh");
-        Map<String, Object> wazuhObj = new HashMap<>();
         if (existingWazuh instanceof Map) {
-            wazuhObj.putAll((Map<String, Object>) existingWazuh);
+            wazuhBase.putAll((Map<String, Object>) existingWazuh);
         }
-        doc.put("wazuh", wazuhObj);
 
-        for (DocLevelQuery query : queries) {
+        for (int q = 0; q < queries.size(); q++) {
+            DocLevelQuery query = queries.get(q);
             try {
                 Map<String, Object> ruleMetadata =
                         this.ruleMetadataCache.getOrDefault(query.getId(), Map.of());
 
+                Map<String, Object> wazuhObj = new HashMap<>(wazuhBase);
                 wazuhObj.put("rule", this.buildRuleObject(query, ruleMetadata, eventSource));
 
-                this.indexEnrichedFinding(category, doc);
+                XContentBuilder builder = buildEnrichedDoc(eventSource, eventObj, wazuhObj);
+                this.indexEnrichedFinding(category, builder);
             } catch (Exception e) {
                 log.warn(
                         "Failed to build enriched finding for finding {} doc {} rule {}",
@@ -657,6 +664,32 @@ public class WazuhEnrichedFindingService implements Closeable {
                         e);
             }
         }
+    }
+
+    /**
+     * Writes the enriched document directly to an {@link XContentBuilder}, iterating the original
+     * event source without copying it. The {@code event} and {@code wazuh} keys are replaced by the
+     * supplied overlay objects; all other fields are written as-is.
+     */
+    private static XContentBuilder buildEnrichedDoc(
+            Map<String, Object> eventSource, Map<String, Object> eventObj, Map<String, Object> wazuhObj)
+            throws java.io.IOException {
+        XContentBuilder builder = XContentFactory.jsonBuilder();
+        builder.startObject();
+        for (Map.Entry<String, Object> entry : eventSource.entrySet()) {
+            String key = entry.getKey();
+            if ("event".equals(key) || "wazuh".equals(key)) {
+                continue;
+            }
+            builder.field(key);
+            builder.value(entry.getValue());
+        }
+        builder.field("event", eventObj);
+        if (wazuhObj != null) {
+            builder.field("wazuh", wazuhObj);
+        }
+        builder.endObject();
+        return builder;
     }
 
     @SuppressWarnings("unchecked")
@@ -710,16 +743,16 @@ public class WazuhEnrichedFindingService implements Closeable {
 
     // ── Step 4: buffer and bulk-index to wazuh-findings-v5-{category}-* ──────
 
-    private void indexEnrichedFinding(String category, Map<String, Object> document) {
+    private void indexEnrichedFinding(String category, XContentBuilder builder) {
         String alias = DetectorMonitorConfig.getWazuhFindingsIndex(category);
         IndexRequest request =
                 new IndexRequest(alias)
-                        .source(document, XContentType.JSON)
+                        .source(builder)
                         .opType(DocWriteRequest.OpType.CREATE)
                         .timeout(this.indexTimeout);
 
         this.pendingRequests.add(request);
-        log.debug("Added enriched finding to pending requests: {}", document);
+        log.debug("Added enriched finding to pending requests");
         if (this.pendingCount.incrementAndGet() % this.bulkBatchSize == 0) {
             this.drainAndFlush();
         }

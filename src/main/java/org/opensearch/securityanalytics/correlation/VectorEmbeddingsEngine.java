@@ -7,7 +7,6 @@ package org.opensearch.securityanalytics.correlation;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.OpenSearchStatusException;
-import org.opensearch.ResourceNotFoundException;
 import org.opensearch.cluster.routing.Preference;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.action.bulk.BulkRequest;
@@ -21,7 +20,6 @@ import org.opensearch.common.xcontent.XContentFactory;
 import org.opensearch.commons.alerting.model.Finding;
 import org.opensearch.core.xcontent.XContentBuilder;
 import org.opensearch.index.query.BoolQueryBuilder;
-import org.opensearch.index.query.MatchQueryBuilder;
 import org.opensearch.index.query.QueryBuilders;
 import org.opensearch.core.rest.RestStatus;
 import org.opensearch.search.SearchHit;
@@ -87,8 +85,7 @@ public class VectorEmbeddingsEngine {
         return corrId != null ? corrId.toString() : null;
     }
 
-    public void insertCorrelatedFindings(String detectorType, Finding finding, String logType, List<String> correlatedFindings, float timestampFeature, List<String> correlationRules, Map<String, CustomLogType> logTypes) {
-        SearchRequest searchRequest = getSearchMetadataIndexRequest(detectorType, finding, logTypes);
+    public void insertCorrelatedFindings(String detectorType, Finding finding, String logType, List<String> correlatedFindings, float timestampFeature, List<String> correlationRules, Map<String, CustomLogType> logTypes, CorrelationMetadata corrMetadata) {
         String correlationId = getCorrelationId(logTypes, detectorType);
         if (correlationId == null) {
             log.debug("Skipping correlation for detector type [{}] and finding [{}]: no correlation_id assigned", detectorType, finding.getId());
@@ -97,19 +94,9 @@ public class VectorEmbeddingsEngine {
         }
 
         long findingTimestamp = finding.getTimestamp().toEpochMilli();
-        client.search(searchRequest, ActionListener.wrap(response -> {
-            if (response.isTimedOut()) {
-                onFailure(new OpenSearchStatusException("Search request timed out", RestStatus.REQUEST_TIMEOUT));
-            }
+        long counter = corrMetadata.counter;
 
-            if (response.getHits().getHits().length == 0) {
-                onFailure(
-                        new ResourceNotFoundException("Failed to find hits in metadata index for finding id {}", finding.getId()));
-            }
-
-            Map<String, Object> hitSource = response.getHits().getHits()[0].getSourceAsMap();
-            long counter = Long.parseLong(requireField(hitSource, "counter"));
-
+        {
             MultiSearchRequest mSearchRequest = new MultiSearchRequest();
 
             for (String correlatedFinding: correlatedFindings) {
@@ -224,13 +211,13 @@ public class VectorEmbeddingsEngine {
                         correlateFindingAction.onOperation();
                     }, this::onFailure));
                 } else {
-                    insertOrphanFindings(detectorType, finding, timestampFeature, logTypes);
+                    insertOrphanFindings(detectorType, finding, timestampFeature, logTypes, corrMetadata);
                 }
             }, this::onFailure));
-        }, this::onFailure));
+        }
     }
 
-    public void insertOrphanFindings(String detectorType, Finding finding, float timestampFeature, Map<String, CustomLogType> logTypes) {
+    public void insertOrphanFindings(String detectorType, Finding finding, float timestampFeature, Map<String, CustomLogType> logTypes, CorrelationMetadata corrMetadata) {
         if (logTypes.get(detectorType) == null) {
             log.debug("Missing detector type {} in the log types index for finding id {}. Keys in the index: {}",
                     detectorType, finding.getId(), Arrays.toString(logTypes.keySet().toArray()));
@@ -245,19 +232,13 @@ public class VectorEmbeddingsEngine {
             return;
         }
 
-        SearchRequest searchRequest = getSearchMetadataIndexRequest(detectorType, finding, logTypes);
         long findingTimestamp = finding.getTimestamp().toEpochMilli();
 
-        client.search(searchRequest, ActionListener.wrap(response -> {
-            if (response.isTimedOut()) {
-                onFailure(new OpenSearchStatusException("Search request timed out", RestStatus.REQUEST_TIMEOUT));
-            }
-
+        {
             try {
-                Map<String, Object> hitSource = response.getHits().getHits()[0].getSourceAsMap();
-                String id = response.getHits().getHits()[0].getId();
-                long counter = Long.parseLong(requireField(hitSource, "counter"));
-                long timestamp = Long.parseLong(requireField(hitSource, "timestamp"));
+                String id = corrMetadata.rootDocId;
+                long counter = corrMetadata.counter;
+                long timestamp = corrMetadata.timestamp;
                 if (counter == 0L) {
                     XContentBuilder builder = XContentFactory.jsonBuilder().startObject();
                     builder.field("root", true);
@@ -473,7 +454,7 @@ public class VectorEmbeddingsEngine {
             } catch (Exception ex) {
                 onFailure(ex);
             }
-        }, this::onFailure));
+        }
     }
 
     private void indexCorrelatedFindings(XContentBuilder builder) {
@@ -489,26 +470,6 @@ public class VectorEmbeddingsEngine {
                 onFailure(new OpenSearchStatusException("Indexing failed with response {} ", response.status(), response.toString()));
             }
         }, this::onFailure));
-    }
-
-    private SearchRequest getSearchMetadataIndexRequest(String detectorType, Finding finding, Map<String, CustomLogType> logTypes) {
-        if (logTypes.get(detectorType) == null) {
-            throw new OpenSearchStatusException("LogTypes Index is missing the detector type", RestStatus.INTERNAL_SERVER_ERROR);
-        }
-
-        MatchQueryBuilder queryBuilder = QueryBuilders.matchQuery(
-                "root", true
-        );
-        SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
-        searchSourceBuilder.query(queryBuilder);
-        searchSourceBuilder.fetchSource(true);
-        searchSourceBuilder.size(1);
-        SearchRequest searchRequest = new SearchRequest();
-        searchRequest.indices(CorrelationIndices.CORRELATION_METADATA_INDEX);
-        searchRequest.source(searchSourceBuilder);
-        searchRequest.preference(Preference.PRIMARY_FIRST.type());
-        searchRequest.setCancelAfterTimeInterval(TimeValue.timeValueSeconds(30L));
-        return searchRequest;
     }
 
     private void onFailure(Exception e) {
