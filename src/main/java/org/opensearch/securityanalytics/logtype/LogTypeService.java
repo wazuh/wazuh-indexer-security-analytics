@@ -83,7 +83,12 @@ import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSetting
 import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings.maxSystemIndexReplicas;
 import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings.minSystemIndexReplicas;
 
-/** */
+/**
+ * Manages the log type configuration stored in the {@value #LOG_TYPE_INDEX} system index.
+ *
+ * <p>All operations are asynchronous and callback-driven through {@link ActionListener}; no method
+ * blocks the calling thread.
+ */
 public class LogTypeService {
 
     private static final Logger logger = LogManager.getLogger(LogTypeService.class);
