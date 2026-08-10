@@ -203,8 +203,7 @@ public class SecurityAnalyticsSettings {
                     0,
                     Setting.Property.NodeScope);
 
-    private static final int MAXIMUM_MAX_RULES_PER_DETECTOR = 50;
-    public static final int DEFAULT_MAX_RULES_PER_DETECTOR = MAXIMUM_MAX_RULES_PER_DETECTOR;
+    public static final int DEFAULT_MAX_RULES_PER_DETECTOR = 50;
     private static final int MINIMUM_MAX_RULES_PER_DETECTOR = 0;
 
     /**
@@ -216,12 +215,10 @@ public class SecurityAnalyticsSettings {
                     "plugins.security_analytics.max_rules_per_detector",
                     DEFAULT_MAX_RULES_PER_DETECTOR,
                     MINIMUM_MAX_RULES_PER_DETECTOR,
-                    MAXIMUM_MAX_RULES_PER_DETECTOR,
                     Setting.Property.NodeScope,
                     Setting.Property.Dynamic);
 
-    private static final int MAXIMUM_MAX_DETECTORS = 10;
-    public static final int DEFAULT_MAX_DETECTORS = MAXIMUM_MAX_DETECTORS;
+    public static final int DEFAULT_MAX_DETECTORS = 10;
     private static final int MINIMUM_MAX_DETECTORS = 0;
 
     /**
@@ -233,7 +230,6 @@ public class SecurityAnalyticsSettings {
                     "plugins.security_analytics.max_detectors",
                     DEFAULT_MAX_DETECTORS,
                     MINIMUM_MAX_DETECTORS,
-                    MAXIMUM_MAX_DETECTORS,
                     Setting.Property.NodeScope,
                     Setting.Property.Dynamic);
 
