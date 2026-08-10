@@ -20,6 +20,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.action.ActionRequest;
 import org.opensearch.cluster.ClusterState;
+import org.opensearch.cluster.ClusterStateObserver;
+import org.opensearch.cluster.block.ClusterBlockLevel;
 import org.opensearch.cluster.metadata.IndexMetadata;
 import org.opensearch.cluster.metadata.IndexNameExpressionResolver;
 import org.opensearch.cluster.node.DiscoveryNode;
@@ -31,6 +33,7 @@ import org.opensearch.common.settings.IndexScopedSettings;
 import org.opensearch.common.settings.Setting;
 import org.opensearch.common.settings.Settings;
 import org.opensearch.common.settings.SettingsFilter;
+import org.opensearch.common.unit.TimeValue;
 import org.opensearch.commons.alerting.action.AlertingActions;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.action.ActionResponse;
@@ -234,6 +237,8 @@ public class SecurityAnalyticsPlugin extends Plugin
 
     private ThreadPool threadPool;
 
+    private ClusterService clusterService;
+
     @Override
     public Collection<SystemIndexDescriptor> getSystemIndexDescriptors(Settings settings) {
         List<SystemIndexDescriptor> descriptors =
@@ -258,6 +263,7 @@ public class SecurityAnalyticsPlugin extends Plugin
             Supplier<RepositoriesService> repositoriesServiceSupplier) {
         this.client = client;
         this.threadPool = threadPool;
+        this.clusterService = clusterService;
         this.builtinLogTypeLoader = new BuiltinLogTypeLoader();
         this.logTypeService =
                 new LogTypeService(client, clusterService, xContentRegistry, this.builtinLogTypeLoader);
@@ -552,7 +558,64 @@ public class SecurityAnalyticsPlugin extends Plugin
 
     @Override
     public void onNodeStarted(DiscoveryNode localNode) {
-        // Trigger initialization of log types
+        // Trigger initialization of log types, once the cluster can actually serve it.
+        this.initializeLogTypesWhenClusterIsReady();
+    }
+
+    /**
+     * onNodeStarted fires as soon as the local node is up, which on a multi-node cluster can be well
+     * before a cluster-manager has been elected and before the cluster state has been recovered. The
+     * LogType config index cannot be created in that window: the request would sit on the
+     * cluster-manager node action queue until its timeout expired and then fail with
+     * ClusterManagerNotDiscoveredException, and nothing would retry it. So wait for a cluster state
+     * that can accept the work, then initialize.
+     */
+    private void initializeLogTypesWhenClusterIsReady() {
+        if (isClusterReadyForLogTypeInit(this.clusterService.state())) {
+            this.initializeLogTypes();
+            return;
+        }
+
+        log.info("Waiting for a cluster-manager and a recovered cluster state to initialize log types");
+        // A null timeout means wait indefinitely: if this node never joins a cluster there is nothing
+        // useful to do, and failing on a timer would only add noise to the log.
+        ClusterStateObserver observer =
+                new ClusterStateObserver(
+                        this.clusterService, null, log, this.threadPool.getThreadContext());
+        // waitForNextChange only fires immediately when the sampled state differs from the one observed
+        // at construction, which is why the current state is checked above before getting here.
+        observer.waitForNextChange(
+                new ClusterStateObserver.Listener() {
+                    @Override
+                    public void onNewClusterState(ClusterState state) {
+                        SecurityAnalyticsPlugin.this.initializeLogTypes();
+                    }
+
+                    @Override
+                    public void onClusterServiceClose() {
+                        log.debug("Node is shutting down, skipping LogType config index initialization");
+                    }
+
+                    @Override
+                    public void onTimeout(TimeValue timeout) {
+                        // Unreachable: the observer was created without a timeout.
+                        log.warn("Timed out waiting for the cluster to become ready to initialize log types");
+                    }
+                },
+                SecurityAnalyticsPlugin::isClusterReadyForLogTypeInit);
+    }
+
+    /**
+     * True when the cluster state can accept the index creation that log type initialization
+     * performs: a cluster-manager is known and the state has been recovered far enough to allow
+     * metadata writes.
+     */
+    private static boolean isClusterReadyForLogTypeInit(ClusterState state) {
+        return state.nodes().getClusterManagerNode() != null
+                && !state.blocks().hasGlobalBlockWithLevel(ClusterBlockLevel.METADATA_WRITE);
+    }
+
+    private void initializeLogTypes() {
         this.logTypeService.ensureConfigIndexIsInitialized(
                 new ActionListener<>() {
                     @Override
@@ -562,9 +625,7 @@ public class SecurityAnalyticsPlugin extends Plugin
 
                     @Override
                     public void onFailure(Exception e) {
-                        log.warn(
-                                "Failed to initialize LogType config index and builtin log types: {}",
-                                e.getMessage());
+                        log.warn("Failed to initialize LogType config index and builtin log types", e);
                     }
                 });
     }
