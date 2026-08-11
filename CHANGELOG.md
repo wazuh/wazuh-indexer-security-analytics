@@ -55,6 +55,7 @@
 - Findings are missing structured MITRE tactics and technique fields [(#37939)](https://github.com/wazuh/wazuh/issues/37939)
 - [BUG] Failed to initialize LogType config index and builtin log types: all shards failed [(#282)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/282)
 - [BUG] A disabled detector cannot be created because its enabled time is always set [(#1403)](https://github.com/wazuh/wazuh-indexer-plugins/issues/1403)
+- [BUG] A user's Start/Stop of a standard detector is lost on CTI updates [(#1403)](https://github.com/wazuh/wazuh-indexer-plugins/issues/1403)
 
 ## Prior versions
 - []()
