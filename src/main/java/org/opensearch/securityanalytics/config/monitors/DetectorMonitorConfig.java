@@ -1,34 +1,41 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.config.monitors;
 
-import java.util.List;
-import java.util.Random;
-import java.util.UUID;
-import java.util.stream.Collectors;
-import org.opensearch.common.inject.Inject;
-import org.opensearch.securityanalytics.logtype.LogTypeService;
-import org.opensearch.securityanalytics.model.Detector;
-
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
-import org.opensearch.securityanalytics.model.LogType;
-
+import java.util.UUID;
 
 public class DetectorMonitorConfig {
 
-    public static final String OPENSEARCH_SAP_RULE_INDEX_TEMPLATE = ".opensearch-sap-detectors-queries-index-template";
+    public static final String OPENSEARCH_SAP_RULE_INDEX_TEMPLATE =
+            ".opensearch-sap-detectors-queries-index-template";
 
     public static String getRuleIndex(String logType) {
         return String.format(Locale.getDefault(), ".opensearch-sap-%s-detectors-queries", logType);
     }
 
     public static String getRuleIndexOptimized(String logType) {
-        return String.format(Locale.getDefault(), ".opensearch-sap-%s-detectors-queries-optimized-%s", logType, UUID.randomUUID());
+        return String.format(
+                Locale.getDefault(),
+                ".opensearch-sap-%s-detectors-queries-optimized-%s",
+                logType,
+                UUID.randomUUID());
     }
 
     public static String getAlertsIndex(String logType) {
@@ -40,7 +47,8 @@ public class DetectorMonitorConfig {
     }
 
     public static String getAlertsHistoryIndexPattern(String logType) {
-        return String.format(Locale.getDefault(), "<.opensearch-sap-%s-alerts-history-{now/d}-1>", logType);
+        return String.format(
+                Locale.getDefault(), "<.opensearch-sap-%s-alerts-history-{now/d}-1>", logType);
     }
 
     public static String getAllAlertsIndicesPattern(String logType) {
@@ -76,6 +84,13 @@ public class DetectorMonitorConfig {
         properties.put("analyzer", "rule_analyzer");
         HashMap<String, Map<String, String>> fieldMappingProperties = new HashMap<>();
         fieldMappingProperties.put("text", properties);
+        // WCS string fields are mapped as `keyword`, not `text`. Attach a normalizer that
+        // reuses the `rule_ws_filter` char_filter so the `_ws_` whitespace placeholder in compiled
+        // Sigma queries is reversed to a space on keyword fields too; without this, any rule whose
+        // match value contains a space (e.g. "Microsoft Intune") never matches and no finding fires.
+        HashMap<String, String> keywordProperties = new HashMap<>();
+        keywordProperties.put("normalizer", "rule_ws_normalizer");
+        fieldMappingProperties.put("keyword", keywordProperties);
         return fieldMappingProperties;
     }
 
@@ -140,5 +155,4 @@ public class DetectorMonitorConfig {
             return ruleIndex;
         }
     }
-
 }
