@@ -11,6 +11,14 @@
         ]
       }
     },
+    "normalizer": {
+      "rule_ws_normalizer": {
+        "type": "custom",
+        "char_filter": [
+          "rule_ws_filter"
+        ]
+      }
+    },
     "char_filter": {
       "rule_ws_filter": {
         "type": "pattern_replace",
