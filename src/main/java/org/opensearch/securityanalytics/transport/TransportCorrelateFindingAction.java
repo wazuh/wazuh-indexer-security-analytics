@@ -520,17 +520,22 @@ public class TransportCorrelateFindingAction
                                                                                     ActionListener.wrap(
                                                                                             bulkResponse -> {
                                                                                                 if (bulkResponse.hasFailures()) {
-                                                                                                    correlateFindingAction.onFailures(
+                                                                                                    correlateFindingAction.skipCorrelation(
+                                                                                                            "failed to seed correlation metadata index",
                                                                                                             new OpenSearchStatusException(
                                                                                                                     createIndexResponse.toString(),
                                                                                                                     RestStatus.INTERNAL_SERVER_ERROR));
+                                                                                                } else {
+                                                                                                    correlateFindingAction.start();
                                                                                                 }
-
-                                                                                                correlateFindingAction.start();
                                                                                             },
-                                                                                            correlateFindingAction::onFailures));
+                                                                                            e ->
+                                                                                                    correlateFindingAction.skipCorrelation(
+                                                                                                            "failed to seed correlation metadata index",
+                                                                                                            e)));
                                                                         } else {
-                                                                            correlateFindingAction.onFailures(
+                                                                            correlateFindingAction.skipCorrelation(
+                                                                                    "correlation metadata index creation was not acknowledged",
                                                                                     new OpenSearchStatusException(
                                                                                             "Failed to create correlation metadata Index",
                                                                                             RestStatus.INTERNAL_SERVER_ERROR));
@@ -541,11 +546,13 @@ public class TransportCorrelateFindingAction
                                                                                 instanceof ResourceAlreadyExistsException) {
                                                                             correlateFindingAction.start();
                                                                         } else {
-                                                                            correlateFindingAction.onFailures(e);
+                                                                            correlateFindingAction.skipCorrelation(
+                                                                                    "failed to create correlation metadata index", e);
                                                                         }
                                                                     }));
                                                 } catch (Exception ex) {
-                                                    correlateFindingAction.onFailures(ex);
+                                                    correlateFindingAction.skipCorrelation(
+                                                            "failed to create correlation metadata index", ex);
                                                 }
                                             } else {
                                                 correlateFindingAction.start();
@@ -558,9 +565,10 @@ public class TransportCorrelateFindingAction
                                                                         if (createIndexResponse.isAcknowledged()) {
                                                                             IndexUtils.correlationAlertIndexUpdated();
                                                                         } else {
-                                                                            correlateFindingAction.onFailures(
+                                                                            correlateFindingAction.skipCorrelation(
+                                                                                    "correlation alert index creation was not acknowledged",
                                                                                     new OpenSearchStatusException(
-                                                                                            "Failed to create correlation metadata Index",
+                                                                                            "Failed to create correlation alert Index",
                                                                                             RestStatus.INTERNAL_SERVER_ERROR));
                                                                         }
                                                                     },
@@ -569,15 +577,18 @@ public class TransportCorrelateFindingAction
                                                                                 instanceof ResourceAlreadyExistsException) {
                                                                             IndexUtils.correlationAlertIndexUpdated();
                                                                         } else {
-                                                                            correlateFindingAction.onFailures(e);
+                                                                            correlateFindingAction.skipCorrelation(
+                                                                                    "failed to create correlation alert index", e);
                                                                         }
                                                                     }));
                                                 } catch (Exception ex) {
-                                                    correlateFindingAction.onFailures(ex);
+                                                    correlateFindingAction.skipCorrelation(
+                                                            "failed to create correlation alert index", ex);
                                                 }
                                             }
                                         } else {
-                                            correlateFindingAction.onFailures(
+                                            correlateFindingAction.skipCorrelation(
+                                                    "correlation index creation was not acknowledged",
                                                     new OpenSearchStatusException(
                                                             "Failed to create correlation Index",
                                                             RestStatus.INTERNAL_SERVER_ERROR));
@@ -587,11 +598,12 @@ public class TransportCorrelateFindingAction
                                         if (ExceptionsHelper.unwrapCause(e) instanceof ResourceAlreadyExistsException) {
                                             correlateFindingAction.start();
                                         } else {
-                                            correlateFindingAction.onFailures(e);
+                                            correlateFindingAction.skipCorrelation(
+                                                    "failed to create correlation index", e);
                                         }
                                     }));
                 } catch (Exception ex) {
-                    correlateFindingAction.onFailures(ex);
+                    correlateFindingAction.skipCorrelation("failed to create correlation index", ex);
                 }
             } else {
                 correlateFindingAction.start();
@@ -623,6 +635,13 @@ public class TransportCorrelateFindingAction
          * {@link #start()} ever runs) do not over-release.
          */
         private volatile boolean permitAcquired = false;
+
+        /**
+         * Set when correlation bootstrap failed before {@link #doStart()} ever ran. The pipeline is
+         * still queued and started, but only to resolve the detector and dispatch enrichment; it stops
+         * before handing the finding to {@link JoinEngine}. See {@link #skipCorrelation}.
+         */
+        private volatile boolean correlationSkipped = false;
 
         AsyncCorrelateFindingAction(
                 Task task,
@@ -697,6 +716,10 @@ public class TransportCorrelateFindingAction
             Optional<Detector> cached = detectorLookupCache.get(monitorId);
             if (cached.isPresent()) {
                 dispatchEnrichment(finding);
+                if (correlationSkipped) {
+                    onOperation();
+                    return;
+                }
                 try {
                     joinEngine.onSearchDetectorResponse(cached.get(), finding);
                 } catch (Exception e) {
@@ -746,6 +769,10 @@ public class TransportCorrelateFindingAction
                                         Detector detector = Detector.docParse(xcp, hit.getId(), hit.getVersion());
                                         detectorLookupCache.put(monitorId, detector);
                                         dispatchEnrichment(finding);
+                                        if (correlationSkipped) {
+                                            onOperation();
+                                            return;
+                                        }
                                         joinEngine.onSearchDetectorResponse(detector, finding);
                                     } catch (Exception e) {
                                         log.error("Exception for request {}", searchRequest, e);
@@ -783,19 +810,20 @@ public class TransportCorrelateFindingAction
                                             IndexUtils.correlationIndexUpdated();
                                             getTimestampFeature(detectorType, correlatedFindings, null, correlationRules);
                                         } else {
-                                            onFailures(
+                                            skipCorrelation(
+                                                    "correlation index mapping update was not acknowledged",
                                                     new OpenSearchStatusException(
                                                             "Failed to create correlation Index",
                                                             RestStatus.INTERNAL_SERVER_ERROR));
                                         }
                                     },
-                                    this::onFailures),
+                                    e -> skipCorrelation("failed to update correlation index mapping", e)),
                             true);
                 } else {
                     getTimestampFeature(detectorType, correlatedFindings, null, correlationRules);
                 }
             } catch (Exception ex) {
-                onFailures(ex);
+                skipCorrelation("failed to update correlation index mapping", ex);
             }
         }
 
@@ -818,10 +846,16 @@ public class TransportCorrelateFindingAction
                                                     ActionListener.wrap(
                                                             bulkResponse -> {
                                                                 if (bulkResponse.hasFailures()) {
-                                                                    onFailures(
+                                                                    // Same bootstrap seeding as in doExecute(): without a
+                                                                    // score document there is nothing for the search
+                                                                    // below to find, so stop here instead of falling
+                                                                    // through into it.
+                                                                    skipCorrelation(
+                                                                            "failed to seed correlation metadata index",
                                                                             new OpenSearchStatusException(
                                                                                     bulkResponse.toString(),
                                                                                     RestStatus.INTERNAL_SERVER_ERROR));
+                                                                    return;
                                                                 }
 
                                                                 long findingTimestamp =
@@ -835,10 +869,16 @@ public class TransportCorrelateFindingAction
                                                                                 searchMetadataResponse -> {
                                                                                     if (searchMetadataResponse.getHits().getHits().length
                                                                                             == 0) {
-                                                                                        onFailures(
+                                                                                        // The score document was just seeded, so
+                                                                                        // this means the write is not searchable
+                                                                                        // yet. Reading hits[0] below would throw,
+                                                                                        // so stop and let the next finding retry.
+                                                                                        skipCorrelation(
+                                                                                                "correlation metadata index has no score document yet",
                                                                                                 new ResourceNotFoundException(
                                                                                                         "Failed to find hits in metadata index for finding id {}",
                                                                                                         request.getFinding().getId()));
+                                                                                        return;
                                                                                     }
 
                                                                                     String id =
@@ -894,15 +934,18 @@ public class TransportCorrelateFindingAction
                                                                                                 orphanFinding);
                                                                                     }
                                                                                 },
-                                                                                this::onFailures));
+                                                                                e ->
+                                                                                        skipCorrelation(
+                                                                                                "failed to read correlation metadata index", e)));
                                                             },
-                                                            this::onFailures));
+                                                            e ->
+                                                                    skipCorrelation("failed to seed correlation metadata index", e)));
                                         } else {
-                                            Exception e =
+                                            skipCorrelation(
+                                                    "correlation metadata index creation was not acknowledged",
                                                     new OpenSearchStatusException(
                                                             "Failed to create correlation metadata Index",
-                                                            RestStatus.INTERNAL_SERVER_ERROR);
-                                            onFailures(e);
+                                                            RestStatus.INTERNAL_SERVER_ERROR));
                                         }
                                     },
                                     e -> {
@@ -913,7 +956,7 @@ public class TransportCorrelateFindingAction
                                             getTimestampFeature(
                                                     detectorType, correlatedFindings, orphanFinding, correlationRules);
                                         } else {
-                                            onFailures(e);
+                                            skipCorrelation("failed to create correlation metadata index", e);
                                         }
                                     }));
                 } else {
@@ -925,7 +968,11 @@ public class TransportCorrelateFindingAction
                             ActionListener.wrap(
                                     response -> {
                                         if (response.getHits().getHits().length == 0) {
-                                            onFailures(
+                                            // The metadata index exists but its score document is not
+                                            // searchable yet, e.g. it was seeded moments ago by another
+                                            // finding. Transient, so skip instead of failing the run.
+                                            skipCorrelation(
+                                                    "correlation metadata index has no score document yet",
                                                     new ResourceNotFoundException(
                                                             "Failed to find hits in metadata index for finding id {}",
                                                             request.getFinding().getId()));
@@ -968,10 +1015,10 @@ public class TransportCorrelateFindingAction
                                             }
                                         }
                                     },
-                                    this::onFailures));
+                                    e -> skipCorrelation("failed to read correlation metadata index", e)));
                 }
             } catch (Exception ex) {
-                onFailures(ex);
+                skipCorrelation("failed to read correlation metadata index", ex);
             }
         }
 
@@ -1100,6 +1147,36 @@ public class TransportCorrelateFindingAction
          */
         void dropForBackpressure() {
             if (counter.compareAndSet(false, true)) {
+                listener.onResponse(new SubscribeFindingsResponse(RestStatus.OK));
+            }
+        }
+
+        /**
+         * Skips correlation for this finding without failing the monitor execution, because bootstrap
+         * of the correlation index/metadata/alert indices did not succeed for a reason other than
+         * "already exists" (e.g. transient cluster-state contention right after a clean install, while
+         * many other Security Analytics config indices are being created at the same time). The finding
+         * itself was already indexed by the monitor before correlation ever ran; only this optional
+         * enrichment step is skipped, and it is retried automatically on the next finding once the
+         * cluster settles and the bootstrap succeeds. This is also reached from {@link
+         * #initCorrelationIndex} / {@link #getTimestampFeature}, i.e. after {@link #start} already
+         * acquired a permit, so the permit must be released here too when that happened — otherwise the
+         * in-flight semaphore leaks a permit every time bootstrap fails on that later path.
+         */
+        void skipCorrelation(String reason, Exception cause) {
+            log.warn(
+                    "Skipping correlation for monitor id {} and finding id {}: {}",
+                    request.getMonitorId(),
+                    request.getFinding().getId(),
+                    reason,
+                    cause);
+            if (!permitAcquired) {
+                correlationSkipped = true;
+                start();
+                return;
+            }
+            if (counter.compareAndSet(false, true)) {
+                releasePermitAndDrain();
                 listener.onResponse(new SubscribeFindingsResponse(RestStatus.OK));
             }
         }
