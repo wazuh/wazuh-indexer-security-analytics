@@ -157,9 +157,14 @@ public class TransportIndexDetectorAction
     /** Lock ID guarding the {@code max_detectors} limit-check-then-create sequence. */
     private static final String MAX_DETECTORS_LOCK_ID = "security-analytics-max-detectors";
 
-    /** Error raised when a detector resolves to zero monitors because it has no compatible rules. */
+    /**
+     * Error raised when a detector resolves to zero monitors because it has no compatible rules.
+     * Raised on create and on update alike, so the wording states the requirement rather than the
+     * operation, and points at the most frequent cause, every rule of the detector being disabled.
+     */
     static final String NO_COMPATIBLE_RULES_ERROR =
-            "Detector cannot be created as no compatible rules were provided";
+            "Detector must have at least one enabled rule matching its type. "
+                    + "If all of its rules are disabled, enable one before saving.";
 
     static String validateSingleRuleSpace(Detector detector) {
         if (detector.getInputs().isEmpty()) {
