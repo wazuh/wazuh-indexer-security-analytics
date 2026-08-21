@@ -114,6 +114,31 @@ public class TransportDeleteRuleAction
         this.ruleIndex = ruleIndex;
     }
 
+    /**
+     * Space whose rule copies detectors resolve, see {@code TransportIndexDetectorAction} filtering
+     * custom rules by {@code rule.space}.
+     */
+    private static final String DETECTOR_RULE_SPACE = "custom";
+
+    /**
+     * Returns whether deleting this copy of a rule must also strip it from the detectors referencing
+     * it.
+     *
+     * <p>Content manager keeps one copy of a rule per space and detectors resolve theirs from {@code
+     * custom} only, so a reference goes stale when the {@code custom} copy is deleted and not before.
+     * Deleting the {@code draft} or {@code test} copy leaves detectors untouched: stripping the
+     * reference there would take a rule away from a detector that still resolves it, and if it was
+     * the detector's last rule the detector would silently lose its monitor.
+     *
+     * <p>A copy with no recorded space cannot be attributed to one, so it is cleaned up as before.
+     *
+     * @param ruleSpace the space of the rule copy being deleted, may be {@code null}.
+     * @return {@code true} when detector references must be removed.
+     */
+    static boolean shouldCleanDetectorReferences(String ruleSpace) {
+        return ruleSpace == null || DETECTOR_RULE_SPACE.equalsIgnoreCase(ruleSpace);
+    }
+
     @Override
     protected void doExecute(
             Task task, DeleteRuleRequest request, ActionListener<DeleteRuleResponse> listener) {
@@ -181,6 +206,12 @@ public class TransportDeleteRuleAction
         }
 
         private void onGetResponse(Rule rule) {
+            // Only the copy detectors resolve carries their references. Deleting any other copy is a
+            // plain delete: the rule is still there for them in the custom space.
+            if (!shouldCleanDetectorReferences(rule.getSpace())) {
+                deleteRule(rule.getId());
+                return;
+            }
             if (detectorIndices.detectorIndexExists()) {
                 // Detectors reference custom rules by the content-manager's document.id (see
                 // TransportIndexDetectorAction resolving custom rules by rule.document.id). Querying by the
