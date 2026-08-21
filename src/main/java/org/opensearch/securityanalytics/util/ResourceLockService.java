@@ -42,6 +42,9 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
 
+import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings.maxSystemIndexReplicas;
+import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings.minSystemIndexReplicas;
+
 /**
  * Serializes the resource-creation-limit check-then-act sequence (count existing documents, then
  * create if under the configured max) with a short-lived mutex document per lock ID.
@@ -96,6 +99,7 @@ public class ResourceLockService {
                         .put("index.hidden", true)
                         .put("index.number_of_shards", 1)
                         .put("index.number_of_replicas", 0)
+                        .put("index.auto_expand_replicas", minSystemIndexReplicas + "-" + maxSystemIndexReplicas)
                         .put("index.refresh_interval", "-1")
                         .build();
         CreateIndexRequest request;
