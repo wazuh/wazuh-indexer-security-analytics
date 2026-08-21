@@ -130,13 +130,12 @@ public class TransportDeleteRuleAction
      * reference there would take a rule away from a detector that still resolves it, and if it was
      * the detector's last rule the detector would silently lose its monitor.
      *
-     * <p>A copy with no recorded space cannot be attributed to one, so it is cleaned up as before.
-     *
-     * @param ruleSpace the space of the rule copy being deleted, may be {@code null}.
-     * @return {@code true} when detector references must be removed.
+     * @param ruleSpace the space of the rule copy being deleted.
+     * @return {@code true} when detector references must be removed, only for the {@code custom}
+     *     copy.
      */
     static boolean shouldCleanDetectorReferences(String ruleSpace) {
-        return ruleSpace == null || DETECTOR_RULE_SPACE.equalsIgnoreCase(ruleSpace);
+        return DETECTOR_RULE_SPACE.equalsIgnoreCase(ruleSpace);
     }
 
     @Override

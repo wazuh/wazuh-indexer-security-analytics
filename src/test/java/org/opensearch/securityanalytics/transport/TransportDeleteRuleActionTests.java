@@ -46,12 +46,4 @@ public class TransportDeleteRuleActionTests extends OpenSearchTestCase {
     public void testKeepsReferencesWhenDeletingTheTestCopy() {
         assertFalse(TransportDeleteRuleAction.shouldCleanDetectorReferences("test"));
     }
-
-    /**
-     * A rule with no space recorded cannot be attributed to one, so the cleanup still runs. That
-     * keeps the stale-reference behaviour for rules predating the space field.
-     */
-    public void testCleansReferencesWhenTheSpaceIsUnknown() {
-        assertTrue(TransportDeleteRuleAction.shouldCleanDetectorReferences(null));
-    }
 }
