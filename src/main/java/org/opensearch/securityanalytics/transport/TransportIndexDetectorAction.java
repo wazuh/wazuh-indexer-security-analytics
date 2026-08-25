@@ -2460,10 +2460,9 @@ public class TransportIndexDetectorAction
 
                             } catch (Exception e) {
                                 TransportIndexDetectorAction.this.logger.error(
-                                        "Failure in parsing rule field names/aliases while " + detector.getId() == null
-                                                ? "creating"
-                                                : "updating"
-                                                        + " detector. Not optimizing detector queries with relevant fields",
+                                        "Failure in parsing rule field names/aliases while "
+                                                + (detector.getId() == null ? "creating" : "updating")
+                                                + " detector. Not optimizing detector queries with relevant fields",
                                         e);
                                 ruleFieldNames.clear();
                             }
