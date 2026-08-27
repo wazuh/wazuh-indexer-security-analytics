@@ -18,7 +18,6 @@ package org.opensearch.securityanalytics.transport;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.lucene.search.join.ScoreMode;
 import org.opensearch.OpenSearchStatusException;
 import org.opensearch.action.ActionRunnable;
 import org.opensearch.action.admin.indices.create.CreateIndexResponse;
@@ -65,6 +64,7 @@ import org.opensearch.securityanalytics.rules.objects.SigmaRule;
 import org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings;
 import org.opensearch.securityanalytics.util.DetectorIndices;
 import org.opensearch.securityanalytics.util.IndexUtils;
+import org.opensearch.securityanalytics.util.RuleDetectorSync;
 import org.opensearch.securityanalytics.util.RuleIndices;
 import org.opensearch.securityanalytics.util.SecurityAnalyticsException;
 import org.opensearch.tasks.Task;
@@ -138,6 +138,21 @@ public class TransportIndexRuleAction
             Task task, IndexRuleRequest request, ActionListener<IndexRuleResponse> listener) {
         AsyncIndexRulesAction asyncAction = new AsyncIndexRulesAction(task, request, listener);
         asyncAction.start();
+    }
+
+    /**
+     * Returns true when the throwable (or any cause in its chain) is the "no compatible rules" error,
+     * i.e. rebuilding a detector left it with zero enabled rules.
+     */
+    private static boolean isNoCompatibleRulesError(Throwable e) {
+        while (e != null) {
+            if (e.getMessage() != null
+                    && e.getMessage().contains(TransportIndexDetectorAction.NO_COMPATIBLE_RULES_ERROR)) {
+                return true;
+            }
+            e = e.getCause();
+        }
+        return false;
     }
 
     class AsyncIndexRulesAction {
@@ -378,22 +393,13 @@ public class TransportIndexRuleAction
         }
 
         private void searchDetectors(String ruleId, ActionListener<SearchResponse> listener) {
-            QueryBuilder queryBuilder =
-                    QueryBuilders.nestedQuery(
-                            "detector.inputs.detector_input.custom_rules",
-                            QueryBuilders.boolQuery()
-                                    .must(
-                                            QueryBuilders.matchQuery(
-                                                    "detector.inputs.detector_input.custom_rules.id", ruleId)),
-                            ScoreMode.Avg);
-
             SearchRequest searchRequest =
                     new SearchRequest(Detector.DETECTORS_INDEX)
                             .source(
                                     new SearchSourceBuilder()
                                             .seqNoAndPrimaryTerm(true)
                                             .version(true)
-                                            .query(queryBuilder)
+                                            .query(RuleDetectorSync.detectorsReferencingRuleQuery("custom_rules", ruleId))
                                             .size(10000))
                             .preference(Preference.PRIMARY_FIRST.type());
 
@@ -422,13 +428,24 @@ public class TransportIndexRuleAction
                                                             "Rule with id %s cannot be updated",
                                                             AsyncIndexRulesAction.this.request.getRuleId()),
                                                     RestStatus.INTERNAL_SERVER_ERROR));
+                                    return;
                                 }
                                 AsyncIndexRulesAction.this.onComplete(indexResponse, rule, detectors.size());
                             }
 
                             @Override
                             public void onFailure(Exception e) {
-                                AsyncIndexRulesAction.this.onFailures(e);
+                                // Non-fatal only when a referenced detector ended up with no enabled
+                                // rules; it is reconciled on the next promote. Any other error is fatal.
+                                if (isNoCompatibleRulesError(e)) {
+                                    log.warn(
+                                            "Detector {} has no enabled rules after updating rule {}; skipping its rebuild",
+                                            detector.getId(),
+                                            AsyncIndexRulesAction.this.request.getRuleId());
+                                    AsyncIndexRulesAction.this.onComplete(indexResponse, rule, detectors.size());
+                                } else {
+                                    AsyncIndexRulesAction.this.onFailures(e);
+                                }
                             }
                         });
             }

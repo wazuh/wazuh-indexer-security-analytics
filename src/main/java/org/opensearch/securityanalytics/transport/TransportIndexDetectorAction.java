@@ -157,6 +157,15 @@ public class TransportIndexDetectorAction
     /** Lock ID guarding the {@code max_detectors} limit-check-then-create sequence. */
     private static final String MAX_DETECTORS_LOCK_ID = "security-analytics-max-detectors";
 
+    /**
+     * Error raised when a detector resolves to zero monitors because it has no compatible rules.
+     * Raised on create and on update alike, so the wording states the requirement rather than the
+     * operation, and points at the most frequent cause, every rule of the detector being disabled.
+     */
+    static final String NO_COMPATIBLE_RULES_ERROR =
+            "Detector must have at least one enabled rule matching its type. "
+                    + "If all of its rules are disabled, enable one before saving.";
+
     static String validateSingleRuleSpace(Detector detector) {
         if (detector.getInputs().isEmpty()) {
             return null;
@@ -168,6 +177,57 @@ public class TransportIndexDetectorAction
             return "Detector cannot have both prepackaged and custom rules. Use only one type.";
         }
         return null;
+    }
+
+    /**
+     * Reads the top-level {@code enabled} flag from a rule's raw content blob. The flag lives only in
+     * the raw content, not in the indexed rule fields. Fail-open: a missing field, a blank blob or
+     * non-JSON content is treated as enabled.
+     *
+     * @param rawRuleContent the raw rule content (the {@code rule} field of the stored document)
+     * @return {@code false} only when the blob explicitly sets {@code enabled} to false
+     */
+    static boolean isRuleEnabled(String rawRuleContent) {
+        if (rawRuleContent == null || rawRuleContent.isBlank()) {
+            return true;
+        }
+        try (XContentParser parser =
+                XContentType.JSON
+                        .xContent()
+                        .createParser(
+                                NamedXContentRegistry.EMPTY, LoggingDeprecationHandler.INSTANCE, rawRuleContent)) {
+            Object enabled = parser.map().get("enabled");
+            if (enabled instanceof Boolean) {
+                return (Boolean) enabled;
+            }
+            if (enabled instanceof String) {
+                return Boolean.parseBoolean((String) enabled);
+            }
+            return true;
+        } catch (Exception e) {
+            return true;
+        }
+    }
+
+    /**
+     * Returns only the rules that are not explicitly disabled, preserving order, so disabled rules
+     * are never compiled into a detector's monitor.
+     *
+     * @param queries the resolved rules as (id, rule) pairs
+     * @return the subset whose {@link #isRuleEnabled(String)} check passes
+     */
+    static List<Pair<String, Rule>> filterEnabledRules(List<Pair<String, Rule>> queries) {
+        List<Pair<String, Rule>> enabled = new ArrayList<>();
+        for (Pair<String, Rule> query : queries) {
+            if (isRuleEnabled(query.getValue().getRule())) {
+                enabled.add(query);
+            } else {
+                log.debug(
+                        "Excluding disabled rule [{}] from detector query compilation",
+                        query.getValue().getId());
+            }
+        }
+        return enabled;
     }
 
     private final Client client;
@@ -683,8 +743,7 @@ public class TransportIndexDetectorAction
                                 if (monitorRequests.isEmpty()) {
                                     listener.onFailure(
                                             new OpenSearchStatusException(
-                                                    "Detector cannot be created as no compatible rules were provided",
-                                                    RestStatus.BAD_REQUEST));
+                                                    NO_COMPATIBLE_RULES_ERROR, RestStatus.BAD_REQUEST));
                                     return;
                                 }
 
@@ -2367,8 +2426,11 @@ public class TransportIndexDetectorAction
             TransportIndexDetectorAction.this.logger.debug(
                     "PERF_DEBUG_SAP: Fetching alias path pairs to construct rule_field_names");
             long start = System.currentTimeMillis();
+            // Drop disabled rules before compiling them into the detector's monitor. Pre-packaged and
+            // custom rules both converge here, so this covers every create/update path.
+            final List<Pair<String, Rule>> enabledQueries = filterEnabledRules(queries);
             Set<String> ruleFieldNames = new HashSet<>();
-            for (Pair<String, Rule> query : queries) {
+            for (Pair<String, Rule> query : enabledQueries) {
                 List<String> queryFieldNames =
                         query.getValue().getQueryFieldNames().stream()
                                 .map(Value::getValue)
@@ -2398,15 +2460,14 @@ public class TransportIndexDetectorAction
 
                             } catch (Exception e) {
                                 TransportIndexDetectorAction.this.logger.error(
-                                        "Failure in parsing rule field names/aliases while " + detector.getId() == null
-                                                ? "creating"
-                                                : "updating"
-                                                        + " detector. Not optimizing detector queries with relevant fields",
+                                        "Failure in parsing rule field names/aliases while "
+                                                + (detector.getId() == null ? "creating" : "updating")
+                                                + " detector. Not optimizing detector queries with relevant fields",
                                         e);
                                 ruleFieldNames.clear();
                             }
                             AsyncIndexDetectorsAction.this.upsertMonitorQueries(
-                                    queries, detector, listener, ruleFieldNames, logIndex);
+                                    enabledQueries, detector, listener, ruleFieldNames, logIndex);
                         }
 
                         @Override
