@@ -24,6 +24,7 @@ import org.opensearch.securityanalytics.action.IndexDetectorResponse;
 import org.opensearch.securityanalytics.model.Detector;
 import org.opensearch.securityanalytics.model.DetectorTrigger;
 import org.opensearch.securityanalytics.util.DetectorUtils;
+import org.opensearch.securityanalytics.util.RegistryOverrideWriter;
 import org.opensearch.securityanalytics.util.RestHandlerUtils;
 import org.opensearch.transport.client.node.NodeClient;
 
@@ -71,7 +72,7 @@ public class RestIndexDetectorAction extends BaseRestHandler {
         validateDetectorTriggers(detector);
 
         IndexDetectorRequest indexDetectorRequest = new IndexDetectorRequest(id, refreshPolicy, request.method(), detector);
-        return channel -> client.execute(IndexDetectorAction.INSTANCE, indexDetectorRequest, indexDetectorResponse(channel, request.method()));
+        return channel -> client.execute(IndexDetectorAction.INSTANCE, indexDetectorRequest, indexDetectorResponse(channel, request.method(), client));
     }
 
     private static void validateDetectorTriggers(Detector detector) {
@@ -88,7 +89,7 @@ public class RestIndexDetectorAction extends BaseRestHandler {
         }
     }
 
-    private RestResponseListener<IndexDetectorResponse> indexDetectorResponse(RestChannel channel, RestRequest.Method restMethod) {
+    private RestResponseListener<IndexDetectorResponse> indexDetectorResponse(RestChannel channel, RestRequest.Method restMethod, NodeClient client) {
         return new RestResponseListener<>(channel) {
             @Override
             public RestResponse buildResponse(IndexDetectorResponse response) throws Exception {
@@ -96,6 +97,15 @@ public class RestIndexDetectorAction extends BaseRestHandler {
                 if (restMethod == RestRequest.Method.PUT) {
                     returnStatus = RestStatus.OK;
                 }
+
+                // Only a user's own change reaches this handler: Content Manager drives detectors over
+                // transport, which never runs a REST handler. So a standard detector saved here is the
+                // user starting or stopping it, and that choice must outlive the next content rebuild.
+                //
+                // The detector from the response, not the one parsed from the request: a toggle sends
+                // only the fields the client happened to hold, and the transport action restores the
+                // rest -- including `source` -- from the stored document.
+                RegistryOverrideWriter.recordDetectorEnabled(client, response.getId(), response.getDetector());
 
                 BytesRestResponse restResponse = new BytesRestResponse(returnStatus, response.toXContent(channel.newBuilder(), ToXContent.EMPTY_PARAMS));
 
