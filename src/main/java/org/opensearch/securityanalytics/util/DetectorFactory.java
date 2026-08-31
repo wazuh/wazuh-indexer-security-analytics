@@ -44,11 +44,17 @@ public class DetectorFactory {
      *
      * <p>The detector is created with the following configuration: - Name: lowercase integration name
      * - Description: "Detector for {integration} integration" - Data stream:
-     * "wazuh-events-v5-{category}" (lowercase) - Schedule: 2-minute interval - Enabled: true
+     * "wazuh-events-v5-{category}" (lowercase), unless explicit sources are given.
+     *
+     * <p>The enabled time is set only when the detector is enabled, which is what the alerting models
+     * require of the workflow built from it.
      *
      * @param integration the integration name (e.g., "apache", "nginx")
      * @param category the log category used for data stream naming
      * @param detectorRules list of rule IDs to associate with the detector
+     * @param sources explicit source indices, or {@code null} to derive one from the category
+     * @param interval the schedule interval, in minutes
+     * @param isEnabled whether the detector starts enabled
      * @return a new {@link Detector} instance configured for the integration
      */
     public static Detector createDetector(
@@ -79,7 +85,11 @@ public class DetectorFactory {
                 isEnabled,
                 schedule,
                 Instant.now(),
-                Instant.now(),
+                // A disabled detector must carry no enabled time. The workflow built from it in
+                // WorkflowService copies both fields across, and Workflow requires a disabled workflow
+                // to have a null enabled time -- a timestamp here makes creating a disabled detector
+                // fail with "Failed requirement." from Kotlin, with nothing pointing back to here.
+                isEnabled ? Instant.now() : null,
                 integration,
                 null, // TODO capture user
                 List.of(detectorInput),

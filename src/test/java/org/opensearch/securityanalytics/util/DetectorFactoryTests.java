@@ -214,4 +214,29 @@ public class DetectorFactoryTests extends OpenSearchTestCase {
 
         Assert.assertFalse("Detector should be disabled", detector.getEnabled());
     }
+
+    /**
+     * A disabled detector must carry no enabled time.
+     *
+     * <p>{@code WorkflowService} builds the detector's workflow by copying both {@code enabled} and
+     * {@code enabledTime} across, and {@code Workflow} requires a disabled workflow to have a null
+     * enabled time. A timestamp here therefore makes creating a disabled detector fail outright, with
+     * {@code Failed requirement.} as the only clue.
+     */
+    public void testCreateDetector_disabledCarriesNoEnabledTime() {
+        Detector detector =
+                DetectorFactory.createDetector("apache", "security", List.of("r1"), null, 2, false);
+
+        Assert.assertNull(
+                "a disabled detector must not carry an enabled time", detector.getEnabledTime());
+    }
+
+    /** And an enabled detector must carry one: the other half of the same invariant. */
+    public void testCreateDetector_enabledCarriesAnEnabledTime() {
+        Detector detector =
+                DetectorFactory.createDetector("apache", "security", List.of("r1"), null, 2, true);
+
+        Assert.assertNotNull(
+                "an enabled detector must carry an enabled time", detector.getEnabledTime());
+    }
 }
