@@ -734,7 +734,7 @@ public class DetectorRestApiIT extends SecurityAnalyticsRestTestCase {
             Assert.assertEquals(400, ex.getResponse().getStatusLine().getStatusCode());
             assertTrue(
                     ex.getMessage()
-                            .contains("Detector cannot be created as no compatible rules were provided"));
+                            .contains("Detector must have at least one enabled rule matching its type"));
         }
     }
 
@@ -773,7 +773,7 @@ public class DetectorRestApiIT extends SecurityAnalyticsRestTestCase {
             Assert.assertEquals(400, ex.getResponse().getStatusLine().getStatusCode());
             assertTrue(
                     ex.getMessage()
-                            .contains("Detector cannot be created as no compatible rules were provided"));
+                            .contains("Detector must have at least one enabled rule matching its type"));
         }
     }
 
