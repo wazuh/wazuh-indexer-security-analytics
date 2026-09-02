@@ -44,7 +44,7 @@ public class CreateMappingResult {
     }
 
     public void setMappings(Map<String, Object> mappings) {
-        this.mappings = this.mappings;
+        this.mappings = mappings;
     }
 
 }

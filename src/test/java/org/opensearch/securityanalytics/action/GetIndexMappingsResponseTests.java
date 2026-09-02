@@ -78,6 +78,7 @@ public class GetIndexMappingsResponseTests extends OpenSearchTestCase {
             props3.put("index", "false");
             prop2properties.put("subsubfield", props3);
             props2.put("properties", prop2properties);
+            properties.put("subobject", props2);
             mappings.put("properties", properties);
         } else {
             mappings.put("type", "keyword");

@@ -23,7 +23,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.HashSet;
 import java.util.HashMap;
 import java.util.Stack;
 
@@ -51,7 +50,6 @@ public class MappingsTraverser {
 
     private Map<String, Object> mappingsMap;
 
-    private Set<String> typesToSkip = new HashSet<>();
     private List<Pair<String, String>> propertiesToSkip = new ArrayList<>();
 
     Stack<Node> nodeStack = new Stack<>();
