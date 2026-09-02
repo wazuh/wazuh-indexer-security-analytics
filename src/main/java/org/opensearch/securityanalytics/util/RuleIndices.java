@@ -377,7 +377,7 @@ public class RuleIndices {
         for (String category : categories) {
             Map<String, String> fieldMappings =
                     logTypeService.getRuleFieldMappingsForBuiltinLogType(category);
-            final QueryBackend backend = new OSQueryBackend(fieldMappings, true, true);
+            final QueryBackend backend = new OSQueryBackend(fieldMappings, true);
             queries.addAll(getQueries(backend, category, logIndexToRules.get(category)));
         }
         loadRules(queries, refreshPolicy, indexTimeout, listener, true);

@@ -115,8 +115,8 @@ public class OSQueryBackend extends QueryBackend {
 
     private static final List<Class<?>> precedence = Arrays.asList(ConditionNOT.class, ConditionAND.class, ConditionOR.class);
 
-    public OSQueryBackend(Map<String, String> fieldMappings, boolean collectErrors, boolean enableFieldMappings) throws IOException {
-        super(fieldMappings, true, enableFieldMappings, true, collectErrors);
+    public OSQueryBackend(Map<String, String> fieldMappings, boolean enableFieldMappings) throws IOException {
+        super(fieldMappings, true, enableFieldMappings, true);
         this.tokenSeparator = " ";
         this.orToken = "OR";
         this.andToken = "AND";

@@ -897,7 +897,7 @@ public class TransportIndexDetectorAction
                                                 for (String category : ruleCategories) {
                                                     Map<String, String> fieldMappings = ruleFieldMappings.get(category);
                                                     queryBackendMap.put(
-                                                            category, new OSQueryBackend(fieldMappings, true, true));
+                                                            category, new OSQueryBackend(fieldMappings, true));
                                                 }
 
                                                 // Pair of RuleId - MonitorId for existing monitors of the detector
@@ -1517,7 +1517,7 @@ public class TransportIndexDetectorAction
                         for (String category : ruleCategories) {
                             Map<String, String> fieldMappings = ruleFieldMappings.get(category);
                             try {
-                                queryBackendMap.put(category, new OSQueryBackend(fieldMappings, true, true));
+                                queryBackendMap.put(category, new OSQueryBackend(fieldMappings, true));
                             } catch (IOException e) {
                                 TransportIndexDetectorAction.this.logger.error(
                                         "Failed to create OSQueryBackend from field mappings: {}", e.getMessage());

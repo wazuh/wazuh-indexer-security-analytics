@@ -1149,7 +1149,7 @@ public class QueryBackendTests extends OpenSearchTestCase {
 
     public void testConvertListCidrWildcardNone()
             throws IOException, SigmaError, CompositeSigmaErrors {
-        OSQueryBackend queryBackend = new OSQueryBackend(null, false, false);
+        OSQueryBackend queryBackend = new OSQueryBackend(null, false);
         List<Object> queries =
                 queryBackend.convertRule(
                         SigmaRule.fromYaml(
@@ -1608,6 +1608,6 @@ public class QueryBackendTests extends OpenSearchTestCase {
     }
 
     private OSQueryBackend testBackend() throws IOException {
-        return new OSQueryBackend(testFieldMapping, false, true);
+        return new OSQueryBackend(testFieldMapping, true);
     }
 }

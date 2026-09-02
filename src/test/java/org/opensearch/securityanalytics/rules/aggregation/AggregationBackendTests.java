@@ -24,7 +24,7 @@ public class AggregationBackendTests extends OpenSearchTestCase {
     );
 
     public void testCountAggregation() throws SigmaError, IOException, CompositeSigmaErrors {
-        OSQueryBackend queryBackend = new OSQueryBackend(windowsFieldMappings, true, true);
+        OSQueryBackend queryBackend = new OSQueryBackend(windowsFieldMappings, true);
         List<Object> queries = queryBackend.convertRule(SigmaRule.fromYaml(
                 "            title: Test\n" +
                         "            id: 39f919f3-980b-4e6f-a975-8af7e507ef2b\n" +
@@ -56,7 +56,7 @@ public class AggregationBackendTests extends OpenSearchTestCase {
     }
 
     public void testCountAggregationWithGroupBy() throws IOException, CompositeSigmaErrors, SigmaError {
-        OSQueryBackend queryBackend = new OSQueryBackend(windowsFieldMappings, true, true);
+        OSQueryBackend queryBackend = new OSQueryBackend(windowsFieldMappings, true);
         List<Object> queries = queryBackend.convertRule(SigmaRule.fromYaml(
                 "            title: Test\n" +
                         "            id: 39f919f3-980b-4e6f-a975-8af7e507ef2b\n" +
@@ -88,7 +88,7 @@ public class AggregationBackendTests extends OpenSearchTestCase {
     }
 
     public void testSumAggregationWithGroupBy() throws IOException, CompositeSigmaErrors, SigmaError {
-        OSQueryBackend queryBackend = new OSQueryBackend(windowsFieldMappings, true, true);
+        OSQueryBackend queryBackend = new OSQueryBackend(windowsFieldMappings, true);
         List<Object> queries = queryBackend.convertRule(SigmaRule.fromYaml(
                 "            title: Test\n" +
                         "            id: 39f919f3-980b-4e6f-a975-8af7e507ef2b\n" +
@@ -123,7 +123,7 @@ public class AggregationBackendTests extends OpenSearchTestCase {
     }
 
     public void testMinAggregationWithGroupBy() throws IOException, CompositeSigmaErrors, SigmaError {
-        OSQueryBackend queryBackend = new OSQueryBackend(windowsFieldMappings, true, true);
+        OSQueryBackend queryBackend = new OSQueryBackend(windowsFieldMappings, true);
         List<Object> queries = queryBackend.convertRule(SigmaRule.fromYaml(
                 "            title: Test\n" +
                         "            id: 39f919f3-980b-4e6f-a975-8af7e507ef2b\n" +
@@ -155,7 +155,7 @@ public class AggregationBackendTests extends OpenSearchTestCase {
     }
 
     public void testMaxAggregationWithGroupBy() throws IOException, CompositeSigmaErrors, SigmaError {
-        OSQueryBackend queryBackend = new OSQueryBackend(windowsFieldMappings, true, true);
+        OSQueryBackend queryBackend = new OSQueryBackend(windowsFieldMappings, true);
         List<Object> queries = queryBackend.convertRule(SigmaRule.fromYaml(
                 "            title: Test\n" +
                         "            id: 39f919f3-980b-4e6f-a975-8af7e507ef2b\n" +
@@ -187,7 +187,7 @@ public class AggregationBackendTests extends OpenSearchTestCase {
     }
 
     public void testAvgAggregationWithGroupBy() throws IOException, CompositeSigmaErrors, SigmaError {
-        OSQueryBackend queryBackend = new OSQueryBackend(windowsFieldMappings, true, true);
+        OSQueryBackend queryBackend = new OSQueryBackend(windowsFieldMappings, true);
         List<Object> queries = queryBackend.convertRule(SigmaRule.fromYaml(
                 "            title: Test\n" +
                         "            id: 39f919f3-980b-4e6f-a975-8af7e507ef2b\n" +
@@ -219,7 +219,7 @@ public class AggregationBackendTests extends OpenSearchTestCase {
     }
 
     public void testCloudtrailAggregationRule() throws IOException, CompositeSigmaErrors, SigmaError {
-        OSQueryBackend queryBackend = new OSQueryBackend(Map.of(), true, true);
+        OSQueryBackend queryBackend = new OSQueryBackend(Map.of(), true);
         List<Object> queries = queryBackend.convertRule(SigmaRule.fromYaml(
                 "id: c64c5175-5189-431b-a55e-6d9882158250\n" +
                         "logsource:\n" +
@@ -254,7 +254,7 @@ public class AggregationBackendTests extends OpenSearchTestCase {
     }
 
     public void testCloudtrailAggregationRuleWithDotFields() throws IOException, CompositeSigmaErrors, SigmaError {
-        OSQueryBackend queryBackend = new OSQueryBackend(Map.of(), true, true);
+        OSQueryBackend queryBackend = new OSQueryBackend(Map.of(), true);
         List<Object> queries = queryBackend.convertRule(SigmaRule.fromYaml(
                 "id: 25b9c01c-350d-4c96-bed1-836d04a4f324\n" +
                         "title: test\n" +

@@ -260,7 +260,7 @@ public class TransportIndexRuleAction
                                     AsyncIndexRulesAction.this.onFailures(parsedRule.getErrors());
                                     return;
                                 }
-                                QueryBackend backend = new OSQueryBackend(fieldMappings, true, true);
+                                QueryBackend backend = new OSQueryBackend(fieldMappings, true);
                                 if (AsyncIndexRulesAction.this.request.getDocumentId() != null) {
                                     ruleId = UUID.randomUUID().toString();
                                 } else if (AsyncIndexRulesAction.this.request.getRuleId() != null) {
