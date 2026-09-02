@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Matcher;
@@ -143,7 +144,7 @@ public class SigmaString implements SigmaType {
         if (val.isLeft()) {
             return c.isLeft() && c.getLeft().startsWith(val.getLeft());
         } else if (val.isRight()) {
-            return c.isMiddle() && c.getMiddle() == val.get();
+            return c.isMiddle() && Objects.equals(c.getMiddle(), val.get());
         }
         return false;
     }
@@ -153,7 +154,7 @@ public class SigmaString implements SigmaType {
         if (val.isLeft()) {
             return c.isLeft() && c.getLeft().endsWith(val.getLeft());
         } else if (val.isRight()) {
-            return c.isMiddle() && c.getMiddle() == val.get();
+            return c.isMiddle() && Objects.equals(c.getMiddle(), val.get());
         }
         return false;
     }
@@ -386,13 +387,42 @@ public class SigmaString implements SigmaType {
         }
 
         for (int idx = 0; idx < sOpt.size(); ++idx) {
-            if ((sOpt.get(idx).isLeft() && !that.sOpt.get(idx).isLeft())
-                    || (sOpt.get(idx).isMiddle() && !that.sOpt.get(idx).isMiddle())
-                    || (sOpt.get(idx).isRight() && !that.sOpt.get(idx).isRight())) {
+            AnyOneOf<String, Character, Placeholder> mine = sOpt.get(idx);
+            AnyOneOf<String, Character, Placeholder> other = that.sOpt.get(idx);
+
+            if (mine.isLeft() != other.isLeft()
+                    || mine.isMiddle() != other.isMiddle()
+                    || mine.isRight() != other.isRight()) {
+                return false;
+            }
+            if (mine.isLeft() && !Objects.equals(mine.getLeft(), other.getLeft())) {
+                return false;
+            }
+            if (mine.isMiddle() && !Objects.equals(mine.getMiddle(), other.getMiddle())) {
+                return false;
+            }
+            if (mine.isRight() && !Objects.equals(mine.get().getName(), other.get().getName())) {
                 return false;
             }
         }
         return true;
+    }
+
+    @Override
+    public int hashCode() {
+        int result = 1;
+        for (AnyOneOf<String, Character, Placeholder> elem : sOpt) {
+            Object value;
+            if (elem.isLeft()) {
+                value = elem.getLeft();
+            } else if (elem.isMiddle()) {
+                value = elem.getMiddle();
+            } else {
+                value = elem.get() != null ? elem.get().getName() : null;
+            }
+            result = 31 * result + Objects.hashCode(value);
+        }
+        return result;
     }
 
     @Override
