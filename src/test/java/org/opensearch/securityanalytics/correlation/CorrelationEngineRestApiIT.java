@@ -157,7 +157,7 @@ public class CorrelationEngineRestApiIT extends SecurityAnalyticsRestTestCase {
     @AwaitsFix(bugUrl = "")
     @SuppressWarnings("unchecked")
     public void testListCorrelationsWorkflow() throws IOException, InterruptedException {
-        Long startTime = System.currentTimeMillis();
+        long startTime = System.currentTimeMillis();
         LogIndices indices = createIndices();
 
         String vpcFlowMonitorId = createVpcFlowDetector(indices.vpcFlowsIndex);
@@ -192,7 +192,7 @@ public class CorrelationEngineRestApiIT extends SecurityAnalyticsRestTestCase {
         OpenSearchRestTestCase.waitUntil(
                 () -> {
                     try {
-                        Long endTime = System.currentTimeMillis();
+                        long endTime = System.currentTimeMillis();
                         Request request =
                                 new Request(
                                         "GET",
@@ -696,7 +696,7 @@ public class CorrelationEngineRestApiIT extends SecurityAnalyticsRestTestCase {
     @AwaitsFix(bugUrl = "")
     public void testBasicCorrelationEngineWorkflowWithFieldBasedRules()
             throws IOException, InterruptedException {
-        Long startTime = System.currentTimeMillis();
+        long startTime = System.currentTimeMillis();
         String index = createTestIndex("cloudtrail", cloudtrailMappings());
         // Execute CreateMappingsAction to add alias mapping for index
         Request createMappingRequest = new Request("POST", SecurityAnalyticsPlugin.MAPPER_BASE_URI);
@@ -824,7 +824,7 @@ public class CorrelationEngineRestApiIT extends SecurityAnalyticsRestTestCase {
         OpenSearchRestTestCase.waitUntil(
                 () -> {
                     try {
-                        Long endTime = System.currentTimeMillis();
+                        long endTime = System.currentTimeMillis();
                         Request restRequest =
                                 new Request(
                                         "GET",
@@ -1005,7 +1005,7 @@ public class CorrelationEngineRestApiIT extends SecurityAnalyticsRestTestCase {
     @AwaitsFix(bugUrl = "")
     public void testBasicCorrelationEngineWorkflowWithFieldBasedRulesAndDynamicTimeWindow()
             throws IOException, InterruptedException {
-        Long startTime = System.currentTimeMillis();
+        long startTime = System.currentTimeMillis();
         String index = createTestIndex("cloudtrail", cloudtrailMappings());
         // Execute CreateMappingsAction to add alias mapping for index
         Request createMappingRequest = new Request("POST", SecurityAnalyticsPlugin.MAPPER_BASE_URI);
@@ -1133,7 +1133,7 @@ public class CorrelationEngineRestApiIT extends SecurityAnalyticsRestTestCase {
         OpenSearchRestTestCase.waitUntil(
                 () -> {
                     try {
-                        Long endTime = System.currentTimeMillis();
+                        long endTime = System.currentTimeMillis();
                         Request restRequest =
                                 new Request(
                                         "GET",

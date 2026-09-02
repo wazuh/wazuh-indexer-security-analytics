@@ -93,14 +93,12 @@ public class BuiltinLogTypeLoader extends AbstractLifecycleComponent {
             ) {
                 String logTypeFilePayload = new String(Objects.requireNonNull(is).readAllBytes(), StandardCharsets.UTF_8);
 
-                if (logTypeFilePayload != null) {
-                    Map<String, Object> logTypeFileAsMap =
-                            XContentHelper.convertToMap(JsonXContent.jsonXContent, logTypeFilePayload, false);
+                Map<String, Object> logTypeFileAsMap =
+                        XContentHelper.convertToMap(JsonXContent.jsonXContent, logTypeFilePayload, false);
 
-                    logTypes.add(new LogType(logTypeFileAsMap));
+                logTypes.add(new LogType(logTypeFileAsMap));
 
-                    logger.info("Loaded [{}] log type", logTypePath.getFileName());
-                }
+                logger.info("Loaded [{}] log type", logTypePath.getFileName());
             } catch (Exception e) {
                 throw new SettingsException("Failed to load builtin log types", e);
             }
@@ -130,13 +128,11 @@ public class BuiltinLogTypeLoader extends AbstractLifecycleComponent {
         ) {
             String logTypeFilePayload = new String(Objects.requireNonNull(is).readAllBytes(), StandardCharsets.UTF_8);
 
-            if (logTypeFilePayload != null) {
-                Map<String, Object> logTypeFileAsMap =
-                        XContentHelper.convertToMap(JsonXContent.jsonXContent, logTypeFilePayload, false);
+            Map<String, Object> logTypeFileAsMap =
+                    XContentHelper.convertToMap(JsonXContent.jsonXContent, logTypeFilePayload, false);
 
-                for (Map.Entry<String, Object> logType: logTypeFileAsMap.entrySet()) {
-                    customLogTypes.add(new CustomLogType((Map<String, Object>) logType.getValue()));
-                }
+            for (Map.Entry<String, Object> logType: logTypeFileAsMap.entrySet()) {
+                customLogTypes.add(new CustomLogType((Map<String, Object>) logType.getValue()));
             }
         } catch (Exception e) {
             throw new SettingsException("Failed to load builtin log types", e);
