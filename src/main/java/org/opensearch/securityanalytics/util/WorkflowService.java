@@ -78,7 +78,7 @@ public class WorkflowService {
             Method method,
             ActionListener<IndexWorkflowResponse> listener
     ) {
-        List<String> addedMonitors = addedMonitorResponses != null ? addedMonitorResponses.stream().map(IndexMonitorResponse::getId).collect(Collectors.toList()) : Collections.emptyList();
+        List<String> addedMonitors = addedMonitorResponses.stream().map(IndexMonitorResponse::getId).collect(Collectors.toList());
         List<String> updatedMonitors = updatedMonitorResponses != null ? updatedMonitorResponses.stream().map(IndexMonitorResponse::getId).collect(Collectors.toList()) : Collections.emptyList();
         if (method != Method.POST && method != Method.PUT) {
             log.error(String.format("Method %s not supported when upserting the workflow", method.name()));

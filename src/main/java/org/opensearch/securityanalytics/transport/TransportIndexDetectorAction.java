@@ -1647,6 +1647,7 @@ public class TransportIndexDetectorAction
                                 TransportIndexDetectorAction.this.logger.debug(
                                         "Failed to get alias path pairs from mapping metadata: {}", e.getMessage());
                                 this.onFailure(e);
+                                return;
                             }
                             boolean timeStampAliasPresent =
                                     pairs.stream()
