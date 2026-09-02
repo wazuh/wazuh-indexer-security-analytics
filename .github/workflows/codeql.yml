@@ -23,6 +23,7 @@ jobs:
     outputs:
       common_utils_plugin_ref: ${{ steps.branches.outputs.wazuh_indexer_common_utils_branch }}
       common_utils_sha: ${{ steps.common-utils-sha.outputs.sha }}
+      alerting_plugin_ref: ${{ steps.branches.outputs.wazuh_indexer_alerting_branch }}
     steps:
       - uses: actions/checkout@v6
       - name: Resolve branches
@@ -121,6 +122,13 @@ jobs:
           key: m2-common-utils-${{ github.ref_name }}-${{ needs.branches.outputs.common_utils_plugin_ref }}-${{ needs.branches.outputs.common_utils_sha }}-${{ needs.get-version.outputs.version }}
           restore-keys: |
             m2-common-utils-${{ github.ref_name }}-${{ needs.branches.outputs.common_utils_plugin_ref }}-${{ needs.branches.outputs.common_utils_sha }}-
+
+      - name: Publish alerting to Maven Local
+        uses: wazuh/wazuh-indexer-alerting/.github/actions/5_local_maven_publisher@5.0.0
+        with:
+          version: ${{ needs.get-version.outputs.version }}
+          revision: '0'
+          reference: ${{ needs.branches.outputs.alerting_plugin_ref }}
 
       # Initializes the CodeQL tools for scanning.
       - name: Initialize CodeQL
