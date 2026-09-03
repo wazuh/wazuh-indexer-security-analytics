@@ -655,7 +655,6 @@ public class WazuhEnrichedFindingService implements Closeable {
             DocLevelQuery query, Map<String, Object> ruleMetadata, Map<String, Object> eventSource) {
         Map<String, Object> rule = new HashMap<>();
         rule.put("id", query.getId());
-        rule.put("sigma_id", query.getId());
 
         // Interpolate title and tags against the triggering event
         rule.put("title", TemplateInterpolator.interpolate(query.getName(), eventSource));
@@ -665,6 +664,15 @@ public class WazuhEnrichedFindingService implements Closeable {
         Map<String, Object> nested = ruleMetadata;
         if (ruleMetadata.containsKey("rule") && ruleMetadata.get("rule") instanceof Map) {
             nested = (Map<String, Object>) ruleMetadata.get("rule");
+        }
+
+        // The Sigma identifier lives in document.id: it is stamped into the rule body as its "id"
+        // when the rule is created and never changes afterwards. The rules-index _id backing the
+        // doc-level query is regenerated per space, so it cannot stand in for it: when the rule
+        // metadata is unavailable the field is omitted rather than filled with an unrelated id.
+        Object document = nested.get("document");
+        if (document instanceof Map<?, ?> doc && doc.get("id") != null) {
+            rule.put("sigma_id", doc.get("id").toString());
         }
 
         Object level = nested.get("level");

@@ -59,6 +59,7 @@
 - [BUG] A disabled detector cannot be created because its enabled time is always set [(#1403)](https://github.com/wazuh/wazuh-indexer-plugins/issues/1403)
 - [BUG] A user's Start/Stop of a standard detector is lost on CTI updates [(#1403)](https://github.com/wazuh/wazuh-indexer-plugins/issues/1403)
 - Fix detectors never creating findings for Sigma rules with space-containing values [(#285)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/285)
+- [BUG] Enriched findings use doc-level query id as `sigma_id` [(#304)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/304)
 
 ## Prior versions
 - []()
