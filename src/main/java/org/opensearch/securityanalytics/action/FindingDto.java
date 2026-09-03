@@ -66,6 +66,7 @@ public class FindingDto implements ToXContentObject, Writeable {
         );
     }
 
+    @Override
     public XContentBuilder toXContent(XContentBuilder builder, ToXContent.Params params) throws IOException {
         builder.startObject()
                 .field(DETECTOR_ID_FIELD, detectorId)
@@ -79,6 +80,7 @@ public class FindingDto implements ToXContentObject, Writeable {
         return builder;
     }
 
+    @Override
     public void writeTo(StreamOutput out) throws IOException {
         out.writeString(detectorId);
         out.writeString(id);
