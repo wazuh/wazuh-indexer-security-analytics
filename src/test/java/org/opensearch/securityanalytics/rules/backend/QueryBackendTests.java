@@ -1277,7 +1277,11 @@ public class QueryBackendTests extends OpenSearchTestCase {
                                         + "    - attack.t1197\n"
                                         + "    - attack.s0190",
                                 false));
-        Assert.assertEquals(true, true);
+        Assert.assertEquals(
+                "(c-useragent: Microsoft\\ BITS\\/*) AND ((((NOT r-dns: *.com AND _exists_: r-dns)"
+                        + " AND (NOT r-dns: *.net AND _exists_: r-dns) AND (NOT r-dns: *.org AND"
+                        + " _exists_: r-dns) AND (NOT r-dns: *.scdn.co AND _exists_: r-dns))))",
+                queries.get(0).toString());
     }
 
     public void testConvertUnboundValuesAsWildcard()

@@ -226,7 +226,7 @@ public class DetectorMonitorRestApiIT extends SecurityAnalyticsRestTestCase {
             // Bucket monitor finding will have one rule
             String aggRuleId = aggRulesFinding.iterator().next();
 
-            assertTrue(aggRulesFinding.contains(aggRuleId));
+            assertTrue(aggRuleIds.contains(aggRuleId));
 
             List<String> findingDocs = (List<String>) finding.get("related_doc_ids");
             Assert.assertEquals(2, findingDocs.size());

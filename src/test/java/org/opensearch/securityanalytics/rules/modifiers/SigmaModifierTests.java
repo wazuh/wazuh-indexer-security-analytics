@@ -42,7 +42,9 @@ public class SigmaModifierTests extends OpenSearchTestCase {
         ArrayList<SigmaType> elements = new ArrayList<>();
         elements.add(new SigmaString("foobar"));
         List<SigmaType> values = dummySequenceModifier().apply(Either.right(elements));
-        Assert.assertTrue(values.get(0) instanceof SigmaString && values.get(0).toString().equals(""));
+        SigmaType first = values.get(0);
+        Assert.assertTrue(first instanceof SigmaString);
+        Assert.assertEquals("", first.toString());
     }
 
     public void testTypecheckUnion() throws SigmaRegularExpressionError, SigmaValueError, SigmaModifierError {
