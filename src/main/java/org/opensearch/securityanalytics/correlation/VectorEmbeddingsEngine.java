@@ -74,6 +74,21 @@ public class VectorEmbeddingsEngine {
     }
 
     /**
+     * Reads a required numeric field, reporting a malformed value the same way {@link #requireField}
+     * reports a missing one.
+     */
+    private static long requireLongField(Map<String, Object> source, String field) {
+        String value = requireField(source, field);
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException e) {
+            throw new OpenSearchStatusException(
+                    String.format(Locale.ROOT, "Field [%s] is not a number in document: %s", field, value),
+                    RestStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
      * Safely resolves the correlation_id for a given detector type from the log types map.
      *
      * @return the correlation ID string, or {@code null} if any intermediate value is missing.
@@ -88,7 +103,7 @@ public class VectorEmbeddingsEngine {
     }
 
     public void insertCorrelatedFindings(String detectorType, Finding finding, String logType, List<String> correlatedFindings, float timestampFeature, List<String> correlationRules, Map<String, CustomLogType> logTypes) {
-        SearchRequest searchRequest = getSearchMetadataIndexRequest(detectorType, finding, logTypes);
+        SearchRequest searchRequest = getSearchMetadataIndexRequest(detectorType, logTypes);
         String correlationId = getCorrelationId(logTypes, detectorType);
         if (correlationId == null) {
             log.debug("Skipping correlation for detector type [{}] and finding [{}]: no correlation_id assigned", detectorType, finding.getId());
@@ -100,15 +115,17 @@ public class VectorEmbeddingsEngine {
         client.search(searchRequest, ActionListener.wrap(response -> {
             if (response.isTimedOut()) {
                 onFailure(new OpenSearchStatusException("Search request timed out", RestStatus.REQUEST_TIMEOUT));
+                return;
             }
 
             if (response.getHits().getHits().length == 0) {
                 onFailure(
                         new ResourceNotFoundException("Failed to find hits in metadata index for finding id {}", finding.getId()));
+                return;
             }
 
             Map<String, Object> hitSource = response.getHits().getHits()[0].getSourceAsMap();
-            long counter = Long.parseLong(requireField(hitSource, "counter"));
+            long counter = requireLongField(hitSource, "counter");
 
             MultiSearchRequest mSearchRequest = new MultiSearchRequest();
 
@@ -153,7 +170,7 @@ public class VectorEmbeddingsEngine {
                     for (int idx = 0; idx < totalHits; ++idx) {
                         SearchHit hit = item.getResponse().getHits().getHits()[idx];
                         Map<String, Object> sourceAsMap = hit.getSourceAsMap();
-                        long neighborCounter = Long.parseLong(requireField(sourceAsMap, "counter"));
+                        long neighborCounter = requireLongField(sourceAsMap, "counter");
                         String correlatedFinding = requireField(sourceAsMap, "finding1");
 
                         try {
@@ -245,7 +262,7 @@ public class VectorEmbeddingsEngine {
             return;
         }
 
-        SearchRequest searchRequest = getSearchMetadataIndexRequest(detectorType, finding, logTypes);
+        SearchRequest searchRequest = getSearchMetadataIndexRequest(detectorType, logTypes);
         long findingTimestamp = finding.getTimestamp().toEpochMilli();
 
         client.search(searchRequest, ActionListener.wrap(response -> {
@@ -256,8 +273,8 @@ public class VectorEmbeddingsEngine {
             try {
                 Map<String, Object> hitSource = response.getHits().getHits()[0].getSourceAsMap();
                 String id = response.getHits().getHits()[0].getId();
-                long counter = Long.parseLong(requireField(hitSource, "counter"));
-                long timestamp = Long.parseLong(requireField(hitSource, "timestamp"));
+                long counter = requireLongField(hitSource, "counter");
+                long timestamp = requireLongField(hitSource, "timestamp");
                 if (counter == 0L) {
                     XContentBuilder builder = XContentFactory.jsonBuilder().startObject();
                     builder.field("root", true);
@@ -386,7 +403,7 @@ public class VectorEmbeddingsEngine {
 
                             if (hit != null) {
                                 Map<String, Object> sourceAsMap = searchResponse.getHits().getHits()[0].getSourceAsMap();
-                                existCounter = Long.parseLong(requireField(sourceAsMap, "counter"));
+                                existCounter = requireLongField(sourceAsMap, "counter");
                             }
 
                             if (totalHits == 0L || existCounter != ((long) (2.0f * ((float) counter) - 50.0f) / 2.0f)) {
@@ -491,7 +508,7 @@ public class VectorEmbeddingsEngine {
         }, this::onFailure));
     }
 
-    private SearchRequest getSearchMetadataIndexRequest(String detectorType, Finding finding, Map<String, CustomLogType> logTypes) {
+    private SearchRequest getSearchMetadataIndexRequest(String detectorType, Map<String, CustomLogType> logTypes) {
         if (logTypes.get(detectorType) == null) {
             throw new OpenSearchStatusException("LogTypes Index is missing the detector type", RestStatus.INTERNAL_SERVER_ERROR);
         }
