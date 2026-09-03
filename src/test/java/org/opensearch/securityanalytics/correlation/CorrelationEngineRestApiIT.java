@@ -814,10 +814,8 @@ public class CorrelationEngineRestApiIT extends SecurityAnalyticsRestTestCase {
         // Call GetFindings API
         Map<String, String> params = new HashMap<>();
         params.put("detectorType", "cloudtrail");
-        Response getFindingsResponse =
-                makeRequest(
-                        client(), "GET", SecurityAnalyticsPlugin.FINDINGS_BASE_URI + "/_search", params, null);
-        Map<String, Object> getFindingsBody = entityAsMap(getFindingsResponse);
+        makeRequest(
+                client(), "GET", SecurityAnalyticsPlugin.FINDINGS_BASE_URI + "/_search", params, null);
 
         Thread.sleep(5000);
 
@@ -1123,10 +1121,8 @@ public class CorrelationEngineRestApiIT extends SecurityAnalyticsRestTestCase {
         // Call GetFindings API
         Map<String, String> params = new HashMap<>();
         params.put("detectorType", "cloudtrail");
-        Response getFindingsResponse =
-                makeRequest(
-                        client(), "GET", SecurityAnalyticsPlugin.FINDINGS_BASE_URI + "/_search", params, null);
-        Map<String, Object> getFindingsBody = entityAsMap(getFindingsResponse);
+        makeRequest(
+                client(), "GET", SecurityAnalyticsPlugin.FINDINGS_BASE_URI + "/_search", params, null);
 
         Thread.sleep(5000);
 

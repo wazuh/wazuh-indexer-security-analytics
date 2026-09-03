@@ -70,12 +70,6 @@ public class IndexDetectorRequestTests extends OpenSearchTestCase {
                         List.of("windows-1"),
                         Collections.emptyList(),
                         rules.stream().map(DetectorRule::new).collect(Collectors.toList()));
-        DetectorInput input2 =
-                new DetectorInput(
-                        "windows detector for security analytics",
-                        List.of("windows-2"),
-                        Collections.emptyList(),
-                        rules.stream().map(DetectorRule::new).collect(Collectors.toList()));
 
         Detector detector = randomDetectorWithInputs(List.of(input1));
         IndexDetectorRequest request =

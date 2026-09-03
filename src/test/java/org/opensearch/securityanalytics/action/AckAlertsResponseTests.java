@@ -41,7 +41,6 @@ public class AckAlertsResponseTests extends OpenSearchTestCase {
     }
 
     private AlertDto geRandomAlertDto() {
-        Random r = new Random();
         return new AlertDto(UUID.randomUUID().toString(), UUID.randomUUID().toString(), -1L, 1, UUID.randomUUID().toString(),
                 UUID.randomUUID().toString(), Arrays.asList(UUID.randomUUID().toString()), Arrays.asList(UUID.randomUUID().toString()),
                 Alert.State.ACTIVE, Instant.now(), Instant.now(), Instant.now(), Instant.now(), null, Collections.emptyList(), "1",

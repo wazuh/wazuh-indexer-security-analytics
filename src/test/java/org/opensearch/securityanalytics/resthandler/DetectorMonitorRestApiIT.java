@@ -1034,8 +1034,6 @@ public class DetectorMonitorRestApiIT extends SecurityAnalyticsRestTestCase {
             if (docLevelRules.containsAll(findingRules)) {
                 docLevelFinding.addAll((List<String>) finding.get("related_doc_ids"));
             } else {
-                String aggRuleId = findingRules.iterator().next();
-
                 List<String> findingDocs = (List<String>) finding.get("related_doc_ids");
                 Assert.assertEquals(2, findingDocs.size());
                 assertTrue(Arrays.asList("1", "2").containsAll(findingDocs));
@@ -2008,7 +2006,7 @@ public class DetectorMonitorRestApiIT extends SecurityAnalyticsRestTestCase {
 
         List<DetectorRule> detectorRules =
                 List.of(new DetectorRule(maxRuleId), new DetectorRule(randomDocRuleId));
-        DetectorTrigger t1, t2;
+        DetectorTrigger t1;
         t1 =
                 new DetectorTrigger(
                         null,

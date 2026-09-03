@@ -160,7 +160,6 @@ public class MappingsTraverserTests extends OpenSearchTestCase {
         MappingMetadata mappingMetadata = new MappingMetadata(MapperService.SINGLE_MAPPING_NAME, root);
 
         MappingsTraverser mappingsTraverser = new MappingsTraverser(mappingMetadata);
-        final boolean[] errorHappend = new boolean[1];
         List<String> paths = new ArrayList<>();
 
        mappingsTraverser.addListener(new MappingsTraverser.MappingsTraverserListener() {

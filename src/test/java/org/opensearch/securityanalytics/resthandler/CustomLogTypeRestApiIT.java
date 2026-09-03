@@ -1157,7 +1157,7 @@ public class CustomLogTypeRestApiIT extends SecurityAnalyticsRestTestCase {
     @AwaitsFix(bugUrl = "")
     @SuppressWarnings("unchecked")
     public void testDeleteCustomLogTypeWithDetectorIndexMissing() throws IOException {
-        String index = createTestIndex(randomIndex(), windowsIndexMapping());
+        createTestIndex(randomIndex(), windowsIndexMapping());
 
         CustomLogType customLogType = TestHelpers.randomCustomLogType(null, null, null, "custom");
         Response createResponse =

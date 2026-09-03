@@ -972,7 +972,6 @@ public class AlertsIT extends SecurityAnalyticsRestTestCase {
                                 .collect(Collectors.toList()));
         Detector detector2 =
                 randomDetectorWithTriggers(
-                        getPrePackagedRules("network"),
                         List.of(
                                 new DetectorTrigger(
                                         null,
