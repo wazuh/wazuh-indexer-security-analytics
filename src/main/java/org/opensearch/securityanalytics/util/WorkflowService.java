@@ -69,7 +69,6 @@ public class WorkflowService {
      * @param listener
      */
     public void upsertWorkflow(
-            List<Pair<String, Rule>> rulesById,
             List<IndexMonitorResponse> addedMonitorResponses,
             List<IndexMonitorResponse> updatedMonitorResponses,
             Detector detector,

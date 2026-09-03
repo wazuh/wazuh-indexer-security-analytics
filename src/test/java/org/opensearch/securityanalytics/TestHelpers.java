@@ -154,10 +154,7 @@ public class TestHelpers {
     }
 
     public static Detector randomDetectorWithTriggers(
-            List<String> rules,
-            List<DetectorTrigger> triggers,
-            String detectorType,
-            DetectorInput input) {
+            List<DetectorTrigger> triggers, String detectorType, DetectorInput input) {
         return randomDetector(
                 null, detectorType, null, List.of(input), triggers, null, null, null, null, false);
     }

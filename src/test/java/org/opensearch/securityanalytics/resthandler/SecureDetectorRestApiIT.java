@@ -53,7 +53,7 @@ public class SecureDetectorRestApiIT extends SecurityAnalyticsRestTestCase {
     @Before
     public void create() throws IOException {
         String[] backendRoles = { TEST_HR_BACKEND_ROLE };
-        createUserWithData(user, user, SECURITY_ANALYTICS_FULL_ACCESS_ROLE, backendRoles );
+        createUserWithData(user, SECURITY_ANALYTICS_FULL_ACCESS_ROLE, backendRoles );
         if (userClient == null) {
             userClient = new SecureRestClientBuilder(getClusterHosts().toArray(new HttpHost[]{}), isHttps(), user, password).setSocketTimeout(60000).build();
         }
@@ -127,7 +127,7 @@ public class SecureDetectorRestApiIT extends SecurityAnalyticsRestTestCase {
             // try to do get detector as a user with read access
             String userRead = "userRead";
             String[] backendRoles = { TEST_IT_BACKEND_ROLE };
-            createUserWithData( userRead, userRead, SECURITY_ANALYTICS_READ_ACCESS_ROLE, backendRoles );
+            createUserWithData(userRead, SECURITY_ANALYTICS_READ_ACCESS_ROLE, backendRoles );
             RestClient userReadOnlyClient = new SecureRestClientBuilder(getClusterHosts().toArray(new HttpHost[]{}), isHttps(), userRead, password).setSocketTimeout(60000).build();
             Response getResponse = makeRequest(userReadOnlyClient, "GET", SecurityAnalyticsPlugin.DETECTOR_BASE_URI + "/" + createdId, Collections.emptyMap(), null);
             Map<String, Object> getResponseBody = asMap(getResponse);
@@ -149,7 +149,7 @@ public class SecureDetectorRestApiIT extends SecurityAnalyticsRestTestCase {
 
             // recreate user with matching backend roles and try again
             String[] newBackendRoles = { TEST_HR_BACKEND_ROLE };
-            createUserWithData( userRead, userRead, SECURITY_ANALYTICS_READ_ACCESS_ROLE, newBackendRoles );
+            createUserWithData(userRead, SECURITY_ANALYTICS_READ_ACCESS_ROLE, newBackendRoles );
             userReadOnlyClient = new SecureRestClientBuilder(getClusterHosts().toArray(new HttpHost[]{}), isHttps(), userRead, password).setSocketTimeout(60000).build();
             getResponse = makeRequest(userReadOnlyClient, "GET", SecurityAnalyticsPlugin.DETECTOR_BASE_URI + "/" + createdId, Collections.emptyMap(), null);
             getResponseBody = asMap(getResponse);
@@ -176,7 +176,7 @@ public class SecureDetectorRestApiIT extends SecurityAnalyticsRestTestCase {
         // try to do create detector as a user with no backend roles
         String userFull= "userFull";
         String[] backendRoles = {};
-        createUserWithData( userFull, userFull, SECURITY_ANALYTICS_FULL_ACCESS_ROLE, backendRoles );
+        createUserWithData(userFull, SECURITY_ANALYTICS_FULL_ACCESS_ROLE, backendRoles );
         RestClient userFullClient = new SecureRestClientBuilder(getClusterHosts().toArray(new HttpHost[]{}), isHttps(), userFull, password).setSocketTimeout(60000).build();
 
         String index = createTestIndex(client(), randomIndex(), windowsIndexMapping(), Settings.EMPTY);
@@ -215,7 +215,7 @@ public class SecureDetectorRestApiIT extends SecurityAnalyticsRestTestCase {
         String userWithAccess = "user1";
         String roleNameWithIndexPatternAccess = "test-role-1";
         String windowsIndexPattern = "windows*";
-        createUserWithDataAndCustomRole(userWithAccess, userWithAccess, roleNameWithIndexPatternAccess, backendRoles, clusterPermissions, indexPermissions, List.of(windowsIndexPattern));
+        createUserWithDataAndCustomRole(userWithAccess, roleNameWithIndexPatternAccess, backendRoles, clusterPermissions, indexPermissions, List.of(windowsIndexPattern));
         RestClient clientWithAccess = null;
 
         try {
@@ -261,7 +261,7 @@ public class SecureDetectorRestApiIT extends SecurityAnalyticsRestTestCase {
         String userWithoutAccess = "user";
         String roleNameWithoutIndexPatternAccess = "test-role";
         String testIndexPattern = "test*";
-        createUserWithDataAndCustomRole(userWithoutAccess, userWithoutAccess, roleNameWithoutIndexPatternAccess, backendRoles, clusterPermissions, indexPermissions, List.of(testIndexPattern));
+        createUserWithDataAndCustomRole(userWithoutAccess, roleNameWithoutIndexPatternAccess, backendRoles, clusterPermissions, indexPermissions, List.of(testIndexPattern));
         RestClient clientWithoutAccess = null;
 
         try {
@@ -301,7 +301,7 @@ public class SecureDetectorRestApiIT extends SecurityAnalyticsRestTestCase {
         String userWithAccess = "user1";
         String roleNameWithIndexPatternAccess = "test-role-1";
         String windowsIndexPattern = "windows*";
-        createUserWithDataAndCustomRole(userWithAccess, userWithAccess, roleNameWithIndexPatternAccess, backendRoles, clusterPermissions, indexPermissions, List.of(windowsIndexPattern));
+        createUserWithDataAndCustomRole(userWithAccess, roleNameWithIndexPatternAccess, backendRoles, clusterPermissions, indexPermissions, List.of(windowsIndexPattern));
         RestClient clientWithAccess =  null;
         try {
             clientWithAccess = new SecureRestClientBuilder(getClusterHosts().toArray(new HttpHost[]{}), isHttps(), userWithAccess, password).setSocketTimeout(60000).build();
@@ -353,7 +353,7 @@ public class SecureDetectorRestApiIT extends SecurityAnalyticsRestTestCase {
         String userWithoutAccess = "user";
         String roleNameWithoutIndexPatternAccess = "test-role";
         String testIndexPattern = "test*";
-        createUserWithDataAndCustomRole(userWithoutAccess, userWithoutAccess, roleNameWithoutIndexPatternAccess, backendRoles, clusterPermissions, indexPermissions, List.of(testIndexPattern));
+        createUserWithDataAndCustomRole(userWithoutAccess, roleNameWithoutIndexPatternAccess, backendRoles, clusterPermissions, indexPermissions, List.of(testIndexPattern));
         RestClient clientWithoutAccess = null;
 
         try {

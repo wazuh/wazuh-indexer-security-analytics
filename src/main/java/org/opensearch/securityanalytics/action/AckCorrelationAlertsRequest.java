@@ -9,8 +9,6 @@ import org.opensearch.action.ActionRequestValidationException;
 import org.opensearch.action.ValidateActions;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
-import org.opensearch.core.xcontent.ToXContent;
-import org.opensearch.core.xcontent.XContentBuilder;
 
 import java.io.IOException;
 import java.util.Collections;
@@ -36,18 +34,9 @@ public class AckCorrelationAlertsRequest extends ActionRequest {
         return validationException;
     }
 
+    @Override
     public void writeTo(StreamOutput out) throws IOException {
         out.writeStringCollection(this.correlationAlertIds);
-    }
-
-    public XContentBuilder toXContent(XContentBuilder builder, ToXContent.Params params) throws IOException {
-        return builder.startObject()
-                .field("correlation_alert_ids", correlationAlertIds)
-                .endObject();
-    }
-
-    public static AckAlertsRequest readFrom(StreamInput sin) throws IOException {
-        return new AckAlertsRequest(sin);
     }
 
     public List<String> getCorrelationAlertIds() {

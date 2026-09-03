@@ -259,7 +259,7 @@ public class OSQueryBackend extends QueryBackend {
     }
 
     @Override
-    public Object convertConditionNot(ConditionNOT condition, boolean isConditionNot, boolean applyDeMorgans) {
+    public Object convertConditionNot(ConditionNOT condition, boolean applyDeMorgans) {
         Either<AnyOneOf<ConditionItem, ConditionFieldEqualsValueExpression, ConditionValueExpression>, String> arg = condition.getArgs().get(0);
         try {
             if (arg.isLeft()) {
@@ -326,6 +326,7 @@ public class OSQueryBackend extends QueryBackend {
         return field + this.eqToken + " " + ((SigmaBool) condition.getValue()).isaBoolean();
     }
 
+    @Override
     public Object convertConditionFieldEqValNull(ConditionFieldEqualsValueExpression condition, boolean applyDeMorgans) {
         String field = getFinalField(condition.getField());
         ruleQueryFields.put(field, Map.of("type", "text", "analyzer", "rule_analyzer"));
@@ -337,7 +338,7 @@ public class OSQueryBackend extends QueryBackend {
     }
 
     @Override
-    public Object convertConditionFieldEqValExists(ConditionFieldEqualsValueExpression condition, boolean isConditionNot, boolean applyDeMorgans) {
+    public Object convertConditionFieldEqValExists(ConditionFieldEqualsValueExpression condition, boolean applyDeMorgans) {
         String field = getFinalField(condition.getField());
         ruleQueryFields.put(field, Map.of("type", "text", "analyzer", "rule_analyzer"));
         SigmaExists sigmaExists = (SigmaExists) condition.getValue();
@@ -644,6 +645,7 @@ public class OSQueryBackend extends QueryBackend {
             return builder.startObject().field(AGG_QUERY, aggQuery).field(BUCKET_TRIGGER_QUERY, bucketTriggerQuery).endObject();
         }
 
+        @Override
         public String toString() {
             try {
                 return BytesReference.bytes(this.toXContent(XContentFactory.jsonBuilder(), ToXContent.EMPTY_PARAMS)).utf8ToString();

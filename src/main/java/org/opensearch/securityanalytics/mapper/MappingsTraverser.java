@@ -159,7 +159,7 @@ public class MappingsTraverser {
             Map<String, Object> rootProperties = (Map<String, Object>) this.mappingsMap.get(PROPERTIES);
 
             if (Objects.nonNull(rootProperties)) {
-                rootProperties.forEach((k, v) -> nodeStack.push(new Node(Map.of(k, v), null, rootProperties, "", "")));
+                rootProperties.forEach((k, v) -> nodeStack.push(new Node(Map.of(k, v), null, rootProperties, "")));
             }
 
             while (nodeStack.size() > 0) {
@@ -188,7 +188,7 @@ public class MappingsTraverser {
                                 node.currentPath.length() > 0 ?
                                         node.currentPath + "." + currentNodeName :
                                         currentNodeName;
-                        nodeStack.push(new Node(Map.of(k, v), node, children, currentNodeName, currentPath));
+                        nodeStack.push(new Node(Map.of(k, v), node, children, currentPath));
                     });
                 }
             }
@@ -334,7 +334,6 @@ public class MappingsTraverser {
         Node parent;
         Map<String, Object> properties;
         Map<String, Object> parentProperties;
-        String parentKey;
         String currentPath;
         String name;
 
@@ -342,7 +341,7 @@ public class MappingsTraverser {
             this.node = node;
             this.currentPath = currentPath;
         }
-        public Node(Map<String, Object> node, Node parent, Map<String, Object> parentProperties, String parentKey, String currentPath) {
+        public Node(Map<String, Object> node, Node parent, Map<String, Object> parentProperties, String currentPath) {
             this.node = node;
             this.parent = parent;
             this.parentProperties = parentProperties;
