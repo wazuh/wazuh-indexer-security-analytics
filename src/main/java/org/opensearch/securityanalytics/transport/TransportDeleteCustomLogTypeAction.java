@@ -126,7 +126,7 @@ public class TransportDeleteCustomLogTypeAction
         User user = readUserFromThreadContext(this.threadPool);
 
         String validateBackendRoleMessage = validateUserBackendRoles(user, this.filterByEnabled);
-        if (!"".equals(validateBackendRoleMessage)) {
+        if (!validateBackendRoleMessage.isEmpty()) {
             listener.onFailure(
                     SecurityAnalyticsException.wrap(
                             new OpenSearchStatusException(validateBackendRoleMessage, RestStatus.FORBIDDEN)));

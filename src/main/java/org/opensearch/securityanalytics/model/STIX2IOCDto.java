@@ -104,7 +104,7 @@ public class STIX2IOCDto implements Writeable, ToXContentObject {
     public void writeTo(StreamOutput out) throws IOException {
         out.writeString(id);
         out.writeString(name);
-        out.writeString(type.toString());
+        out.writeString(type);
         out.writeString(value);
         out.writeString(severity);
         out.writeInstant(created);
@@ -122,7 +122,7 @@ public class STIX2IOCDto implements Writeable, ToXContentObject {
         return builder.startObject()
                 .field(STIX2IOC.ID_FIELD, id)
                 .field(STIX2IOC.NAME_FIELD, name)
-                .field(STIX2IOC.TYPE_FIELD, type.toString())
+                .field(STIX2IOC.TYPE_FIELD, type)
                 .field(STIX2IOC.VALUE_FIELD, value)
                 .field(STIX2IOC.SEVERITY_FIELD, severity)
                 .timeField(STIX2IOC.CREATED_FIELD, created)

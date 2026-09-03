@@ -33,7 +33,7 @@ import java.util.regex.Pattern;
 
 public class SigmaString implements SigmaType {
 
-    public class SpecialChars {
+    public static class SpecialChars {
         public static final char WILDCARD_MULTI = '*';
         public static final char WILDCARD_SINGLE = '?';
         public static final char ESCAPE_CHAR = '\\';
@@ -70,7 +70,7 @@ public class SigmaString implements SigmaType {
             } else {
                 if (s.charAt(i) == SpecialChars.WILDCARD_MULTI
                         || s.charAt(i) == SpecialChars.WILDCARD_SINGLE) {
-                    if (!acc.toString().equals("")) {
+                    if (!acc.isEmpty()) {
                         r.add(AnyOneOf.leftVal(acc.toString()));
                     }
 
@@ -91,7 +91,7 @@ public class SigmaString implements SigmaType {
         if (escaped) {
             acc.append(SpecialChars.ESCAPE_CHAR);
         }
-        if (!acc.toString().equals("")) {
+        if (!acc.isEmpty()) {
             r.add(AnyOneOf.leftVal(acc.toString()));
         }
 

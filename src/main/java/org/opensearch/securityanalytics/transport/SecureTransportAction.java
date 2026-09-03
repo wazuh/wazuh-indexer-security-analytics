@@ -80,7 +80,7 @@ public interface SecureTransportAction {
                 return "Filter by user backend roles is enabled with security disabled.";
             } else if (isAdmin(user)) {
                 return "";
-            } else if (user.getBackendRoles().size() == 0) {
+            } else if (user.getBackendRoles().isEmpty()) {
                 return "User doesn't have backend roles configured. Contact administrator";
             }
         }
@@ -97,8 +97,6 @@ public interface SecureTransportAction {
     default boolean checkUserPermissionsWithResource(
             User requesterUser,
             User resourceUser,
-            String resourceType,
-            String resourceId,
             boolean filterByEnabled) {
 
         if (!doFilterForUser(requesterUser, filterByEnabled)) return true;

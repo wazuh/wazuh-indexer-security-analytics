@@ -78,7 +78,7 @@ public class TransportGetDetectorAction extends HandledTransportAction<GetDetect
         User user = readUserFromThreadContext(this.threadPool);
 
         String validateBackendRoleMessage = validateUserBackendRoles(user, this.filterByEnabled);
-        if (!"".equals(validateBackendRoleMessage)) {
+        if (!validateBackendRoleMessage.isEmpty()) {
             actionListener.onFailure(new OpenSearchStatusException("Do not have permissions to resource", RestStatus.FORBIDDEN));
             return;
         }
@@ -110,12 +110,12 @@ public class TransportGetDetectorAction extends HandledTransportAction<GetDetect
                     if (!checkUserPermissionsWithResource(
                             user,
                             detector.getUser(),
-                            "detector",
-                            detector.getId(),
                             TransportGetDetectorAction.this.filterByEnabled
                     )
                     ) {
-                        actionListener.onFailure(new OpenSearchStatusException("Do not have permissions to resource", RestStatus.FORBIDDEN));
+                        actionListener.onFailure(new OpenSearchStatusException(
+                                "Do not have permissions to resource, detector, with id, " + detector.getId(),
+                                RestStatus.FORBIDDEN));
                         return;
                     }
 

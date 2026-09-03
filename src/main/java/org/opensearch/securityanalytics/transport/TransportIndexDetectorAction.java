@@ -344,7 +344,7 @@ public class TransportIndexDetectorAction
         User user = this.readUserFromThreadContext(this.threadPool);
 
         String validateBackendRoleMessage = this.validateUserBackendRoles(user, this.filterByEnabled);
-        if (!"".equals(validateBackendRoleMessage)) {
+        if (!validateBackendRoleMessage.isEmpty()) {
             listener.onFailure(
                     SecurityAnalyticsException.wrap(
                             new OpenSearchStatusException(validateBackendRoleMessage, RestStatus.FORBIDDEN)));
@@ -834,7 +834,6 @@ public class TransportIndexDetectorAction
             ActionListener<List<IndexMonitorResponse>> actionListener) {
         if (this.enabledWorkflowUsage) {
             this.workflowService.upsertWorkflow(
-                    rulesById,
                     monitorResponses,
                     null,
                     detector,
@@ -861,7 +860,6 @@ public class TransportIndexDetectorAction
     }
 
     private void updateMonitorFromQueries(
-            String index,
             List<Pair<String, Rule>> rulesById,
             Detector detector,
             ActionListener<List<IndexMonitorResponse>> listener,
@@ -1233,7 +1231,6 @@ public class TransportIndexDetectorAction
         } else {
             // Update workflow and delete the monitors
             this.workflowService.upsertWorkflow(
-                    rulesById,
                     addNewMonitorsResponse,
                     updateMonitorResponse,
                     detector,
@@ -2075,14 +2072,14 @@ public class TransportIndexDetectorAction
                                 if (!TransportIndexDetectorAction.this.checkUserPermissionsWithResource(
                                         originalContextUser,
                                         detector.getUser(),
-                                        "detector",
-                                        detector.getId(),
                                         TransportIndexDetectorAction.this.filterByEnabled)) {
 
                                     this.onFailure(
                                             SecurityAnalyticsException.wrap(
                                                     new OpenSearchStatusException(
-                                                            "Do not have permissions to resource", RestStatus.FORBIDDEN)));
+                                                            "Do not have permissions to resource, detector, with id, "
+                                                                    + detector.getId(),
+                                                            RestStatus.FORBIDDEN)));
                                     return;
                                 }
                                 AsyncIndexDetectorsAction.this.onGetResponse(detector, detector.getUser());
@@ -2494,7 +2491,6 @@ public class TransportIndexDetectorAction
                         new ArrayList<>(ruleFieldNames));
             } else if (this.request.getMethod() == Method.PUT) {
                 TransportIndexDetectorAction.this.updateMonitorFromQueries(
-                        logIndex,
                         queries,
                         detector,
                         listener,
