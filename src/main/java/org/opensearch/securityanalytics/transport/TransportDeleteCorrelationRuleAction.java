@@ -63,7 +63,9 @@ public class TransportDeleteCorrelationRuleAction extends HandledTransportAction
         new DeleteByQueryRequestBuilder(client, DeleteByQueryAction.INSTANCE)
                 .source(CorrelationRule.CORRELATION_RULE_INDEX)
                 .filter(QueryBuilders.matchQuery("_id", correlationRuleId))
-                .refresh(true)
+                // Delete-by-query only exposes refresh(boolean), so WAIT_UNTIL degrades to an
+                // immediate refresh rather than silently skipping it.
+                .refresh(refreshPolicy != WriteRequest.RefreshPolicy.NONE)
                 .execute(new ActionListener<>() {
                     @Override
                     public void onResponse(BulkByScrollResponse response) {
