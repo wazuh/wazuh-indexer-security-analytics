@@ -319,6 +319,10 @@ public class WazuhExtensionsTests extends OpenSearchTestCase {
         assertThrows(SigmaTypeError.class, () -> new SigmaCIDRExpression("2001:db8::/200"));
     }
 
+    public void testIPv4NonNumericPrefixThrows() {
+        assertThrows(SigmaTypeError.class, () -> new SigmaCIDRExpression("192.168.1.0/xx"));
+    }
+
     public void testWCSValidatorKnownField() {
         Assert.assertTrue(WCSFieldValidator.isWCSField("event.id"));
         Assert.assertTrue(WCSFieldValidator.isWCSField("source.ip"));
