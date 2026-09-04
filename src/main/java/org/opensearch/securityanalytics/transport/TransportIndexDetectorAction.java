@@ -1938,7 +1938,9 @@ public class TransportIndexDetectorAction
                         }
 
                         @Override
-                        public void onFailure(Exception e) {}
+                        public void onFailure(Exception e) {
+                            AsyncIndexDetectorsAction.this.onFailures(e);
+                        }
                     });
         }
 
