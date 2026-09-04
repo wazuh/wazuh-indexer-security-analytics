@@ -1611,6 +1611,36 @@ public class QueryBackendTests extends OpenSearchTestCase {
                                 "NOT _exists_: process.parent.command_line AND _exists_: process.parent.command_line"));
     }
 
+    public void testConvertNotSelectorWithWildcardOnlyValue()
+            throws IOException, SigmaError, CompositeSigmaErrors {
+        OSQueryBackend queryBackend = testBackend();
+        List<Object> queries =
+                queryBackend.convertRule(
+                        SigmaRule.fromYaml(
+                                "            title: Test\n"
+                                        + "            id: 5b1d0f9e-2a7c-4de6-9f0c-9c4a20f4d1aa\n"
+                                        + "            status: test\n"
+                                        + "            level: critical\n"
+                                        + "            description: Test negated wildcard-only filter\n"
+                                        + "            author: Test\n"
+                                        + "            date: 2024/01/01\n"
+                                        + "            logsource:\n"
+                                        + "                category: test_category\n"
+                                        + "                product: test_product\n"
+                                        + "            detection:\n"
+                                        + "                selection:\n"
+                                        + "                    fieldA: valueA\n"
+                                        + "                filter_has_field:\n"
+                                        + "                    fieldB: '*'\n"
+                                        + "                condition: selection and not filter_has_field",
+                                false));
+
+        // `not fieldB: '*'` means "fieldB is absent", so it must not be guarded with
+        // "and fieldB exists" -- that pairing can never match.
+        Assert.assertEquals(
+                "(fieldA: \"valueA\") AND ((NOT mappedB: *))", queries.get(0).toString());
+    }
+
     private OSQueryBackend testBackend() throws IOException {
         return new OSQueryBackend(testFieldMapping, true);
     }
