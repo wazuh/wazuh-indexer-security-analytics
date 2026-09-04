@@ -4,7 +4,6 @@
  */
 package org.opensearch.securityanalytics.util;
 
-import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.OpenSearchException;
@@ -26,7 +25,6 @@ import org.opensearch.core.action.ActionListener;
 import org.opensearch.index.seqno.SequenceNumbers;
 import org.opensearch.rest.RestRequest.Method;
 import org.opensearch.securityanalytics.model.Detector;
-import org.opensearch.securityanalytics.model.Rule;
 import org.opensearch.transport.client.Client;
 import org.opensearch.transport.client.node.NodeClient;
 
