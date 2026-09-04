@@ -666,13 +666,14 @@ public class WazuhEnrichedFindingService implements Closeable {
             nested = (Map<String, Object>) ruleMetadata.get("rule");
         }
 
-        // The Sigma identifier lives in document.id: it is stamped into the rule body as its "id"
-        // when the rule is created and never changes afterwards. The rules-index _id backing the
-        // doc-level query is regenerated per space, so it cannot stand in for it: when the rule
-        // metadata is unavailable the field is omitted rather than filled with an unrelated id.
-        Object document = nested.get("document");
-        if (document instanceof Map<?, ?> doc && doc.get("id") != null) {
-            rule.put("sigma_id", doc.get("id").toString());
+        // sigma_id is the rule's own upstream Sigma identifier: an optional field of the rule body
+        // that is preserved on import and never changes. It is unrelated to the rules-index _id
+        // backing the doc-level query, which is regenerated on every space transition. Rules that
+        // declare no upstream identifier have none, so the field is omitted rather than filled with
+        // an unrelated id — consistent with level, status, compliance and mitre below.
+        Object sigmaId = nested.get("sigma_id");
+        if (sigmaId != null && !sigmaId.toString().isEmpty()) {
+            rule.put("sigma_id", sigmaId.toString());
         }
 
         Object level = nested.get("level");

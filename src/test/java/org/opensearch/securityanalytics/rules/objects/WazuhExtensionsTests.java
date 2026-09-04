@@ -743,4 +743,75 @@ public class WazuhExtensionsTests extends OpenSearchTestCase {
             Assert.assertFalse("value was stringified from a structure: " + value, value.contains("id="));
         }
     }
+
+    // ── sigma_id (upstream Sigma identifier) ────────────────────────────────
+
+    private static String ruleWithSigmaIdLine(String sigmaIdLine) {
+        return "id: ed85157d-711b-4edb-8390-492ec63c92ac\n"
+                + sigmaIdLine
+                + "status: stable\n"
+                + "level: medium\n"
+                + "logsource:\n"
+                + "    product: windows\n"
+                + "detection:\n"
+                + "    selection:\n"
+                + "        event.id: 16\n"
+                + "    condition: selection\n"
+                + "metadata:\n"
+                + "    title: Sigma id rule\n"
+                + "    author: Wazuh, Inc.\n"
+                + "    date: '2026-09-04'\n";
+    }
+
+    /**
+     * {@code sigma_id} is the original upstream Sigma identifier and must be parsed independently of
+     * the rule's own required {@code id}. The two are different UUIDs.
+     */
+    public void testSigmaIdIsParsedIndependentlyOfId() {
+        SigmaRule rule =
+                SigmaRule.fromYaml(
+                        ruleWithSigmaIdLine("sigma_id: 12345678-90ab-cdef-1234-567890abcdef\n"), true);
+
+        Assert.assertEquals("ed85157d-711b-4edb-8390-492ec63c92ac", String.valueOf(rule.getId()));
+        Assert.assertEquals("12345678-90ab-cdef-1234-567890abcdef", rule.getSigmaId());
+    }
+
+    /** {@code sigma_id} is optional, so a rule without one parses cleanly and reports null. */
+    public void testSigmaIdIsNullWhenAbsent() {
+        SigmaRule rule = SigmaRule.fromYaml(ruleWithSigmaIdLine(""), true);
+
+        Assert.assertNull(rule.getSigmaId());
+        Assert.assertTrue(rule.getErrors().getErrors().isEmpty());
+    }
+
+    /** A blank {@code sigma_id} is normalized to null rather than propagated as an empty string. */
+    public void testBlankSigmaIdIsNormalizedToNull() {
+        SigmaRule rule = SigmaRule.fromYaml(ruleWithSigmaIdLine("sigma_id: '   '\n"), true);
+
+        Assert.assertNull(rule.getSigmaId());
+    }
+
+    /** An absent {@code id} is still an error even when {@code sigma_id} is present. */
+    public void testSigmaIdDoesNotSubstituteForMissingId() {
+        String yaml =
+                "sigma_id: 12345678-90ab-cdef-1234-567890abcdef\n"
+                        + "status: stable\n"
+                        + "level: medium\n"
+                        + "logsource:\n"
+                        + "    product: windows\n"
+                        + "detection:\n"
+                        + "    selection:\n"
+                        + "        event.id: 16\n"
+                        + "    condition: selection\n"
+                        + "metadata:\n"
+                        + "    title: No id rule\n"
+                        + "    author: Wazuh, Inc.\n"
+                        + "    date: '2026-09-04'\n";
+
+        SigmaRule rule = SigmaRule.fromYaml(yaml, true);
+
+        Assert.assertNull(rule.getId());
+        Assert.assertEquals("12345678-90ab-cdef-1234-567890abcdef", rule.getSigmaId());
+        Assert.assertFalse(rule.getErrors().getErrors().isEmpty());
+    }
 }
