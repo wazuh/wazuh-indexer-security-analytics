@@ -104,7 +104,7 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
                         "high");
 
         Map<String, Object> doc =
-                invokeBuildAndIndex(finding, "detection", eventSource, "doc-1", null, Map.of());
+                invokeBuildAndIndex(finding, "detection", eventSource, "doc-1", null);
 
         assertEquals(
                 "Finding @timestamp must match the original event's @timestamp",
@@ -134,7 +134,7 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
                         "high");
 
         Map<String, Object> doc =
-                invokeBuildAndIndex(finding, "detection", eventSource, "doc-2", null, Map.of());
+                invokeBuildAndIndex(finding, "detection", eventSource, "doc-2", null);
 
         Map<String, Object> eventObj = (Map<String, Object>) doc.get("event");
         assertNotNull("event object must exist", eventObj);
@@ -165,7 +165,7 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
                         "high");
 
         Map<String, Object> doc =
-                invokeBuildAndIndex(finding, "detection", eventSource, "doc-3", null, Map.of());
+                invokeBuildAndIndex(finding, "detection", eventSource, "doc-3", null);
 
         Map<String, Object> eventObj = (Map<String, Object>) doc.get("event");
         assertNotNull("event object must exist", eventObj);
@@ -200,7 +200,7 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
                         "high");
 
         Map<String, Object> doc =
-                invokeBuildAndIndex(finding, "detection", eventSource, "doc-4", null, Map.of());
+                invokeBuildAndIndex(finding, "detection", eventSource, "doc-4", null);
 
         Map<String, Object> eventObj = (Map<String, Object>) doc.get("event");
         assertNotNull("event object must exist", eventObj);
@@ -372,8 +372,7 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
             String category,
             Map<String, Object> eventSource,
             String docId,
-            DocLevelQuery primaryQuery,
-            Map<String, Object> ruleMetadata)
+            DocLevelQuery primaryQuery)
             throws Exception {
 
         List<DocLevelQuery> queries = primaryQuery == null ? List.of() : List.of(primaryQuery);

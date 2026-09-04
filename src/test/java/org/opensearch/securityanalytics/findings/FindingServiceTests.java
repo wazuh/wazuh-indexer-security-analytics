@@ -155,7 +155,7 @@ public class FindingServiceTests extends OpenSearchTestCase {
                                         finding2.getIndex(),
                                         finding2.getDocLevelQueries(),
                                         finding2.getTimestamp(),
-                                        List.of(findingDocument1, findingDocument2, findingDocument3))));
+                                        List.of(findingDocument21, findingDocument22))));
         doAnswer(
                         invocation -> {
                             ActionListener l = invocation.getArgument(4);

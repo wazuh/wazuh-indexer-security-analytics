@@ -255,7 +255,7 @@ public class STIX2IOCGenerator implements PojoGenerator {
     public static void assertEqualIOCs(STIX2IOC ioc, STIX2IOC newIoc) {
         assertNotNull(newIoc.getId());
         assertEquals(ioc.getName(), newIoc.getName());
-        assertEquals(ioc.getType().toString(), newIoc.getType().toString());
+        assertEquals(ioc.getType(), newIoc.getType());
         assertEquals(ioc.getValue(), newIoc.getValue());
         assertEquals(ioc.getSeverity(), newIoc.getSeverity());
 //        assertEquals(ioc.getCreated(), newIoc.getCreated());
@@ -270,7 +270,7 @@ public class STIX2IOCGenerator implements PojoGenerator {
     public static void assertEqualIocDtos(STIX2IOCDto ioc, STIX2IOCDto newIoc) {
         assertNotNull(newIoc.getId());
         assertEquals(ioc.getName(), newIoc.getName());
-        assertEquals(ioc.getType().toString(), newIoc.getType().toString());
+        assertEquals(ioc.getType(), newIoc.getType());
         assertEquals(ioc.getValue(), newIoc.getValue());
         assertEquals(ioc.getSeverity(), newIoc.getSeverity());
 //        assertEquals(ioc.getCreated(), newIoc.getCreated());

@@ -58,7 +58,7 @@ public class RestSearchRuleAction extends BaseRestHandler {
     protected RestChannelConsumer prepareRequest(RestRequest request, NodeClient client) throws IOException {
         log.debug(String.format(Locale.getDefault(), "%s %s/_search", request.method(), SecurityAnalyticsPlugin.RULE_BASE_URI));
 
-        Boolean isPrepackaged = request.paramAsBoolean("pre_packaged", true);
+        boolean isPrepackaged = request.paramAsBoolean("pre_packaged", true);
         SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
         searchSourceBuilder.parseXContent(request.contentOrSourceParamParser());
 

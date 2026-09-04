@@ -27,6 +27,7 @@ import org.opensearch.test.OpenSearchTestCase;
 import org.junit.Assert;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
@@ -70,12 +71,6 @@ public class IndexDetectorRequestTests extends OpenSearchTestCase {
                         List.of("windows-1"),
                         Collections.emptyList(),
                         rules.stream().map(DetectorRule::new).collect(Collectors.toList()));
-        DetectorInput input2 =
-                new DetectorInput(
-                        "windows detector for security analytics",
-                        List.of("windows-2"),
-                        Collections.emptyList(),
-                        rules.stream().map(DetectorRule::new).collect(Collectors.toList()));
 
         Detector detector = randomDetectorWithInputs(List.of(input1));
         IndexDetectorRequest request =
@@ -92,6 +87,63 @@ public class IndexDetectorRequestTests extends OpenSearchTestCase {
         Assert.assertEquals(detectorId, request.getDetectorId());
         Assert.assertEquals(RestRequest.Method.POST, newRequest.getMethod());
         Assert.assertNotNull(newRequest.getDetector());
+    }
+
+    /**
+     * The raw-body constructor is what the REST layer now uses: the detector is absent and the
+     * client's bytes travel in its place, for the transport action to parse once privileges have
+     * been evaluated. Both halves of that shape have to survive the wire, since {@code writeTo} and
+     * the {@code StreamInput} constructor are written by hand and drifted apart before.
+     */
+    public void testIndexDetectorRawBodyRequestRoundTrip() throws IOException {
+        String detectorId = UUID.randomUUID().toString();
+        byte[] body = "{\"name\":\"abcdef\"}".getBytes(StandardCharsets.UTF_8);
+
+        IndexDetectorRequest request =
+                new IndexDetectorRequest(
+                        detectorId,
+                        WriteRequest.RefreshPolicy.IMMEDIATE,
+                        RestRequest.Method.PUT,
+                        body,
+                        "application/json");
+
+        BytesStreamOutput out = new BytesStreamOutput();
+        request.writeTo(out);
+
+        StreamInput sin = StreamInput.wrap(out.bytes().toBytesRef().bytes);
+        IndexDetectorRequest newRequest = new IndexDetectorRequest(sin);
+
+        Assert.assertEquals(detectorId, newRequest.getDetectorId());
+        Assert.assertEquals(WriteRequest.RefreshPolicy.IMMEDIATE, newRequest.getRefreshPolicy());
+        Assert.assertEquals(RestRequest.Method.PUT, newRequest.getMethod());
+        Assert.assertNull(
+                "the detector is parsed by the transport action, not carried",
+                newRequest.getDetector());
+        Assert.assertArrayEquals(body, newRequest.getBody());
+        Assert.assertEquals("application/json", newRequest.getMediaType());
+        Assert.assertFalse(newRequest.isInternalCaller());
+    }
+
+    /**
+     * A request carrying a parsed detector carries no body, and that asymmetry survives the wire.
+     */
+    public void testIndexDetectorParsedRequestCarriesNoBody() throws IOException {
+        IndexDetectorRequest request =
+                new IndexDetectorRequest(
+                        UUID.randomUUID().toString(),
+                        WriteRequest.RefreshPolicy.IMMEDIATE,
+                        RestRequest.Method.POST,
+                        randomDetector(List.of(UUID.randomUUID().toString())));
+
+        BytesStreamOutput out = new BytesStreamOutput();
+        request.writeTo(out);
+
+        StreamInput sin = StreamInput.wrap(out.bytes().toBytesRef().bytes);
+        IndexDetectorRequest newRequest = new IndexDetectorRequest(sin);
+
+        Assert.assertNotNull(newRequest.getDetector());
+        Assert.assertNull(newRequest.getBody());
+        Assert.assertNull(newRequest.getMediaType());
     }
 
     /**

@@ -134,44 +134,6 @@ public class Rule implements Writeable, ToXContentObject {
     public Rule(
             String id,
             Long version,
-            String title,
-            String category,
-            String logSource,
-            String description,
-            List<Value> references,
-            List<Value> tags,
-            String level,
-            List<Value> falsePositives,
-            String author,
-            String status,
-            Instant date,
-            List<Value> queries,
-            List<Value> queryFieldNames,
-            String rule,
-            List<Value> aggregationQueries) {
-        this(
-                id,
-                version,
-                category,
-                logSource,
-                references,
-                tags,
-                level,
-                falsePositives,
-                status,
-                date,
-                queries,
-                queryFieldNames,
-                rule,
-                aggregationQueries,
-                Collections.emptyMap(),
-                Collections.emptyMap(),
-                RuleMetadata.empty());
-    }
-
-    public Rule(
-            String id,
-            Long version,
             String category,
             String logSource,
             List<Value> references,
@@ -422,10 +384,8 @@ public class Rule implements Writeable, ToXContentObject {
             version = NO_VERSION;
         }
 
-        String title = null;
         String category = null;
         String logSource = null;
-        String description = null;
 
         List<Value> references = new ArrayList<>();
         List<Value> tags = new ArrayList<>();
@@ -433,7 +393,6 @@ public class Rule implements Writeable, ToXContentObject {
         String level = null;
         List<Value> falsePositives = new ArrayList<>();
 
-        String author = null;
         String status = null;
         Instant date = null;
 

@@ -9,6 +9,12 @@ public class SigmaNull implements SigmaType {
 
     @Override
     public boolean equals(Object o) {
-        return getClass() == o.getClass();
+        if (this == o) return true;
+        return o != null && getClass() == o.getClass();
+    }
+
+    @Override
+    public int hashCode() {
+        return SigmaNull.class.hashCode();
     }
 }

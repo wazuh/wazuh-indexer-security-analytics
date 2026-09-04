@@ -77,10 +77,8 @@ public class FindingsService {
                 ActionListener<GetFindingsResponse> getFindingsResponseListener = new ActionListener<>() {
                     @Override
                     public void onResponse(GetFindingsResponse resp) {
-                        Integer totalFindings = 0;
+                        int totalFindings = resp.getTotalFindings();
                         List<FindingDto> findings = new ArrayList<>();
-                        // Merge all findings into one response
-                        totalFindings += resp.getTotalFindings();
                         findings.addAll(resp.getFindings());
 
                         GetFindingsResponse masterResponse = new GetFindingsResponse(

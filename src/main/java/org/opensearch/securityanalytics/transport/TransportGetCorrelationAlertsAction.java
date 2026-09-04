@@ -24,7 +24,6 @@ import org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings;
 import org.opensearch.tasks.Task;
 import org.opensearch.threadpool.ThreadPool;
 import org.opensearch.transport.TransportService;
-import org.opensearch.transport.client.Client;
 
 public class TransportGetCorrelationAlertsAction extends HandledTransportAction<GetCorrelationAlertsRequest, GetCorrelationAlertsResponse> implements SecureTransportAction {
 
@@ -44,7 +43,7 @@ public class TransportGetCorrelationAlertsAction extends HandledTransportAction<
 
 
     @Inject
-    public TransportGetCorrelationAlertsAction(TransportService transportService, CorrelationAlertService correlationAlertService, ActionFilters actionFilters, ClusterService clusterService, GetCorrelationAlertsAction getCorrelationAlertsAction, ThreadPool threadPool, Settings settings, NamedXContentRegistry xContentRegistry, Client client) {
+    public TransportGetCorrelationAlertsAction(TransportService transportService, CorrelationAlertService correlationAlertService, ActionFilters actionFilters, ClusterService clusterService, GetCorrelationAlertsAction getCorrelationAlertsAction, ThreadPool threadPool, Settings settings, NamedXContentRegistry xContentRegistry) {
         super(getCorrelationAlertsAction.NAME, transportService, actionFilters, GetCorrelationAlertsRequest::new);
         this.xContentRegistry = xContentRegistry;
         this.correlationAlertService = correlationAlertService;
@@ -61,7 +60,7 @@ public class TransportGetCorrelationAlertsAction extends HandledTransportAction<
         User user = readUserFromThreadContext(this.threadPool);
 
         String validateBackendRoleMessage = validateUserBackendRoles(user, this.filterByEnabled);
-        if (!"".equals(validateBackendRoleMessage)) {
+        if (!validateBackendRoleMessage.isEmpty()) {
             actionListener.onFailure(new OpenSearchStatusException("Do not have permissions to resource", RestStatus.FORBIDDEN));
             return;
         }

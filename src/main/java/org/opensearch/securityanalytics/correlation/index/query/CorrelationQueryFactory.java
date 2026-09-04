@@ -15,7 +15,6 @@ import java.util.Optional;
 public class CorrelationQueryFactory {
 
     public static Query create(CreateQueryRequest createQueryRequest) {
-        final String indexName = createQueryRequest.getIndexName();
         final String fieldName = createQueryRequest.getFieldName();
         final int k = createQueryRequest.getK();
         final float[] vector = createQueryRequest.getVector();
@@ -36,8 +35,6 @@ public class CorrelationQueryFactory {
     }
 
     static class CreateQueryRequest {
-        private String indexName;
-
         private String fieldName;
 
         private float[] vector;
@@ -48,22 +45,16 @@ public class CorrelationQueryFactory {
 
         private QueryShardContext context;
 
-        public CreateQueryRequest(String indexName,
-                                  String fieldName,
+        public CreateQueryRequest(String fieldName,
                                   float[] vector,
                                   int k,
                                   QueryBuilder filter,
                                   QueryShardContext context) {
-            this.indexName = indexName;
             this.fieldName = fieldName;
             this.vector = vector;
             this.k = k;
             this.filter = filter;
             this.context = context;
-        }
-
-        public String getIndexName() {
-            return indexName;
         }
 
         public String getFieldName() {

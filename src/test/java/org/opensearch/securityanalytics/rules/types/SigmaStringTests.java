@@ -206,6 +206,26 @@ public class SigmaStringTests extends OpenSearchTestCase {
         });
     }
 
+    public void testStringEqualsForSameValue() {
+        Assert.assertEquals(new SigmaString("abc"), new SigmaString("abc"));
+    }
+
+    public void testStringNotEqualsForDifferentValues() {
+        Assert.assertNotEquals(new SigmaString("abc"), new SigmaString("xyz"));
+    }
+
+    public void testStringNotEqualsForDifferentWildcards() {
+        Assert.assertNotEquals(new SigmaString("abc*"), new SigmaString("abc?"));
+    }
+
+    public void testStringHashCodeConsistentForSameValue() {
+        Assert.assertEquals(new SigmaString("abc*def").hashCode(), new SigmaString("abc*def").hashCode());
+    }
+
+    public void testStringHashCodeDiffersForDifferentValues() {
+        Assert.assertNotEquals(new SigmaString("abc").hashCode(), new SigmaString("xyz").hashCode());
+    }
+
     private SigmaString sigmaString() {
         return new SigmaString("*Test*Str\\*ing*");
     }

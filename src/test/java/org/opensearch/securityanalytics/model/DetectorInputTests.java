@@ -5,10 +5,6 @@
 package org.opensearch.securityanalytics.model;
 
 import org.junit.Assert;
-import org.opensearch.core.common.bytes.BytesReference;
-import org.opensearch.common.xcontent.XContentType;
-import org.opensearch.core.xcontent.ToXContent;
-import org.opensearch.core.xcontent.XContentBuilder;
 import org.opensearch.test.OpenSearchTestCase;
 
 import java.io.IOException;
@@ -30,8 +26,6 @@ public class DetectorInputTests extends OpenSearchTestCase {
 
     public void testDetectorInputAsTemplateArgs() throws IOException {
         DetectorInput input = randomDetectorInput();
-
-        String inputString = BytesReference.bytes(input.toXContent(XContentBuilder.builder(XContentType.JSON.xContent()), ToXContent.EMPTY_PARAMS)).utf8ToString();
 
         Map<String, Object> templateArgs = input.asTemplateArg();
 

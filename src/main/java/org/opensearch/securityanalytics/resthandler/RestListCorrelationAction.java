@@ -46,7 +46,7 @@ public class RestListCorrelationAction extends BaseRestHandler {
     protected RestChannelConsumer prepareRequest(RestRequest request, NodeClient client) throws IOException {
         log.debug(String.format(Locale.ROOT, "%s %s", request.method(), SecurityAnalyticsPlugin.LIST_CORRELATIONS_URI));
 
-        Long defaultTimestamp = System.currentTimeMillis();
+        long defaultTimestamp = System.currentTimeMillis();
         Long startTimestamp = request.paramAsLong("start_timestamp", defaultTimestamp - 300000L);
         Long endTimestamp = request.paramAsLong("end_timestamp", defaultTimestamp);
 

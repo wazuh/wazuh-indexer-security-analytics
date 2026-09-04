@@ -14,4 +14,18 @@ public class SigmaNullTests extends OpenSearchTestCase {
         SigmaNull n2 = new SigmaNull();
         Assert.assertEquals(n1, n2);
     }
+
+    public void testNullNotEqualToNullReference() {
+        // Called directly rather than through assertNotEquals, which short-circuits on null:
+        // this is what used to throw a NullPointerException.
+        Assert.assertFalse(new SigmaNull().equals(null));
+    }
+
+    public void testNullNotEqualToOtherType() {
+        Assert.assertNotEquals(new SigmaNull(), "null");
+    }
+
+    public void testNullHashCodeConsistent() {
+        Assert.assertEquals(new SigmaNull().hashCode(), new SigmaNull().hashCode());
+    }
 }

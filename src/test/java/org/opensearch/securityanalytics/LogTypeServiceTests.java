@@ -74,9 +74,6 @@ public class LogTypeServiceTests extends OpenSearchIntegTestCase {
         }
     }
 
-    // Failing due to issues in default LogTypes loading
-    // TODO: Disabled due to commented-out REST endpoints. Re-enable when endpoints are restored.
-    @AwaitsFix(bugUrl = "")
     public void testIndexMappings() throws ExecutionException, InterruptedException {
         ensureGreen();
 

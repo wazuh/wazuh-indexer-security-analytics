@@ -85,7 +85,7 @@ public class AlertsService {
                 List<String> monitorIds = detector.getMonitorIds();
                 // monitor --> detectorId mapping
                 Map<String, String> monitorToDetectorMapping = new HashMap<>();
-                detector.getMonitorIds().forEach(
+                monitorIds.forEach(
                         monitorId -> {
                             if (detector.getRuleIdMonitorIdMap().containsKey(CHAINED_FINDINGS_MONITOR_STRING)) {
                                 if (detector.getRuleIdMonitorIdMap().get(CHAINED_FINDINGS_MONITOR_STRING).equals(monitorId) ||
