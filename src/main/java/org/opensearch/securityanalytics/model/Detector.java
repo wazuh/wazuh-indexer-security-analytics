@@ -427,7 +427,7 @@ public class Detector implements Writeable, ToXContentObject {
         Schedule schedule = null;
         Instant lastUpdateTime = null;
         Instant enabledTime = null;
-        Boolean enabled = true;
+        boolean enabled = true;
         List<DetectorInput> inputs = new ArrayList<>();
         List<DetectorTrigger> triggers = new ArrayList<>();
         List<String> monitorIds = new ArrayList<>();

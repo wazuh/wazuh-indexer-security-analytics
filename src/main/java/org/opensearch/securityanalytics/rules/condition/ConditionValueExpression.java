@@ -22,6 +22,7 @@ public class ConditionValueExpression  extends ConditionItem {
         this.value = value;
     }
 
+    @Override
     public ConditionValueExpression postProcess(SigmaDetections detections, Object parent) {
         this.parent = parent instanceof ConditionItem? Either.left((ConditionItem) parent): Either.right((SigmaDetectionItem) parent);
         return this;

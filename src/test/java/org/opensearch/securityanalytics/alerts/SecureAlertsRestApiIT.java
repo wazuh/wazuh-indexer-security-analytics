@@ -48,7 +48,7 @@ public class SecureAlertsRestApiIT extends SecurityAnalyticsRestTestCase {
     @Before
     public void create() throws IOException {
         String[] backendRoles = { TEST_HR_BACKEND_ROLE };
-        createUserWithData(user, user, SECURITY_ANALYTICS_FULL_ACCESS_ROLE, backendRoles );
+        createUserWithData(user, SECURITY_ANALYTICS_FULL_ACCESS_ROLE, backendRoles );
         if (userClient == null) {
             userClient = new SecureRestClientBuilder(getClusterHosts().toArray(new HttpHost[]{}), isHttps(), user, password).setSocketTimeout(60000).build();
         }
@@ -161,7 +161,7 @@ public class SecureAlertsRestApiIT extends SecurityAnalyticsRestTestCase {
             // try to do get finding as a user with read access
             String userRead = "userReadAlert";
             String[] backendRoles = { TEST_IT_BACKEND_ROLE };
-            createUserWithData( userRead, userRead, SECURITY_ANALYTICS_READ_ACCESS_ROLE, backendRoles );
+            createUserWithData(userRead, SECURITY_ANALYTICS_READ_ACCESS_ROLE, backendRoles );
             RestClient userReadOnlyClient = new SecureRestClientBuilder(getClusterHosts().toArray(new HttpHost[]{}), isHttps(), userRead, password).setSocketTimeout(60000).build();
 
             // Call GetAlerts API
@@ -186,7 +186,7 @@ public class SecureAlertsRestApiIT extends SecurityAnalyticsRestTestCase {
 
             // recreate user with matching backend roles and try again
             String[] newBackendRoles = { TEST_HR_BACKEND_ROLE };
-            createUserWithData( userRead, userRead, SECURITY_ANALYTICS_READ_ACCESS_ROLE, newBackendRoles );
+            createUserWithData(userRead, SECURITY_ANALYTICS_READ_ACCESS_ROLE, newBackendRoles );
             userReadOnlyClient = new SecureRestClientBuilder(getClusterHosts().toArray(new HttpHost[]{}), isHttps(), userRead, password).setSocketTimeout(60000).build();
             getAlertsResponse = makeRequest(userReadOnlyClient, "GET", SecurityAnalyticsPlugin.ALERTS_BASE_URI, params, null);
             getAlertsBody = asMap(getAlertsResponse);
@@ -280,7 +280,7 @@ public class SecureAlertsRestApiIT extends SecurityAnalyticsRestTestCase {
             // try to do get finding as a user with read access
             String userRead = "userReadAlert";
             String[] backendRoles = { TEST_IT_BACKEND_ROLE };
-            createUserWithData( userRead, userRead, SECURITY_ANALYTICS_READ_ACCESS_ROLE, backendRoles );
+            createUserWithData(userRead, SECURITY_ANALYTICS_READ_ACCESS_ROLE, backendRoles );
             RestClient userReadOnlyClient = new SecureRestClientBuilder(getClusterHosts().toArray(new HttpHost[]{}), isHttps(), userRead, password).setSocketTimeout(60000).build();
 
             // Call GetAlerts API
@@ -305,7 +305,7 @@ public class SecureAlertsRestApiIT extends SecurityAnalyticsRestTestCase {
 
             // recreate user with matching backend roles and try again
             String[] newBackendRoles = { TEST_HR_BACKEND_ROLE };
-            createUserWithData( userRead, userRead, SECURITY_ANALYTICS_READ_ACCESS_ROLE, newBackendRoles );
+            createUserWithData(userRead, SECURITY_ANALYTICS_READ_ACCESS_ROLE, newBackendRoles );
             userReadOnlyClient = new SecureRestClientBuilder(getClusterHosts().toArray(new HttpHost[]{}), isHttps(), userRead, password).setSocketTimeout(60000).build();
             getAlertsResponse = makeRequest(userReadOnlyClient, "GET", SecurityAnalyticsPlugin.ALERTS_BASE_URI, params, null);
             getAlertsBody = asMap(getAlertsResponse);

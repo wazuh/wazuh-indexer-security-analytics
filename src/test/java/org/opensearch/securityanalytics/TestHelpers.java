@@ -154,10 +154,7 @@ public class TestHelpers {
     }
 
     public static Detector randomDetectorWithTriggers(
-            List<String> rules,
-            List<DetectorTrigger> triggers,
-            String detectorType,
-            DetectorInput input) {
+            List<DetectorTrigger> triggers, String detectorType, DetectorInput input) {
         return randomDetector(
                 null, detectorType, null, List.of(input), triggers, null, null, null, null, false);
     }
@@ -283,7 +280,7 @@ public class TestHelpers {
         String detectorType = randomDetectorType();
         List<DetectorInput> inputs = Collections.emptyList();
         Schedule schedule = new IntervalSchedule(5, ChronoUnit.MINUTES, null);
-        Boolean enabled = OpenSearchTestCase.randomBoolean();
+        boolean enabled = OpenSearchTestCase.randomBoolean();
         Instant enabledTime = enabled ? Instant.now().truncatedTo(ChronoUnit.MILLIS) : null;
         Instant lastUpdateTime = Instant.now().truncatedTo(ChronoUnit.MILLIS);
 
@@ -986,7 +983,7 @@ public class TestHelpers {
                                 + "  - Trigger: {{ctx.trigger.name}}\n"
                                 + "  - Severity: {{ctx.trigger.severity}}",
                         null);
-        Boolean throttleEnabled = false;
+        boolean throttleEnabled = false;
         Throttle throttle = randomThrottle(null, null);
         return new Action(
                 name,
@@ -1007,7 +1004,7 @@ public class TestHelpers {
                                 + "  - Trigger: {{ctx.trigger.name}}\n"
                                 + "  - Severity: {{ctx.trigger.severity}}",
                         null);
-        Boolean throttleEnabled = false;
+        boolean throttleEnabled = false;
         Throttle throttle = randomThrottle(null, null);
         return new Action(
                 name,
@@ -2137,28 +2134,24 @@ public class TestHelpers {
         return String.format(Locale.ROOT, doc, severity, version, opCode);
     }
 
-    public static String randomDocOnlyNumericAndDate(int severity, int version, String opCode) {
-        String doc =
-                "{\n"
-                        + "\"EventTime\":\"2020-02-04T14:59:39.343541+00:00\",\n"
-                        + "\"ExecutionProcessID\":2001,\n"
-                        + "\"ExecutionThreadID\":2616,\n"
-                        + "\"EventID\": 1234,\n"
-                        + "\"TaskValue\":22\n"
-                        + "}";
-        return String.format(Locale.ROOT, doc, severity, version, opCode);
+    public static String randomDocOnlyNumericAndDate() {
+        return "{\n"
+                + "\"EventTime\":\"2020-02-04T14:59:39.343541+00:00\",\n"
+                + "\"ExecutionProcessID\":2001,\n"
+                + "\"ExecutionThreadID\":2616,\n"
+                + "\"EventID\": 1234,\n"
+                + "\"TaskValue\":22\n"
+                + "}";
     }
 
-    public static String randomDocOnlyNumericAndText(int severity, int version, String opCode) {
-        String doc =
-                "{\n"
-                        + "\"TaskName\":\"SYSTEM\",\n"
-                        + "\"ExecutionProcessID\":2001,\n"
-                        + "\"ExecutionThreadID\":2616,\n"
-                        + "\"EventID\": 1234,\n"
-                        + "\"TaskValue\":22\n"
-                        + "}";
-        return String.format(Locale.ROOT, doc, severity, version, opCode);
+    public static String randomDocOnlyNumericAndText() {
+        return "{\n"
+                + "\"TaskName\":\"SYSTEM\",\n"
+                + "\"ExecutionProcessID\":2001,\n"
+                + "\"ExecutionThreadID\":2616,\n"
+                + "\"EventID\": 1234,\n"
+                + "\"TaskValue\":22\n"
+                + "}";
     }
 
     // Add IPs in HostName field.

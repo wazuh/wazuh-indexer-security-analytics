@@ -54,7 +54,7 @@ function log() {
 function navigate_to_project_root() {
     local repo_root_marker=".github"
     local script_path
-    script_path=$(dirname "$(realpath "$0")")
+    script_path=$(dirname "$(realpath "${BASH_SOURCE[0]}")")
 
     while [[ "$script_path" != "/" ]] && [[ ! -d "$script_path/$repo_root_marker" ]]; do
         script_path=$(dirname "$script_path")
@@ -143,18 +143,21 @@ function update_version_file() {
 function update_build_gradle_version() {
     local version="$1"
     local file="build.gradle"
+    # Shared by the guard and the substitution below so the two cannot drift apart.
+    # The capture groups keep the surrounding text intact and replace only the number.
+    local version_pattern='(System\.getProperty\("version", ")[0-9]+\.[0-9]+\.[0-9]+("\))'
 
     if [[ ! -f "$file" ]]; then
         log "Warning: $file not found; skipping build.gradle version sync."
         return 0
     fi
 
-    if ! grep -qE 'System\.getProperty\("version", "[0-9]+\.[0-9]+\.[0-9]+"\)' "$file"; then
+    if ! grep -qE "$version_pattern" "$file"; then
         log "Warning: hardcoded 'version' fallback not found in $file; skipping sync."
         return 0
     fi
 
-    sed -i -E "s/(System\.getProperty\(\"version\", \")[0-9]+\.[0-9]+\.[0-9]+(\"\))/\1${version}\2/" "$file"
+    sed -i -E "s/${version_pattern}/\1${version}\2/" "$file"
     log "Synced $file hardcoded version fallback to $version"
 }
 

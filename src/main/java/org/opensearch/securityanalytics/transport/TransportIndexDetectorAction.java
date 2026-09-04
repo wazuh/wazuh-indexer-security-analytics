@@ -347,7 +347,7 @@ public class TransportIndexDetectorAction
         User user = this.readUserFromThreadContext(this.threadPool);
 
         String validateBackendRoleMessage = this.validateUserBackendRoles(user, this.filterByEnabled);
-        if (!"".equals(validateBackendRoleMessage)) {
+        if (!validateBackendRoleMessage.isEmpty()) {
             listener.onFailure(
                     SecurityAnalyticsException.wrap(
                             new OpenSearchStatusException(validateBackendRoleMessage, RestStatus.FORBIDDEN)));
@@ -905,7 +905,6 @@ public class TransportIndexDetectorAction
             ActionListener<List<IndexMonitorResponse>> actionListener) {
         if (this.enabledWorkflowUsage) {
             this.workflowService.upsertWorkflow(
-                    rulesById,
                     monitorResponses,
                     null,
                     detector,
@@ -932,7 +931,6 @@ public class TransportIndexDetectorAction
     }
 
     private void updateMonitorFromQueries(
-            String index,
             List<Pair<String, Rule>> rulesById,
             Detector detector,
             ActionListener<List<IndexMonitorResponse>> listener,
@@ -968,7 +966,7 @@ public class TransportIndexDetectorAction
                                                 for (String category : ruleCategories) {
                                                     Map<String, String> fieldMappings = ruleFieldMappings.get(category);
                                                     queryBackendMap.put(
-                                                            category, new OSQueryBackend(fieldMappings, true, true));
+                                                            category, new OSQueryBackend(fieldMappings, true));
                                                 }
 
                                                 // Pair of RuleId - MonitorId for existing monitors of the detector
@@ -1304,7 +1302,6 @@ public class TransportIndexDetectorAction
         } else {
             // Update workflow and delete the monitors
             this.workflowService.upsertWorkflow(
-                    rulesById,
                     addNewMonitorsResponse,
                     updateMonitorResponse,
                     detector,
@@ -1588,7 +1585,7 @@ public class TransportIndexDetectorAction
                         for (String category : ruleCategories) {
                             Map<String, String> fieldMappings = ruleFieldMappings.get(category);
                             try {
-                                queryBackendMap.put(category, new OSQueryBackend(fieldMappings, true, true));
+                                queryBackendMap.put(category, new OSQueryBackend(fieldMappings, true));
                             } catch (IOException e) {
                                 TransportIndexDetectorAction.this.logger.error(
                                         "Failed to create OSQueryBackend from field mappings: {}", e.getMessage());
@@ -1718,6 +1715,7 @@ public class TransportIndexDetectorAction
                                 TransportIndexDetectorAction.this.logger.debug(
                                         "Failed to get alias path pairs from mapping metadata: {}", e.getMessage());
                                 this.onFailure(e);
+                                return;
                             }
                             boolean timeStampAliasPresent =
                                     pairs.stream()
@@ -2011,7 +2009,9 @@ public class TransportIndexDetectorAction
                         }
 
                         @Override
-                        public void onFailure(Exception e) {}
+                        public void onFailure(Exception e) {
+                            AsyncIndexDetectorsAction.this.onFailures(e);
+                        }
                     });
         }
 
@@ -2145,14 +2145,14 @@ public class TransportIndexDetectorAction
                                 if (!TransportIndexDetectorAction.this.checkUserPermissionsWithResource(
                                         originalContextUser,
                                         detector.getUser(),
-                                        "detector",
-                                        detector.getId(),
                                         TransportIndexDetectorAction.this.filterByEnabled)) {
 
                                     this.onFailure(
                                             SecurityAnalyticsException.wrap(
                                                     new OpenSearchStatusException(
-                                                            "Do not have permissions to resource", RestStatus.FORBIDDEN)));
+                                                            "Do not have permissions to resource, detector, with id, "
+                                                                    + detector.getId(),
+                                                            RestStatus.FORBIDDEN)));
                                     return;
                                 }
                                 AsyncIndexDetectorsAction.this.onGetResponse(detector, detector.getUser());
@@ -2564,7 +2564,6 @@ public class TransportIndexDetectorAction
                         new ArrayList<>(ruleFieldNames));
             } else if (this.request.getMethod() == Method.PUT) {
                 TransportIndexDetectorAction.this.updateMonitorFromQueries(
-                        logIndex,
                         queries,
                         detector,
                         listener,

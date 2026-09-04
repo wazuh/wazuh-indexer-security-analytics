@@ -285,18 +285,6 @@ public class WTransportIndexDetectorAction
                 });
     }
 
-    /**
-     * Constructs the detector and executes the internal index action using the validated rules. *
-     *
-     * <p>It utilizes the {@link DetectorFactory} to map the original request parameters alongside the
-     * sanitized list of rule IDs into a new {@link Detector} instance, which is then submitted to
-     * OpenSearch via the standard {@link IndexDetectorAction}. * @param request the original detector
-     * indexing request
-     *
-     * @param listener the listener to pass back the final {@link WIndexDetectorResponse} upon
-     *     completion
-     * @param validRuleIds the sanitized list of valid rule IDs to associate with the detector
-     */
     /** Result of classifying a set of rule search hits by index origin and space. */
     static class RuleClassificationResult {
         final Set<String> prePackagedRuleIds;
@@ -384,6 +372,18 @@ public class WTransportIndexDetectorAction
         }
     }
 
+    /**
+     * Constructs the detector and executes the internal index action using the validated rules.
+     *
+     * <p>It utilizes the {@link DetectorFactory} to map the original request parameters alongside the
+     * sanitized list of rule IDs into a new {@link Detector} instance, which is then submitted to
+     * OpenSearch via the standard {@link IndexDetectorAction}.
+     *
+     * @param request the original detector indexing request
+     * @param listener the listener to pass back the final {@link WIndexDetectorResponse} upon
+     *     completion
+     * @param validRuleIds the sanitized list of valid rule IDs to associate with the detector
+     */
     private void executeDetectorCreation(
             WIndexDetectorRequest request,
             ActionListener<WIndexDetectorResponse> listener,

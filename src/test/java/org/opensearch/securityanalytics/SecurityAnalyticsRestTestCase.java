@@ -1411,21 +1411,21 @@ public class SecurityAnalyticsRestTestCase extends OpenSearchRestTestCase {
         client().performRequest(request);
     }
 
-    protected void createUserWithDataAndCustomRole(String userName, String userPasswd, String roleName, String[] backendRoles, String clusterPermissions) throws IOException {
+    protected void createUserWithDataAndCustomRole(String userName, String roleName, String[] backendRoles, String clusterPermissions) throws IOException {
         String[] users = {userName};
         createUser(userName, backendRoles);
         createCustomRole(roleName, clusterPermissions);
         createUserRolesMapping(roleName, users);
     }
 
-    protected void createUserWithDataAndCustomRole(String userName, String userPasswd, String roleName, String[] backendRoles, List<String> clusterPermissions, List<String> indexPermissions, List<String> indexPatterns) throws IOException {
+    protected void createUserWithDataAndCustomRole(String userName, String roleName, String[] backendRoles, List<String> clusterPermissions, List<String> indexPermissions, List<String> indexPatterns) throws IOException {
         String[] users = {userName};
         createUser(userName, backendRoles);
         createIndexRole(roleName, clusterPermissions, indexPermissions, indexPatterns);
         createUserRolesMapping(roleName, users);
     }
 
-    protected void createUserWithData(String userName, String userPasswd, String roleName, String[] backendRoles) throws IOException {
+    protected void createUserWithData(String userName, String roleName, String[] backendRoles) throws IOException {
         String[] users = {userName};
         createUser(userName, backendRoles);
         createUserRolesMapping(roleName, users);

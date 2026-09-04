@@ -226,7 +226,7 @@ public class DetectorMonitorRestApiIT extends SecurityAnalyticsRestTestCase {
             // Bucket monitor finding will have one rule
             String aggRuleId = aggRulesFinding.iterator().next();
 
-            assertTrue(aggRulesFinding.contains(aggRuleId));
+            assertTrue(aggRuleIds.contains(aggRuleId));
 
             List<String> findingDocs = (List<String>) finding.get("related_doc_ids");
             Assert.assertEquals(2, findingDocs.size());
@@ -1034,8 +1034,6 @@ public class DetectorMonitorRestApiIT extends SecurityAnalyticsRestTestCase {
             if (docLevelRules.containsAll(findingRules)) {
                 docLevelFinding.addAll((List<String>) finding.get("related_doc_ids"));
             } else {
-                String aggRuleId = findingRules.iterator().next();
-
                 List<String> findingDocs = (List<String>) finding.get("related_doc_ids");
                 Assert.assertEquals(2, findingDocs.size());
                 assertTrue(Arrays.asList("1", "2").containsAll(findingDocs));
@@ -2008,7 +2006,7 @@ public class DetectorMonitorRestApiIT extends SecurityAnalyticsRestTestCase {
 
         List<DetectorRule> detectorRules =
                 List.of(new DetectorRule(maxRuleId), new DetectorRule(randomDocRuleId));
-        DetectorTrigger t1, t2;
+        DetectorTrigger t1;
         t1 =
                 new DetectorTrigger(
                         null,
@@ -2568,8 +2566,8 @@ public class DetectorMonitorRestApiIT extends SecurityAnalyticsRestTestCase {
         assertEquals(1, response.getHits().getTotalHits().value());
 
         // Insert test document
-        indexDoc(index, "1", randomDocOnlyNumericAndDate(2, 5, "Test"));
-        indexDoc(index, "2", randomDocOnlyNumericAndDate(3, 5, "Test"));
+        indexDoc(index, "1", randomDocOnlyNumericAndDate());
+        indexDoc(index, "2", randomDocOnlyNumericAndDate());
 
         Response executeResponse = executeAlertingMonitor(monitorId, Collections.emptyMap());
         Map<String, Object> executeResults = entityAsMap(executeResponse);
@@ -2667,8 +2665,8 @@ public class DetectorMonitorRestApiIT extends SecurityAnalyticsRestTestCase {
         assertEquals(1, response.getHits().getTotalHits().value());
 
         // Insert test document
-        indexDoc(index, "1", randomDocOnlyNumericAndText(2, 5, "Test"));
-        indexDoc(index, "2", randomDocOnlyNumericAndText(3, 5, "Test"));
+        indexDoc(index, "1", randomDocOnlyNumericAndText());
+        indexDoc(index, "2", randomDocOnlyNumericAndText());
 
         Response executeResponse = executeAlertingMonitor(monitorId, Collections.emptyMap());
         Map<String, Object> executeResults = entityAsMap(executeResponse);
@@ -3236,8 +3234,8 @@ public class DetectorMonitorRestApiIT extends SecurityAnalyticsRestTestCase {
                                                                 .get("aggregations"))
                                                 .get("result_agg"))
                                 .get("buckets")));
-        Integer docCount = buckets.stream().mapToInt(it -> (Integer) it.get("doc_count")).sum();
-        assertEquals(expectedDocCount, docCount.intValue());
+        int docCount = buckets.stream().mapToInt(it -> (Integer) it.get("doc_count")).sum();
+        assertEquals(expectedDocCount, docCount);
 
         List<String> triggerResultBucketKeys =
                 ((Map<String, Object>)

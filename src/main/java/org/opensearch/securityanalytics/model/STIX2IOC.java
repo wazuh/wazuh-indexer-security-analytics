@@ -139,7 +139,7 @@ public class STIX2IOC extends STIX2 implements Writeable, ToXContentObject {
     public void writeTo(StreamOutput out) throws IOException {
         out.writeString(super.getId());
         out.writeString(super.getName());
-        out.writeString(super.getType().toString());
+        out.writeString(super.getType());
         out.writeString(super.getValue());
         out.writeString(super.getSeverity());
         out.writeInstant(super.getCreated());
@@ -157,7 +157,7 @@ public class STIX2IOC extends STIX2 implements Writeable, ToXContentObject {
         builder.startObject()
                 .field(ID_FIELD, super.getId())
                 .field(NAME_FIELD, super.getName())
-                .field(TYPE_FIELD, super.getType().toString())
+                .field(TYPE_FIELD, super.getType())
                 .field(VALUE_FIELD, super.getValue())
                 .field(SEVERITY_FIELD, super.getSeverity());
         XContentUtils.buildInstantAsField(builder, super.getCreated(), CREATED_FIELD);

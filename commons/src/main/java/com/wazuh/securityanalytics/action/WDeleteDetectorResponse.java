@@ -38,6 +38,7 @@ public class WDeleteDetectorResponse extends ActionResponse {
         this(sin.readString(), sin.readLong(), (RestStatus) sin.readEnum(RestStatus.class));
     }
 
+    @Override
     public void writeTo(StreamOutput out) throws IOException {
         out.writeString(this.id);
         out.writeLong(this.version);
