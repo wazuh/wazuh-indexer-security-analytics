@@ -26,6 +26,11 @@ import org.opensearch.securityanalytics.model.Detector;
 
 import java.io.IOException;
 
+/**
+ * Transport request to create or update a detector. The detector arrives either already parsed, from
+ * internal callers that build it themselves, or as the raw request body from the REST layer, for
+ * {@code TransportIndexDetectorAction} to parse once privileges have been evaluated.
+ */
 public class IndexDetectorRequest extends ActionRequest {
 
     private final String detectorId;
@@ -35,6 +40,11 @@ public class IndexDetectorRequest extends ActionRequest {
     private final RestRequest.Method method;
 
     private Detector detector;
+
+    /** Raw request body and its media type, both null when the detector was supplied parsed. */
+    private final byte[] body;
+
+    private final String mediaType;
 
     /**
      * When true the request originates from an internal plugin (e.g. Content Manager) and should
@@ -62,15 +72,36 @@ public class IndexDetectorRequest extends ActionRequest {
         this.method = method;
         this.detector = detector;
         this.internalCaller = internalCaller;
+        this.body = null;
+        this.mediaType = null;
+    }
+
+    /** Builds a request whose detector the transport action still has to parse from the raw body. */
+    public IndexDetectorRequest(
+            String detectorId,
+            WriteRequest.RefreshPolicy refreshPolicy,
+            RestRequest.Method method,
+            byte[] body,
+            String mediaType) {
+        super();
+        this.detectorId = detectorId;
+        this.refreshPolicy = refreshPolicy;
+        this.method = method;
+        this.detector = null;
+        this.internalCaller = false;
+        this.body = body;
+        this.mediaType = mediaType;
     }
 
     public IndexDetectorRequest(StreamInput sin) throws IOException {
-        this(
-                sin.readString(),
-                WriteRequest.RefreshPolicy.readFrom(sin),
-                sin.readEnum(RestRequest.Method.class),
-                Detector.readFrom(sin),
-                sin.readBoolean());
+        super();
+        this.detectorId = sin.readString();
+        this.refreshPolicy = WriteRequest.RefreshPolicy.readFrom(sin);
+        this.method = sin.readEnum(RestRequest.Method.class);
+        this.detector = sin.readBoolean() ? Detector.readFrom(sin) : null;
+        this.internalCaller = sin.readBoolean();
+        this.body = sin.readBoolean() ? sin.readByteArray() : null;
+        this.mediaType = sin.readOptionalString();
     }
 
     @Override
@@ -83,8 +114,16 @@ public class IndexDetectorRequest extends ActionRequest {
         out.writeString(this.detectorId);
         this.refreshPolicy.writeTo(out);
         out.writeEnum(this.method);
-        this.detector.writeTo(out);
+        out.writeBoolean(this.detector != null);
+        if (this.detector != null) {
+            this.detector.writeTo(out);
+        }
         out.writeBoolean(this.internalCaller);
+        out.writeBoolean(this.body != null);
+        if (this.body != null) {
+            out.writeByteArray(this.body);
+        }
+        out.writeOptionalString(this.mediaType);
     }
 
     public String getDetectorId() {
@@ -95,8 +134,17 @@ public class IndexDetectorRequest extends ActionRequest {
         return this.method;
     }
 
+    /** @return the detector, or null while the raw body has not been parsed yet */
     public Detector getDetector() {
         return this.detector;
+    }
+
+    public byte[] getBody() {
+        return this.body;
+    }
+
+    public String getMediaType() {
+        return this.mediaType;
     }
 
     public WriteRequest.RefreshPolicy getRefreshPolicy() {

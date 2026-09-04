@@ -69,7 +69,10 @@ import org.opensearch.core.common.io.stream.NamedWriteableRegistry;
 import org.opensearch.core.rest.RestStatus;
 import org.opensearch.core.xcontent.NamedXContentRegistry;
 import org.opensearch.core.xcontent.ToXContent;
+import org.opensearch.core.xcontent.MediaType;
+import org.opensearch.core.xcontent.MediaTypeRegistry;
 import org.opensearch.core.xcontent.XContentParser;
+import org.opensearch.core.xcontent.XContentParserUtils;
 import org.opensearch.index.IndexNotFoundException;
 import org.opensearch.index.query.BoolQueryBuilder;
 import org.opensearch.index.query.QueryBuilder;
@@ -351,6 +354,34 @@ public class TransportIndexDetectorAction
             return;
         }
 
+        // Parsed here, not in the REST handler: the ActionFilters chain that decides whether this
+        // account may write detectors has already run, so an unprivileged account is refused with 403
+        // whatever it sends. A body only the client produced failing to parse is a 400, not a 500.
+        // Not wrapped in SecurityAnalyticsException, which logs at ERROR with a stack trace.
+        if (request.getDetector() == null) {
+            Detector parsedDetector;
+            try {
+                parsedDetector = this.parseDetector(request);
+            } catch (Exception e) {
+                log.debug("Rejecting malformed detector request body", e);
+                String detail = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                listener.onFailure(
+                        new OpenSearchStatusException(
+                                String.format(Locale.ROOT, "Malformed detector request body: %s", detail),
+                                RestStatus.BAD_REQUEST));
+                return;
+            }
+            parsedDetector.setLastUpdateTime(Instant.now());
+            request.setDetector(parsedDetector);
+        }
+
+        try {
+            TransportIndexDetectorAction.validateDetectorTriggers(request.getDetector());
+        } catch (IllegalArgumentException e) {
+            listener.onFailure(new OpenSearchStatusException(e.getMessage(), RestStatus.BAD_REQUEST));
+            return;
+        }
+
         // Prevent detectors from exceeding the configured rules-per-detector limit.
         String ruleCountError =
                 TransportIndexDetectorAction.validateRuleCount(
@@ -394,6 +425,46 @@ public class TransportIndexDetectorAction
                             e -> listener.onFailure(SecurityAnalyticsException.wrap(e))));
         } else {
             this.checkIndicesAndExecute(task, request, listener, user);
+        }
+    }
+
+    /** Parses the detector from the raw body a REST-originated request carries. */
+    private Detector parseDetector(IndexDetectorRequest request) throws IOException {
+        byte[] body = request.getBody();
+        if (body == null || body.length == 0) {
+            throw new IllegalArgumentException("Request body is required");
+        }
+
+        MediaType mediaType =
+                request.getMediaType() != null
+                        ? MediaTypeRegistry.fromMediaType(request.getMediaType())
+                        : MediaTypeRegistry.JSON;
+        if (mediaType == null) {
+            throw new IllegalArgumentException(
+                    String.format(Locale.ROOT, "Unsupported Content-Type [%s]", request.getMediaType()));
+        }
+
+        try (XContentParser xcp =
+                mediaType
+                        .xContent()
+                        .createParser(this.xContentRegistry, LoggingDeprecationHandler.INSTANCE, body)) {
+            XContentParserUtils.ensureExpectedToken(
+                    XContentParser.Token.START_OBJECT, xcp.nextToken(), xcp);
+            return Detector.parse(xcp, request.getDetectorId(), null);
+        }
+    }
+
+    private static void validateDetectorTriggers(Detector detector) {
+        if (detector.getTriggers() != null) {
+            for (DetectorTrigger trigger : detector.getTriggers()) {
+                if (trigger.getDetectionTypes().isEmpty())
+                    throw new IllegalArgumentException(String.format(Locale.ROOT, "Trigger [%s] should mention at least one detection type but found none", trigger.getName()));
+                for (String detectionType : trigger.getDetectionTypes()) {
+                    if (false == (DetectorTrigger.THREAT_INTEL_DETECTION_TYPE.equals(detectionType) || DetectorTrigger.RULES_DETECTION_TYPE.equals(detectionType))) {
+                        throw new IllegalArgumentException(String.format(Locale.ROOT, "Trigger [%s] has unsupported detection type [%s]", trigger.getName(), detectionType));
+                    }
+                }
+            }
         }
     }
 
