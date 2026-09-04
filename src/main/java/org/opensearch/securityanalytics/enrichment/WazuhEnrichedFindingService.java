@@ -655,7 +655,6 @@ public class WazuhEnrichedFindingService implements Closeable {
             DocLevelQuery query, Map<String, Object> ruleMetadata, Map<String, Object> eventSource) {
         Map<String, Object> rule = new HashMap<>();
         rule.put("id", query.getId());
-        rule.put("sigma_id", query.getId());
 
         // Interpolate title and tags against the triggering event
         rule.put("title", TemplateInterpolator.interpolate(query.getName(), eventSource));
@@ -665,6 +664,16 @@ public class WazuhEnrichedFindingService implements Closeable {
         Map<String, Object> nested = ruleMetadata;
         if (ruleMetadata.containsKey("rule") && ruleMetadata.get("rule") instanceof Map) {
             nested = (Map<String, Object>) ruleMetadata.get("rule");
+        }
+
+        // sigma_id is the rule's own upstream Sigma identifier: an optional field of the rule body
+        // that is preserved on import and never changes. It is unrelated to the rules-index _id
+        // backing the doc-level query, which is regenerated on every space transition. Rules that
+        // declare no upstream identifier have none, so the field is omitted rather than filled with
+        // an unrelated id — consistent with level, status, compliance and mitre below.
+        Object sigmaId = nested.get("sigma_id");
+        if (sigmaId != null && !sigmaId.toString().isEmpty()) {
+            rule.put("sigma_id", sigmaId.toString());
         }
 
         Object level = nested.get("level");

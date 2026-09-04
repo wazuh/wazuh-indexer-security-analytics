@@ -209,6 +209,156 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
         assertFalse("event.ingested must not be present", eventObj.containsKey("ingested"));
     }
 
+    /**
+     * Verifies that {@code wazuh.rule.sigma_id} carries the rule's own upstream Sigma identifier —
+     * the optional {@code sigma_id} field of the rule body, preserved on import — and not the
+     * rules-index {@code _id} backing the doc-level query, which is regenerated on every space
+     * transition.
+     */
+    @SuppressWarnings("unchecked")
+    public void testBuildAndIndex_sigmaIdFromRuleSigmaId() throws Exception {
+        String docLevelQueryId = "24503db6-50e3-4dee-b592-db4d1056c775";
+        String documentId = "5db5e8e9-85f4-5cac-b97a-9eb39f16aa33";
+        String sigmaId = "1da8ce0b-855d-4004-8860-7d64d42063b1";
+
+        Map<String, Object> eventSource = new HashMap<>();
+        eventSource.put("@timestamp", "2026-05-20T10:00:00.000Z");
+        eventSource.put("wazuh", Map.of("integration", Map.of("category", "detection")));
+
+        Finding finding =
+                new Finding(
+                        "finding-5",
+                        List.of("doc-5"),
+                        List.of("doc-5"),
+                        "monitor-1",
+                        "monitor-name",
+                        "test-index",
+                        Collections.emptyList(),
+                        Instant.parse("2026-05-20T10:00:05.000Z"),
+                        "high");
+
+        DocLevelQuery query =
+                new DocLevelQuery(
+                        docLevelQueryId,
+                        "Custom rule",
+                        Collections.emptyList(),
+                        "event.code: \"9999\"",
+                        List.of("high"));
+
+        Map<String, Object> doc =
+                invokeBuildAndIndex(
+                        finding,
+                        "detection",
+                        eventSource,
+                        "doc-5",
+                        query,
+                        Map.of(
+                                "rule",
+                                Map.of(
+                                        "document", Map.of("id", documentId), "sigma_id", sigmaId, "level", "high")));
+
+        Map<String, Object> rule =
+                (Map<String, Object>) ((Map<String, Object>) doc.get("wazuh")).get("rule");
+        assertEquals("rule.id must remain the doc-level query id", docLevelQueryId, rule.get("id"));
+        assertEquals(
+                "rule.sigma_id must be the rule's upstream sigma_id", sigmaId, rule.get("sigma_id"));
+        assertNotEquals(
+                "rule.sigma_id must not be the doc-level query id", docLevelQueryId, rule.get("sigma_id"));
+    }
+
+    /**
+     * {@code sigma_id} is optional: a rule that was not imported from upstream Sigma has none, so the
+     * field is omitted rather than filled with the rule's own id.
+     */
+    @SuppressWarnings("unchecked")
+    public void testBuildAndIndex_sigmaIdOmittedWhenRuleDeclaresNone() throws Exception {
+        String docLevelQueryId = "24503db6-50e3-4dee-b592-db4d1056c775";
+        String documentId = "537cfcf0-ce26-49b7-8ea0-29b4ef213057";
+
+        Map<String, Object> eventSource = new HashMap<>();
+        eventSource.put("@timestamp", "2026-05-20T10:00:00.000Z");
+        eventSource.put("wazuh", Map.of("integration", Map.of("category", "detection")));
+
+        Finding finding =
+                new Finding(
+                        "finding-6",
+                        List.of("doc-6"),
+                        List.of("doc-6"),
+                        "monitor-1",
+                        "monitor-name",
+                        "test-index",
+                        Collections.emptyList(),
+                        Instant.parse("2026-05-20T10:00:05.000Z"),
+                        "high");
+
+        DocLevelQuery query =
+                new DocLevelQuery(
+                        docLevelQueryId,
+                        "Custom rule without upstream Sigma id",
+                        Collections.emptyList(),
+                        "event.code: \"9999\"",
+                        List.of("high"));
+
+        Map<String, Object> doc =
+                invokeBuildAndIndex(
+                        finding,
+                        "detection",
+                        eventSource,
+                        "doc-6",
+                        query,
+                        Map.of("rule", Map.of("document", Map.of("id", documentId), "level", "high")));
+
+        Map<String, Object> rule =
+                (Map<String, Object>) ((Map<String, Object>) doc.get("wazuh")).get("rule");
+        assertEquals("rule.id must remain the doc-level query id", docLevelQueryId, rule.get("id"));
+        assertFalse(
+                "sigma_id must be absent when the rule declares no upstream Sigma id",
+                rule.containsKey("sigma_id"));
+    }
+
+    /**
+     * Without rule metadata the upstream identifier is unknown, so {@code sigma_id} is omitted rather
+     * than filled with the unrelated rules-index id.
+     */
+    @SuppressWarnings("unchecked")
+    public void testBuildAndIndex_sigmaIdOmittedWhenMetadataMissing() throws Exception {
+        String docLevelQueryId = "ddf46be9-dbda-59a6-8b3e-ef7b798f07b2";
+
+        Map<String, Object> eventSource = new HashMap<>();
+        eventSource.put("@timestamp", "2026-05-20T10:00:00.000Z");
+        eventSource.put("wazuh", Map.of("integration", Map.of("category", "detection")));
+
+        Finding finding =
+                new Finding(
+                        "finding-7",
+                        List.of("doc-7"),
+                        List.of("doc-7"),
+                        "monitor-1",
+                        "monitor-name",
+                        "test-index",
+                        Collections.emptyList(),
+                        Instant.parse("2026-05-20T10:00:05.000Z"),
+                        "high");
+
+        DocLevelQuery query =
+                new DocLevelQuery(
+                        docLevelQueryId,
+                        "Pre-packaged rule",
+                        Collections.emptyList(),
+                        "event.code: \"4625\"",
+                        List.of("high"));
+
+        Map<String, Object> doc =
+                invokeBuildAndIndex(finding, "detection", eventSource, "doc-7", query, Map.of());
+
+        Map<String, Object> rule =
+                (Map<String, Object>) ((Map<String, Object>) doc.get("wazuh")).get("rule");
+        assertEquals("rule.id must remain the doc-level query id", docLevelQueryId, rule.get("id"));
+        assertFalse(
+                "sigma_id must be absent when the rule metadata is unavailable",
+                rule.containsKey("sigma_id"));
+    }
+
     // ── Helper ──────────────────────────────────────────────────────────────
 
     /**
@@ -226,6 +376,13 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
             throws Exception {
 
         List<DocLevelQuery> queries = primaryQuery == null ? List.of() : List.of(primaryQuery);
+
+        if (primaryQuery != null) {
+            var cacheField = WazuhEnrichedFindingService.class.getDeclaredField("ruleMetadataCache");
+            cacheField.setAccessible(true);
+            ((Map<String, Map<String, Object>>) cacheField.get(service))
+                    .put(primaryQuery.getId(), ruleMetadata);
+        }
 
         Method method =
                 WazuhEnrichedFindingService.class.getDeclaredMethod(
