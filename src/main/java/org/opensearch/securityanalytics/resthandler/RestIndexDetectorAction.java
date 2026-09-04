@@ -7,9 +7,7 @@ package org.opensearch.securityanalytics.resthandler;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.action.support.WriteRequest;
-import org.opensearch.core.xcontent.XContentParserUtils;
 import org.opensearch.core.xcontent.ToXContent;
-import org.opensearch.core.xcontent.XContentParser;
 import org.opensearch.rest.BaseRestHandler;
 import org.opensearch.rest.BytesRestResponse;
 import org.opensearch.rest.RestChannel;
@@ -22,14 +20,12 @@ import org.opensearch.securityanalytics.action.IndexDetectorAction;
 import org.opensearch.securityanalytics.action.IndexDetectorRequest;
 import org.opensearch.securityanalytics.action.IndexDetectorResponse;
 import org.opensearch.securityanalytics.model.Detector;
-import org.opensearch.securityanalytics.model.DetectorTrigger;
 import org.opensearch.securityanalytics.util.DetectorUtils;
 import org.opensearch.securityanalytics.util.RegistryOverrideWriter;
 import org.opensearch.securityanalytics.util.RestHandlerUtils;
 import org.opensearch.transport.client.node.NodeClient;
 
 import java.io.IOException;
-import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 
@@ -64,29 +60,14 @@ public class RestIndexDetectorAction extends BaseRestHandler {
 
         String id = request.param("detector_id", Detector.NO_ID);
 
-        XContentParser xcp = request.contentParser();
-        XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.nextToken(), xcp);
+        // Forwarded verbatim and parsed by TransportIndexDetectorAction. Privileges are evaluated in
+        // the transport ActionFilters chain, which runs after every REST handler, so parsing here
+        // exposed the whole parsing path to accounts the same request, well-formed, refuses with 403.
+        byte[] body = request.hasContent() ? request.content().streamInput().readAllBytes() : null;
+        String mediaType = request.getMediaType() != null ? request.getMediaType().mediaTypeWithoutParameters() : null;
 
-        Detector detector = Detector.parse(xcp, id, null);
-        detector.setLastUpdateTime(Instant.now());
-        validateDetectorTriggers(detector);
-
-        IndexDetectorRequest indexDetectorRequest = new IndexDetectorRequest(id, refreshPolicy, request.method(), detector);
+        IndexDetectorRequest indexDetectorRequest = new IndexDetectorRequest(id, refreshPolicy, request.method(), body, mediaType);
         return channel -> client.execute(IndexDetectorAction.INSTANCE, indexDetectorRequest, indexDetectorResponse(channel, request.method(), client));
-    }
-
-    private static void validateDetectorTriggers(Detector detector) {
-        if (detector.getTriggers() != null) {
-            for (DetectorTrigger trigger : detector.getTriggers()) {
-                if (trigger.getDetectionTypes().isEmpty())
-                    throw new IllegalArgumentException(String.format(Locale.ROOT, "Trigger [%s] should mention at least one detection type but found none", trigger.getName()));
-                for (String detectionType : trigger.getDetectionTypes()) {
-                    if (false == (DetectorTrigger.THREAT_INTEL_DETECTION_TYPE.equals(detectionType) || DetectorTrigger.RULES_DETECTION_TYPE.equals(detectionType))) {
-                        throw new IllegalArgumentException(String.format(Locale.ROOT, "Trigger [%s] has unsupported detection type [%s]", trigger.getName(), detectionType));
-                    }
-                }
-            }
-        }
     }
 
     private RestResponseListener<IndexDetectorResponse> indexDetectorResponse(RestChannel channel, RestRequest.Method restMethod, NodeClient client) {
