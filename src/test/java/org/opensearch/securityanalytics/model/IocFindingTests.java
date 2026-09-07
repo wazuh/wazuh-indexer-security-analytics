@@ -13,13 +13,10 @@ import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
 
-import static org.opensearch.securityanalytics.TestHelpers.toJsonString;
-
 public class IocFindingTests extends OpenSearchTestCase {
 
     public void testIoCMatchAsAStream() throws IOException {
         IocFinding iocFinding = getRandomIoCMatch();
-        String jsonString = toJsonString(iocFinding);
         BytesStreamOutput out = new BytesStreamOutput();
         iocFinding.writeTo(out);
         StreamInput sin = StreamInput.wrap(out.bytes().toBytesRef().bytes);

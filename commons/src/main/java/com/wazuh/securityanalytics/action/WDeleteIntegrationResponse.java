@@ -41,12 +41,14 @@ public class WDeleteIntegrationResponse extends ActionResponse implements ToXCon
         this(sin.readString(), sin.readLong(), (RestStatus) sin.readEnum(RestStatus.class));
     }
 
+    @Override
     public void writeTo(StreamOutput out) throws IOException {
         out.writeString(this.id);
         out.writeLong(this.version);
         out.writeEnum(this.status);
     }
 
+    @Override
     public XContentBuilder toXContent(XContentBuilder builder, ToXContent.Params params)
             throws IOException {
         return builder

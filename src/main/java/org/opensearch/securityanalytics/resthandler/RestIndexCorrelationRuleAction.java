@@ -11,7 +11,6 @@ package org.opensearch.securityanalytics.resthandler;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.core.xcontent.ToXContent;
-import org.opensearch.core.xcontent.XContentParser;
 import org.opensearch.rest.BaseRestHandler;
 import org.opensearch.rest.BytesRestResponse;
 import org.opensearch.rest.RestChannel;
@@ -56,10 +55,12 @@ public class RestIndexCorrelationRuleAction extends BaseRestHandler {
 
         String id = request.param("correlation_rule_id", CorrelationRule.NO_ID);
 
-        XContentParser xcp = request.contentParser();
+        // Forwarded verbatim and parsed by TransportIndexCorrelationRuleAction, so the parse happens
+        // behind the ActionFilters chain that decides whether this account may write rules at all.
+        byte[] body = request.hasContent() ? request.content().streamInput().readAllBytes() : null;
+        String mediaType = request.getMediaType() != null ? request.getMediaType().mediaTypeWithoutParameters() : null;
 
-        CorrelationRule correlationRule = CorrelationRule.parse(xcp, id, null);
-        IndexCorrelationRuleRequest indexCorrelationRuleRequest = new IndexCorrelationRuleRequest(id, correlationRule, request.method());
+        IndexCorrelationRuleRequest indexCorrelationRuleRequest = new IndexCorrelationRuleRequest(id, request.method(), body, mediaType);
         return channel -> client.execute(
             IndexCorrelationRuleAction.INSTANCE,
             indexCorrelationRuleRequest,

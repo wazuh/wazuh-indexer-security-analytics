@@ -3,9 +3,9 @@
 # =========================
 # Repository Bumper Script
 # =========================
-# Updates VERSION.json for a new version release, then (depending on flags)
-# reinitializes CHANGELOG.md and pins workflow references to the right
-# branch/tag.
+# Updates VERSION.json for a new version release, syncs the hardcoded version
+# fallback in build.gradle to match, then (depending on flags) reinitializes
+# CHANGELOG.md and pins workflow references to the right branch/tag.
 #
 # Usage: repository_bumper.sh --version VERSION --stage STAGE [--tag] [--set-as-main]
 
@@ -54,7 +54,7 @@ function log() {
 function navigate_to_project_root() {
     local repo_root_marker=".github"
     local script_path
-    script_path=$(dirname "$(realpath "$0")")
+    script_path=$(dirname "$(realpath "${BASH_SOURCE[0]}")")
 
     while [[ "$script_path" != "/" ]] && [[ ! -d "$script_path/$repo_root_marker" ]]; do
         script_path=$(dirname "$script_path")
@@ -132,6 +132,36 @@ function update_version_file() {
 }
 
 # ====
+# Sync the hardcoded version fallback in build.gradle to the release version.
+# build.gradle resolves the build version from the `version` system property and
+# falls back to a hardcoded default when it is not passed (e.g. a bare `./gradlew`
+# with no -Dversion). Keeping that default equal to VERSION.json stops it drifting
+# behind the real version.
+# Arguments:
+#   $1 - version
+# ====
+function update_build_gradle_version() {
+    local version="$1"
+    local file="build.gradle"
+    # Shared by the guard and the substitution below so the two cannot drift apart.
+    # The capture groups keep the surrounding text intact and replace only the number.
+    local version_pattern='(System\.getProperty\("version", ")[0-9]+\.[0-9]+\.[0-9]+("\))'
+
+    if [[ ! -f "$file" ]]; then
+        log "Warning: $file not found; skipping build.gradle version sync."
+        return 0
+    fi
+
+    if ! grep -qE "$version_pattern" "$file"; then
+        log "Warning: hardcoded 'version' fallback not found in $file; skipping sync."
+        return 0
+    fi
+
+    sed -i -E "s/${version_pattern}/\1${version}\2/" "$file"
+    log "Synced $file hardcoded version fallback to $version"
+}
+
+# ====
 # Parse command-line arguments
 # Globals:
 #   arg_version, arg_stage, arg_tag, arg_set_as_main
@@ -197,6 +227,7 @@ function main() {
     old_version="$(current_version)"
 
     update_version_file "$arg_version" "$arg_stage"
+    update_build_gradle_version "$arg_version"
 
     if [[ "$arg_version" != "$old_version" ]]; then
         log "Version changed: $old_version -> $arg_version"

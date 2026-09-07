@@ -1014,10 +1014,8 @@ public class MapperRestApiIT extends SecurityAnalyticsRestTestCase {
 
         String testIndexName1 = "get_mappings_view_index111";
         String testIndexName2 = "get_mappings_view_index122";
-        String testIndexName3 = "get_mappings_view_index";
 
         String indexPattern = "get_mappings_view_index1*";
-        String indexPattern2 = "get_mappings_view_index*";
 
         createSampleIndex(testIndexName1);
         createSampleIndex(testIndexName2);
@@ -1335,8 +1333,6 @@ public class MapperRestApiIT extends SecurityAnalyticsRestTestCase {
             throws IOException {
         String indexName1 = "test_index_11";
         String indexName2 = "test_index_12";
-        String indexName3 = "test_index_13";
-        String indexName4 = "test_index44";
         String indexPattern1 = "test_index_1*";
         String indexPattern2 = "test_index*";
 
@@ -1388,9 +1384,6 @@ public class MapperRestApiIT extends SecurityAnalyticsRestTestCase {
             throws IOException {
         String indexName1 = "test_index_11";
         String indexName2 = "test_index_12";
-        String indexName3 = "test_index_13";
-        String indexName4 = "test_index44";
-        String indexPattern1 = "test_index_1*";
         String indexPattern2 = "test_index*";
 
         createIndex(indexName1, Settings.EMPTY, null);
@@ -1755,7 +1748,7 @@ public class MapperRestApiIT extends SecurityAnalyticsRestTestCase {
         Request indexRequest = new Request("POST", INDEX_NAME + "/_doc?refresh=wait_for");
         indexRequest.setJsonEntity(dnsSampleDoc);
         // Generate automatic mappings my inserting doc
-        Response response = client().performRequest(indexRequest);
+        client().performRequest(indexRequest);
         // Get the mappings being tested
         String indexMapping = readResource(DNS_MAPPINGS);
         // Parse the mappings

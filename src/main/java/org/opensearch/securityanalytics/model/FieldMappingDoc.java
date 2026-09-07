@@ -47,19 +47,23 @@ public class FieldMappingDoc implements ToXContent, Writeable {
         Objects.requireNonNull(schemaFields);
         Objects.requireNonNull(logTypes);
         this.rawField = rawField;
-        this.schemaFields = schemaFields;
-        this.logTypes = logTypes;
+        // Defensive copies: callers pass immutable collections (Set.of(...), Map.of(...)) that this
+        // document later needs to merge into.
+        this.schemaFields = new HashMap<>(schemaFields);
+        this.logTypes = new HashSet<>(logTypes);
     }
 
     public FieldMappingDoc(String rawField, Set<String> logTypes) {
+        Objects.requireNonNull(logTypes);
         this.rawField = rawField;
         this.schemaFields = new HashMap<>();
-        this.logTypes = logTypes;
+        this.logTypes = new HashSet<>(logTypes);
     }
 
     public FieldMappingDoc(StreamInput sin) throws IOException {
         this.rawField = sin.readString();
         this.schemaFields = sin.readMap(StreamInput::readString, StreamInput::readString);
+        this.logTypes = new HashSet<>();
         Collections.addAll(this.logTypes, sin.readStringArray());
     }
 
@@ -118,12 +122,30 @@ public class FieldMappingDoc implements ToXContent, Writeable {
         return rawField;
     }
 
+    /** Read-only view. Use {@link #putSchemaField} or {@link #mergeSchemaFields} to modify. */
     public Map<String, String> getSchemaFields() {
-        return schemaFields;
+        return Collections.unmodifiableMap(schemaFields);
     }
 
+    /** Read-only view. Use {@link #addLogType} or {@link #addLogTypes} to modify. */
     public Set<String> getLogTypes() {
-        return logTypes;
+        return Collections.unmodifiableSet(logTypes);
+    }
+
+    public void putSchemaField(String key, String value) {
+        this.schemaFields.put(key, value);
+    }
+
+    public void mergeSchemaFields(Map<String, String> other) {
+        this.schemaFields.putAll(other);
+    }
+
+    public void addLogType(String logType) {
+        this.logTypes.add(logType);
+    }
+
+    public void addLogTypes(Set<String> other) {
+        this.logTypes.addAll(other);
     }
 
     public String getId() {

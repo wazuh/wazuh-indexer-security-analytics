@@ -23,7 +23,6 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.apache.hc.core5.http.HttpStatus.SC_OK;
 import static org.opensearch.action.admin.indices.create.CreateIndexRequest.MAPPINGS;
 
 public class SecurityAnalyticsClientUtils extends OpenSearchRestTestCase {
@@ -60,20 +59,6 @@ public class SecurityAnalyticsClientUtils extends OpenSearchRestTestCase {
         }
         Map<String, MappingMetadata> mappingsMap =  new HashMap<>(mappings);
         return new GetMappingsResponse(mappingsMap);
-    }
-
-    public static boolean executePutMappingRequest(String indexName, String mappings) throws IOException {
-        Request putMappingsRequest = new Request("PUT", indexName + "/_mapping");
-        Response response = client().performRequest(putMappingsRequest);
-        assertEquals(SC_OK, response.getStatusLine().getStatusCode());
-
-        XContentParser parser = JsonXContent.jsonXContent.createParser(
-                new NamedXContentRegistry(ClusterModule.getNamedXWriteables()),
-                DeprecationHandler.THROW_UNSUPPORTED_OPERATION,
-                response.getEntity().getContent()
-        );
-        Map<String, Object> ackResponse = parser.map();
-        return (boolean) ackResponse.get("acknowledged");
     }
 
     public static SearchResponse executeSearchRequest(String indexName, String queryJson) throws IOException {

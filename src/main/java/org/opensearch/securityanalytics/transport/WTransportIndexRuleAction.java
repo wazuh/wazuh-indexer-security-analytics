@@ -39,9 +39,7 @@ import org.opensearch.securityanalytics.model.FieldMappingDoc;
 import org.opensearch.securityanalytics.model.Rule;
 import org.opensearch.securityanalytics.rules.backend.OSQueryBackend;
 import org.opensearch.securityanalytics.rules.backend.QueryBackend;
-import org.opensearch.securityanalytics.rules.exceptions.SigmaConditionError;
 import org.opensearch.securityanalytics.rules.exceptions.SigmaError;
-import org.opensearch.securityanalytics.rules.exceptions.SigmaValueError;
 import org.opensearch.securityanalytics.rules.objects.SigmaRule;
 import org.opensearch.securityanalytics.util.RuleDetectorSync;
 import org.opensearch.securityanalytics.util.RuleIndices;
@@ -221,30 +219,20 @@ public class WTransportIndexRuleAction
                     return;
                 }
 
-                List<Object> queries = Collections.emptyList();
-                Set<String> queryFieldNames = Collections.emptySet();
+                // Single-pass conversion to get both queries and field names. A conversion failure
+                // is reported to the caller rather than indexing a rule with no queries, which
+                // would show up as enabled while detecting nothing.
+                QueryBackend backend = new OSQueryBackend(Collections.emptyMap(), false);
+                List<Object> queries = backend.convertRule(parsedRule);
+                Set<String> queryFieldNames = backend.getQueryFields().keySet();
+
+                // Build identity mappings (field -> field) from discovered fields
                 Map<String, String> fieldMappings = new HashMap<>();
-
-                try {
-                    // Single-pass conversion to get both queries and field names
-                    QueryBackend backend = new OSQueryBackend(Collections.emptyMap(), true, false);
-                    queries = backend.convertRule(parsedRule);
-                    queryFieldNames = backend.getQueryFields().keySet();
-
-                    // Build identity mappings (field -> field) from discovered fields
-                    for (String field : queryFieldNames) {
-                        fieldMappings.put(field, field);
-                    }
-                } catch (IOException | SigmaConditionError | SigmaValueError e) {
-                    // Log warning but continue - rule can still be indexed with empty queries/fields
-                    log.warn(
-                            "Failed to convert rule for log type {}: {}. Indexing with empty field mappings.",
-                            category,
-                            e.getMessage());
+                for (String field : queryFieldNames) {
+                    fieldMappings.put(field, field);
                 }
 
                 if (fieldMappings.isEmpty()) {
-                    // Rule has no field-based conditions (keyword-only rule) or conversion failed
                     log.debug(
                             "Rule has no field-based conditions (keyword-only). Indexing with empty field mappings for log type: {}",
                             category);
@@ -268,7 +256,7 @@ public class WTransportIndexRuleAction
 
                 this.indexRule(rule, fieldMappings);
 
-            } catch (IOException e) {
+            } catch (IOException | SigmaError e) {
                 this.onFailures(
                         new SigmaError(
                                 "Could not process rule for log type: " + category + ". Error: " + e.getMessage()));

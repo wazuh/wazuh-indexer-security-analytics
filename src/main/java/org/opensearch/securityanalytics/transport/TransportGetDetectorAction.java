@@ -78,7 +78,7 @@ public class TransportGetDetectorAction extends HandledTransportAction<GetDetect
         User user = readUserFromThreadContext(this.threadPool);
 
         String validateBackendRoleMessage = validateUserBackendRoles(user, this.filterByEnabled);
-        if (!"".equals(validateBackendRoleMessage)) {
+        if (!validateBackendRoleMessage.isEmpty()) {
             actionListener.onFailure(new OpenSearchStatusException("Do not have permissions to resource", RestStatus.FORBIDDEN));
             return;
         }
@@ -96,26 +96,27 @@ public class TransportGetDetectorAction extends HandledTransportAction<GetDetect
                         actionListener.onFailure(SecurityAnalyticsException.wrap(new OpenSearchStatusException("Detector not found.", RestStatus.NOT_FOUND)));
                         return;
                     }
-                    Detector detector = null;
-                    if (!response.isSourceEmpty()) {
-                        XContentParser xcp = XContentHelper.createParser(
-                                xContentRegistry, LoggingDeprecationHandler.INSTANCE,
-                                response.getSourceAsBytesRef(), XContentType.JSON
-                        );
-                        detector = Detector.docParse(xcp, response.getId(), response.getVersion());
-                        assert detector != null;
-                        // security is enabled and filterby is enabled
-                        if (!checkUserPermissionsWithResource(
-                                user,
-                                detector.getUser(),
-                                "detector",
-                                detector.getId(),
-                                TransportGetDetectorAction.this.filterByEnabled
-                        )
-                        ) {
-                            actionListener.onFailure(new OpenSearchStatusException("Do not have permissions to resource", RestStatus.FORBIDDEN));
-                            return;
-                        }
+                    if (response.isSourceEmpty()) {
+                        actionListener.onFailure(SecurityAnalyticsException.wrap(new OpenSearchStatusException("Detector has no source.", RestStatus.NOT_FOUND)));
+                        return;
+                    }
+
+                    XContentParser xcp = XContentHelper.createParser(
+                            xContentRegistry, LoggingDeprecationHandler.INSTANCE,
+                            response.getSourceAsBytesRef(), XContentType.JSON
+                    );
+                    Detector detector = Detector.docParse(xcp, response.getId(), response.getVersion());
+                    // security is enabled and filterby is enabled
+                    if (!checkUserPermissionsWithResource(
+                            user,
+                            detector.getUser(),
+                            TransportGetDetectorAction.this.filterByEnabled
+                    )
+                    ) {
+                        actionListener.onFailure(new OpenSearchStatusException(
+                                "Do not have permissions to resource, detector, with id, " + detector.getId(),
+                                RestStatus.FORBIDDEN));
+                        return;
                     }
 
                     actionListener.onResponse(new GetDetectorResponse(detector.getId(), detector.getVersion(), OK, detector));

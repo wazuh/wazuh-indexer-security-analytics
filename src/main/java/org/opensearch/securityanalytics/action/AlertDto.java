@@ -172,6 +172,7 @@ public class AlertDto implements ToXContentObject, Writeable {
         return builder;
     }
 
+    @Override
     public void writeTo(StreamOutput out) throws IOException {
         out.writeString(detectorId);
         out.writeString(id);

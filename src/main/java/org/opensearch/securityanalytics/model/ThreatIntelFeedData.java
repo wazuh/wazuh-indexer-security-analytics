@@ -37,7 +37,7 @@ public class ThreatIntelFeedData implements Writeable, ToXContentObject {
     public static final NamedXContentRegistry.Entry XCONTENT_REGISTRY = new NamedXContentRegistry.Entry(
             ThreatIntelFeedData.class,
             new ParseField(FEED_TYPE),
-            xcp -> parse(xcp, null, null)
+            xcp -> parse(xcp)
     );
 
     private final String iocType;
@@ -55,7 +55,7 @@ public class ThreatIntelFeedData implements Writeable, ToXContentObject {
         this.timestamp = timestamp;
     }
 
-    public static ThreatIntelFeedData parse(XContentParser xcp, String id, Long version) throws IOException {
+    public static ThreatIntelFeedData parse(XContentParser xcp) throws IOException {
         String iocType = null;
         String iocValue = null;
         String feedId = null;

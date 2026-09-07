@@ -6,7 +6,6 @@ package org.opensearch.securityanalytics.action;
 
 import java.io.IOException;
 import java.time.Instant;
-import java.util.Locale;
 import org.opensearch.action.ActionRequest;
 import org.opensearch.action.ActionRequestValidationException;
 import org.opensearch.core.common.io.stream.StreamInput;
@@ -65,9 +64,8 @@ public class GetAlertsRequest extends ActionRequest {
     public ActionRequestValidationException validate() {
         ActionRequestValidationException validationException = null;
         if ((detectorId == null || detectorId.length() == 0) && logType == null) {
-            validationException = addValidationError(String.format(Locale.getDefault(),
-                            "At least one of detector type or detector id needs to be passed", DETECTOR_ID),
-                    validationException);
+            validationException = addValidationError(
+                    "At least one of detector type or detector id needs to be passed", validationException);
         }
         return validationException;
     }

@@ -17,5 +17,6 @@ public abstract class SigmaListModifier extends SigmaModifier {
         super(detectionItem, appliedModifiers);
     }
 
+    @Override
     public abstract Either<SigmaType, List<SigmaType>> modify(Either<SigmaType, List<SigmaType>> val);
 }

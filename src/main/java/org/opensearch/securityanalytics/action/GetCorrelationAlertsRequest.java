@@ -12,7 +12,6 @@ import org.opensearch.core.common.io.stream.StreamOutput;
 
 import java.io.IOException;
 import java.time.Instant;
-import java.util.Locale;
 
 import static org.opensearch.action.ValidateActions.addValidationError;
 
@@ -63,9 +62,8 @@ public class GetCorrelationAlertsRequest extends ActionRequest {
     public ActionRequestValidationException validate() {
         ActionRequestValidationException validationException = null;
         if ((correlationRuleId != null && correlationRuleId.isEmpty())) {
-            validationException = addValidationError(String.format(Locale.getDefault(),
-                            "Correlation ruleId is empty or not valid", CORRELATION_RULE_ID),
-                    validationException);
+            validationException = addValidationError(
+                    "Correlation ruleId is empty or not valid", validationException);
         }
         return validationException;
     }

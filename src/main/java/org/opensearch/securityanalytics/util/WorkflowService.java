@@ -4,7 +4,6 @@
  */
 package org.opensearch.securityanalytics.util;
 
-import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.OpenSearchException;
@@ -26,7 +25,6 @@ import org.opensearch.core.action.ActionListener;
 import org.opensearch.index.seqno.SequenceNumbers;
 import org.opensearch.rest.RestRequest.Method;
 import org.opensearch.securityanalytics.model.Detector;
-import org.opensearch.securityanalytics.model.Rule;
 import org.opensearch.transport.client.Client;
 import org.opensearch.transport.client.node.NodeClient;
 
@@ -69,7 +67,6 @@ public class WorkflowService {
      * @param listener
      */
     public void upsertWorkflow(
-            List<Pair<String, Rule>> rulesById,
             List<IndexMonitorResponse> addedMonitorResponses,
             List<IndexMonitorResponse> updatedMonitorResponses,
             Detector detector,
@@ -78,7 +75,7 @@ public class WorkflowService {
             Method method,
             ActionListener<IndexWorkflowResponse> listener
     ) {
-        List<String> addedMonitors = addedMonitorResponses != null ? addedMonitorResponses.stream().map(IndexMonitorResponse::getId).collect(Collectors.toList()) : Collections.emptyList();
+        List<String> addedMonitors = addedMonitorResponses.stream().map(IndexMonitorResponse::getId).collect(Collectors.toList());
         List<String> updatedMonitors = updatedMonitorResponses != null ? updatedMonitorResponses.stream().map(IndexMonitorResponse::getId).collect(Collectors.toList()) : Collections.emptyList();
         if (method != Method.POST && method != Method.PUT) {
             log.error(String.format("Method %s not supported when upserting the workflow", method.name()));

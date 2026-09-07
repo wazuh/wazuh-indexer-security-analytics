@@ -427,7 +427,7 @@ public class Detector implements Writeable, ToXContentObject {
         Schedule schedule = null;
         Instant lastUpdateTime = null;
         Instant enabledTime = null;
-        Boolean enabled = true;
+        boolean enabled = true;
         List<DetectorInput> inputs = new ArrayList<>();
         List<DetectorTrigger> triggers = new ArrayList<>();
         List<String> monitorIds = new ArrayList<>();
@@ -573,7 +573,10 @@ public class Detector implements Writeable, ToXContentObject {
                 Objects.requireNonNull(schedule, "Detector schedule is null"),
                 lastUpdateTime != null ? lastUpdateTime : Instant.now(),
                 enabledTime,
-                logType,
+                // A detector with no log type is unusable: getDetectorType() dereferences it, so a
+                // body that omits both detector_type and type escaped as a 500 further down the
+                // pipeline. Rejected here with the other required fields instead.
+                Objects.requireNonNull(logType, "Detector type is null"),
                 user,
                 inputs,
                 triggers,
