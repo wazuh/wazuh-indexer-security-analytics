@@ -225,7 +225,6 @@ public class FindingIT extends SecurityAnalyticsRestTestCase {
         DetectorInput inputNetflow = new DetectorInput("windows detector for security analytics", List.of("netflow_test"), Collections.emptyList(),
                 getPrePackagedRules("network").stream().map(DetectorRule::new).collect(Collectors.toList()));
         Detector detector2 = randomDetectorWithTriggers(
-                getPrePackagedRules("network"),
                 List.of(new DetectorTrigger(null, "test-trigger", "1", List.of("network"), List.of(), List.of(), List.of(), List.of(), List.of())),
                 "network",
                 inputNetflow
@@ -337,7 +336,6 @@ public class FindingIT extends SecurityAnalyticsRestTestCase {
         DetectorInput inputNetflow = new DetectorInput("windows detector for security analytics", List.of("netflow_test"), Collections.emptyList(),
                 getPrePackagedRules("network").stream().map(DetectorRule::new).collect(Collectors.toList()));
         Detector detector2 = randomDetectorWithTriggers(
-                getPrePackagedRules("network"),
                 List.of(new DetectorTrigger(null, "test-trigger", "1", List.of("network"), List.of(), List.of(), List.of(), List.of(), List.of())),
                 "network",
                 inputNetflow
@@ -447,7 +445,6 @@ public class FindingIT extends SecurityAnalyticsRestTestCase {
         DetectorInput inputNetflow = new DetectorInput("windows detector for security analytics", List.of("netflow_test"), Collections.emptyList(),
                 getPrePackagedRules("network").stream().map(DetectorRule::new).collect(Collectors.toList()));
         Detector detector2 = randomDetectorWithTriggers(
-                getPrePackagedRules("network"),
                 List.of(new DetectorTrigger(null, "test-trigger", "1", List.of("network"), List.of(), List.of(), List.of(), List.of(), List.of())),
                 "network",
                 inputNetflow
@@ -534,7 +531,6 @@ public class FindingIT extends SecurityAnalyticsRestTestCase {
         DetectorInput input = new DetectorInput("windows detector for security analytics", List.of("windows"), detectorRules,
                 emptyList());
         Detector detector1 =  randomDetectorWithTriggers(
-                getPrePackagedRules("windows"),
                 List.of(new DetectorTrigger(null, "test-trigger", "1", List.of("windows"), List.of(), List.of(), List.of(), List.of(), List.of())),
                 "windows",
                 input
@@ -562,7 +558,6 @@ public class FindingIT extends SecurityAnalyticsRestTestCase {
         DetectorInput inputNetflow = new DetectorInput("windows detector for security analytics", List.of("windows"), detectorRules2,
                 emptyList());
         Detector detector2 = randomDetectorWithTriggers(
-                getPrePackagedRules("windows1"),
                 List.of(new DetectorTrigger(null, "test-trigger", "0", List.of("windows1"), List.of(), List.of(), List.of(), List.of(), List.of())),
                 "windows",
                 inputNetflow
@@ -656,7 +651,6 @@ public class FindingIT extends SecurityAnalyticsRestTestCase {
         DetectorInput input = new DetectorInput("windows detector for security analytics", List.of("windows"), detectorRules,
                 emptyList());
         Detector detector1 =  randomDetectorWithTriggers(
-                getPrePackagedRules("windows"),
                 List.of(new DetectorTrigger(null, "test-trigger", "1", List.of("windows"), List.of(), List.of(), List.of(), List.of(), List.of())),
                 "windows",
                 input
@@ -684,7 +678,6 @@ public class FindingIT extends SecurityAnalyticsRestTestCase {
         DetectorInput inputNetflow = new DetectorInput("windows detector for security analytics", List.of("windows"), detectorRules2,
                 emptyList());
         Detector detector2 = randomDetectorWithTriggers(
-                getPrePackagedRules("windows1"),
                 List.of(new DetectorTrigger(null, "test-trigger", "0", List.of("windows1"), List.of(), List.of(), List.of(), List.of(), List.of())),
                 "windows",
                 inputNetflow
@@ -778,7 +771,6 @@ public class FindingIT extends SecurityAnalyticsRestTestCase {
         DetectorInput input = new DetectorInput("windows detector for security analytics", List.of(index1), detectorRules,
                 emptyList());
         Detector detector1 =  randomDetectorWithTriggers(
-                getPrePackagedRules(randomDetectorType()),
                 List.of(new DetectorTrigger(null, "test-trigger", "1", List.of(index1), List.of(), List.of(), List.of(), List.of(), List.of())),
                 randomDetectorType(),
                 input
@@ -806,7 +798,6 @@ public class FindingIT extends SecurityAnalyticsRestTestCase {
         DetectorInput inputNetflow = new DetectorInput("windows detector for security analytics", List.of(index2), detectorRules2,
                 emptyList());
         Detector detector2 = randomDetectorWithTriggers(
-                getPrePackagedRules(randomDetectorType()),
                 List.of(new DetectorTrigger(null, "test-trigger", "0", List.of(index2), List.of(), List.of(), List.of(), List.of(), List.of())),
                 randomDetectorType(),
                 inputNetflow

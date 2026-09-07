@@ -21,14 +21,12 @@ public class MappingsTraverserTests extends OpenSearchTestCase {
 
     public void testTraverseValidMappings() {
         // 1. Parse mappings from MappingMetadata
-        Map<String, MappingMetadata> mappings = new HashMap<>();
         Map<String, Object> m = new HashMap<>();
         m.put("netflow.event_data.SourceAddress", Map.of("type", "ip"));
         m.put("netflow.event_data.SourcePort", Map.of("type", "integer"));
         Map<String, Object> properties = Map.of("properties", m);
         Map<String, Object> root = Map.of(MapperService.SINGLE_MAPPING_NAME, properties);
         MappingMetadata mappingMetadata = new MappingMetadata(MapperService.SINGLE_MAPPING_NAME, root);
-        mappings.put("my_index", mappingMetadata);
 
         MappingsTraverser mappingsTraverser = new MappingsTraverser(mappingMetadata);
         mappingsTraverser.addListener(new MappingsTraverser.MappingsTraverserListener() {
@@ -162,7 +160,6 @@ public class MappingsTraverserTests extends OpenSearchTestCase {
         MappingMetadata mappingMetadata = new MappingMetadata(MapperService.SINGLE_MAPPING_NAME, root);
 
         MappingsTraverser mappingsTraverser = new MappingsTraverser(mappingMetadata);
-        final boolean[] errorHappend = new boolean[1];
         List<String> paths = new ArrayList<>();
 
        mappingsTraverser.addListener(new MappingsTraverser.MappingsTraverserListener() {
@@ -182,15 +179,10 @@ public class MappingsTraverserTests extends OpenSearchTestCase {
     }
 
     public void testTraverseValidMappingsWithTypeFilter() {
-        // 1. Parse mappings from MappingMetadata
-        Map<String, MappingMetadata> mappings = new HashMap<>();
         Map<String, Object> m = new HashMap<>();
         m.put("netflow.event_data.SourceAddress", Map.of("type", "ip"));
         m.put("netflow.event_data.SourcePort", Map.of("type", "integer"));
         Map<String, Object> properties = Map.of("properties", m);
-        Map<String, Object> root = Map.of(MapperService.SINGLE_MAPPING_NAME, properties);
-        MappingMetadata mappingMetadata = new MappingMetadata(MapperService.SINGLE_MAPPING_NAME, root);
-        mappings.put("my_index", mappingMetadata);
 
         MappingsTraverser mappingsTraverser = new MappingsTraverser(properties, Set.of("ip"));
 
@@ -212,15 +204,10 @@ public class MappingsTraverserTests extends OpenSearchTestCase {
     }
 
     public void testTraverseAndCopyValidMappingsWithTypeFilter() {
-        // 1. Parse mappings from MappingMetadata
-        Map<String, MappingMetadata> mappings = new HashMap<>();
         Map<String, Object> m = new HashMap<>();
         m.put("netflow.event_data.SourceAddress", Map.of("type", "ip"));
         m.put("netflow.event_data.SourcePort", Map.of("type", "integer"));
         Map<String, Object> properties = Map.of("properties", m);
-        Map<String, Object> root = Map.of(MapperService.SINGLE_MAPPING_NAME, properties);
-        MappingMetadata mappingMetadata = new MappingMetadata(MapperService.SINGLE_MAPPING_NAME, root);
-        mappings.put("my_index", mappingMetadata);
 
         MappingsTraverser mappingsTraverser = new MappingsTraverser(properties, Set.of("ip"));
         // Copy mappings while excluding type=ip

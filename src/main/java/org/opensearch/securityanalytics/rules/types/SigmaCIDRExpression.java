@@ -51,7 +51,12 @@ public class SigmaCIDRExpression implements SigmaType {
             return false;
         }
         if (values.length >= 2) {
-            int prefix = Integer.parseInt(values[1]);
+            int prefix;
+            try {
+                prefix = Integer.parseInt(values[1]);
+            } catch (NumberFormatException e) {
+                return false;
+            }
             if ((prefix < 0) || (prefix > 32)) {
                 return false;
             }

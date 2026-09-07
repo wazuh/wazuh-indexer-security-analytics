@@ -100,7 +100,7 @@ public class TransportGetFindingsAction extends HandledTransportAction<GetFindin
         User user = readUserFromThreadContext(this.threadPool);
 
         String validateBackendRoleMessage = validateUserBackendRoles(user, this.filterByEnabled);
-        if (!"".equals(validateBackendRoleMessage)) {
+        if (!validateBackendRoleMessage.isEmpty()) {
             actionListener.onFailure(new OpenSearchStatusException("Do not have permissions to resource", RestStatus.FORBIDDEN));
             return;
         }

@@ -26,7 +26,6 @@ import org.opensearch.core.xcontent.XContentParser;
 import org.opensearch.core.xcontent.XContentParserUtils;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -237,7 +236,6 @@ public class Integration implements Writeable, ToXContentObject {
         String space = null;
         Map<String, Object> tags = null;
         String documentId = null;
-        List<String> rules = new ArrayList<>();
 
         XContentParserUtils.ensureExpectedToken(
                 XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);

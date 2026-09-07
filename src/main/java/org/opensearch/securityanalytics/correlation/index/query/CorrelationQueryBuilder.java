@@ -207,9 +207,7 @@ public class CorrelationQueryBuilder extends AbstractQueryBuilder<CorrelationQue
             );
         }
 
-        String indexName = context.index().getName();
         CorrelationQueryFactory.CreateQueryRequest createQueryRequest = new CorrelationQueryFactory.CreateQueryRequest(
-                indexName,
                 this.fieldName,
                 this.vector,
                 this.k,

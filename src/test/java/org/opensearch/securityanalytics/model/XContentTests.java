@@ -200,7 +200,7 @@ public class XContentTests extends OpenSearchTestCase {
         ThreatIntelFeedData tifd = randomThreatIntelFeedData();
 
         String tifdString = toJsonString(tifd);
-        ThreatIntelFeedData parsedTifd = ThreatIntelFeedData.parse(parser(tifdString), null, null);
+        ThreatIntelFeedData parsedTifd = ThreatIntelFeedData.parse(parser(tifdString));
         Assert.assertEquals("Round tripping Threat intel feed data model doesn't work", tifd, parsedTifd);
     }
 }

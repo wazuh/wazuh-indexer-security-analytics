@@ -46,7 +46,6 @@ public class CreateIndexMappingsRequest extends ActionRequest implements ToXCont
         super();
         this.indexName = indexName;
         this.ruleTopic = ruleTopic;
-        this.aliasMappings = aliasMappings;
         this.partial = partial == null ? PARTIAL_FIELD_DEFAULT_VALUE : partial;
     }
 

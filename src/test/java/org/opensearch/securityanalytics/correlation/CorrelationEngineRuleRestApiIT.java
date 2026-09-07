@@ -60,8 +60,12 @@ public class CorrelationEngineRuleRestApiIT extends SecurityAnalyticsRestTestCas
                                     Collections.emptyMap(),
                                     toHttpEntity(rule));
                         });
+        // The name check moved out of IndexCorrelationRuleRequest.validate(), which ran ahead of the
+        // ActionFilters chain, and into TransportIndexCorrelationRuleAction, which runs after it. The
+        // status is still 400; the reason now names what is wrong with the name instead of being the
+        // empty "Validation Failed: " an argument-less ActionRequestValidationException renders as.
         String expectedMessage =
-                "{\"error\":{\"root_cause\":[{\"type\":\"action_request_validation_exception\",\"reason\":\"Validation Failed: \"}],\"type\":\"action_request_validation_exception\",\"reason\":\"Validation Failed: \"},\"status\":400}";
+                "{\"error\":{\"root_cause\":[{\"type\":\"status_exception\",\"reason\":\"Correlation rule name must be 5 to 50 characters long and may contain only letters, digits, spaces and the characters _ , - .\"}]";
         String actualMessage = exception.getMessage();
         Assert.assertTrue(actualMessage.contains(expectedMessage));
     }

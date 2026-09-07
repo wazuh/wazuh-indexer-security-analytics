@@ -84,7 +84,6 @@ public class CorrelationAlertsRestApiIT extends SecurityAnalyticsRestTestCase {
         OpenSearchRestTestCase.waitUntil(
                 () -> {
                     try {
-                        Long endTime = System.currentTimeMillis();
                         Request request = new Request("GET", "/_plugins/_security_analytics/correlationAlerts");
                         Response response = client().performRequest(request);
 

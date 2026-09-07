@@ -25,6 +25,7 @@ public class ConditionIdentifier extends ConditionItem {
         this.identifier = args.get(0).get();
     }
 
+    @Override
     public ConditionItem postProcess(SigmaDetections detections, Object parent) throws SigmaConditionError {
         this.setParent((ConditionItem) parent);
 

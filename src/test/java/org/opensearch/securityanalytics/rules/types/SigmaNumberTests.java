@@ -24,4 +24,20 @@ public class SigmaNumberTests extends OpenSearchTestCase {
         SigmaNumber n2 = new SigmaNumber(123);
         Assert.assertEquals(n1, n2);
     }
+
+    public void testNumberNotEqualForDifferentValues() {
+        Assert.assertNotEquals(new SigmaNumber(1), new SigmaNumber(999));
+    }
+
+    public void testNumberNotEqualForIntAndFloat() {
+        Assert.assertNotEquals(new SigmaNumber(1), new SigmaNumber(1.0f));
+    }
+
+    public void testNumberHashCodeConsistentForSameValue() {
+        Assert.assertEquals(new SigmaNumber(123).hashCode(), new SigmaNumber(123).hashCode());
+    }
+
+    public void testNumberHashCodeDiffersForDifferentValues() {
+        Assert.assertNotEquals(new SigmaNumber(1).hashCode(), new SigmaNumber(999).hashCode());
+    }
 }

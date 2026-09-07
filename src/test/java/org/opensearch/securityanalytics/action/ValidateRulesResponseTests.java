@@ -33,7 +33,7 @@ public class ValidateRulesResponseTests extends OpenSearchTestCase {
                 xcp.nextToken();
             }
             XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
-            List<String> ruleIds = null;
+            List<String> ruleIds = new ArrayList<>();
             while (xcp.nextToken() != XContentParser.Token.END_OBJECT) {
                 String fieldName = xcp.currentName();
                 xcp.nextToken();

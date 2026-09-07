@@ -35,7 +35,6 @@ public class TransportUpdateIndexMappingsAction extends HandledTransportAction<U
             TransportService transportService,
             ActionFilters actionFilters,
             ThreadPool threadPool,
-            UpdateIndexMappingsAction updateIndexMappingsAction,
             MapperService mapperService,
             ClusterService clusterService
     ) {
