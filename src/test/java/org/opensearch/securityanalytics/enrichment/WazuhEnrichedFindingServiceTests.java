@@ -366,13 +366,29 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
      * intercept at the indexEnrichedFinding level by overriding the pending-requests queue. A {@code
      * null} primaryQuery maps to the empty-queries path (base doc indexed without rule fields).
      */
-    @SuppressWarnings("unchecked")
     private Map<String, Object> invokeBuildAndIndex(
             Finding finding,
             String category,
             Map<String, Object> eventSource,
             String docId,
             DocLevelQuery primaryQuery)
+            throws Exception {
+        return invokeBuildAndIndex(finding, category, eventSource, docId, primaryQuery, Map.of());
+    }
+
+    /**
+     * Same as above, seeding the rule metadata cache with {@code ruleMetadata} for the primary
+     * query's id. An empty map stands for "metadata unavailable", matching what the service caches
+     * when the rules-index lookup returns nothing for a query.
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> invokeBuildAndIndex(
+            Finding finding,
+            String category,
+            Map<String, Object> eventSource,
+            String docId,
+            DocLevelQuery primaryQuery,
+            Map<String, Object> ruleMetadata)
             throws Exception {
 
         List<DocLevelQuery> queries = primaryQuery == null ? List.of() : List.of(primaryQuery);
