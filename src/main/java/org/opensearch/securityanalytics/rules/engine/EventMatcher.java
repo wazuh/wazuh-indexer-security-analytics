@@ -38,6 +38,14 @@ import java.util.stream.Collectors;
 /**
  * Evaluates Sigma rules against normalized events.
  *
+ * <p><b>Unused. Nothing calls this class.</b> logtest was its only caller and now evaluates rules
+ * through {@link PercolateRuleEvaluator} instead, so that one implementation of "does this rule
+ * match" serves both logtest and a deployed detector. Interpreting Sigma in the JVM cannot
+ * reproduce {@code query_string} parsing, the query index's analyzers or the percolator's
+ * field-mapping requirements, which is how logtest came to report matches production never
+ * produced. The class is kept for one release as a rollback path and is scheduled for deletion — do
+ * not wire it back in, and do not fix bugs here.
+ *
  * <p>Takes a JSON event and a list of pre-parsed {@link SigmaRule} objects, flattens the event into
  * a dot-notation map, then evaluates each rule's detection conditions against the event fields.
  * Results are returned as a JSON string summarizing which rules matched and why.

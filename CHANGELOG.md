@@ -60,6 +60,7 @@
 - [BUG] A user's Start/Stop of a standard detector is lost on CTI updates [(#1403)](https://github.com/wazuh/wazuh-indexer-plugins/issues/1403)
 - Fix detectors never creating findings for Sigma rules with space-containing values [(#285)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/285)
 - Code quality improvements [(#313)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/313)
+- [BUG] `logtest` reports `contains` matches that never fire in the real ingestion pipeline (case sensitivity) [(#321)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/321)
 
 ## Prior versions
 - []()
