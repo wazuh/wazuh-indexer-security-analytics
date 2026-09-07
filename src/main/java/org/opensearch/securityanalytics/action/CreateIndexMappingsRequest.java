@@ -1,6 +1,18 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.action;
 
@@ -8,10 +20,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.action.ActionRequest;
 import org.opensearch.action.ActionRequestValidationException;
-import org.opensearch.core.common.Strings;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
-import org.opensearch.common.xcontent.XContentFactory;
 import org.opensearch.core.xcontent.MediaTypeRegistry;
 import org.opensearch.core.xcontent.ToXContentObject;
 import org.opensearch.core.xcontent.XContentBuilder;
@@ -36,7 +46,6 @@ public class CreateIndexMappingsRequest extends ActionRequest implements ToXCont
 
     public static final Boolean PARTIAL_FIELD_DEFAULT_VALUE = true;
 
-
     String indexName;
     String ruleTopic;
     String aliasMappings;
@@ -49,31 +58,35 @@ public class CreateIndexMappingsRequest extends ActionRequest implements ToXCont
         this.partial = partial == null ? PARTIAL_FIELD_DEFAULT_VALUE : partial;
     }
 
-    public CreateIndexMappingsRequest(String indexName, String ruleTopic, String aliasMappings, Boolean partial) {
+    public CreateIndexMappingsRequest(
+            String indexName, String ruleTopic, String aliasMappings, Boolean partial) {
         this(indexName, ruleTopic, partial);
         this.aliasMappings = aliasMappings;
     }
 
     public CreateIndexMappingsRequest(StreamInput sin) throws IOException {
-        this(
-                sin.readString(),
-                sin.readString(),
-                sin.readOptionalString(),
-                sin.readOptionalBoolean()
-        );
+        this(sin.readString(), sin.readString(), sin.readOptionalString(), sin.readOptionalBoolean());
     }
 
     @Override
     public ActionRequestValidationException validate() {
         ActionRequestValidationException validationException = null;
         if (indexName == null || indexName.length() == 0) {
-            validationException = addValidationError(String.format(Locale.getDefault(), "%s is missing", INDEX_NAME_FIELD), validationException);
+            validationException =
+                    addValidationError(
+                            String.format(Locale.getDefault(), "%s is missing", INDEX_NAME_FIELD),
+                            validationException);
         }
-        if (
-            (ruleTopic == null || ruleTopic.length() == 0) &&
-            (aliasMappings == null || aliasMappings.length() == 0)
-        ) {
-            validationException = addValidationError(String.format(Locale.getDefault(), "%s and %s are missing", RULE_TOPIC_FIELD, ALIAS_MAPPINGS_FIELD), validationException);
+        if ((ruleTopic == null || ruleTopic.length() == 0)
+                && (aliasMappings == null || aliasMappings.length() == 0)) {
+            validationException =
+                    addValidationError(
+                            String.format(
+                                    Locale.getDefault(),
+                                    "%s and %s are missing",
+                                    RULE_TOPIC_FIELD,
+                                    ALIAS_MAPPINGS_FIELD),
+                            validationException);
         }
         return validationException;
     }
@@ -95,7 +108,8 @@ public class CreateIndexMappingsRequest extends ActionRequest implements ToXCont
         if (xcp.currentToken() == null) {
             xcp.nextToken();
         }
-        XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
+        XContentParserUtils.ensureExpectedToken(
+                XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
         while (xcp.nextToken() != XContentParser.Token.END_OBJECT) {
             String fieldName = xcp.currentName();
             xcp.nextToken();
@@ -109,25 +123,28 @@ public class CreateIndexMappingsRequest extends ActionRequest implements ToXCont
                     break;
                 case ALIAS_MAPPINGS_FIELD:
                     Map<String, Map<String, String>> aliasMap = new HashMap<>();
-                    XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
+                    XContentParserUtils.ensureExpectedToken(
+                            XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
                     while (xcp.nextToken() != XContentParser.Token.END_OBJECT) {
                         xcp.nextToken();
 
-                        XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
+                        XContentParserUtils.ensureExpectedToken(
+                                XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
                         while (xcp.nextToken() != XContentParser.Token.END_OBJECT) {
                             xcp.nextToken();
                             String alias = xcp.currentName();
                             String path = "";
 
-                            XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
+                            XContentParserUtils.ensureExpectedToken(
+                                    XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
                             while (xcp.nextToken() != XContentParser.Token.END_OBJECT) {
                                 String field = xcp.currentName();
                                 xcp.nextToken();
 
                                 switch (field) {
                                     case "path":
-                                       path = xcp.text();
-                                       break;
+                                        path = xcp.text();
+                                        break;
                                     default:
                                         xcp.skipChildren();
                                 }
@@ -135,7 +152,11 @@ public class CreateIndexMappingsRequest extends ActionRequest implements ToXCont
                             aliasMap.put(alias, Map.of("type", "alias", "path", path));
                         }
                     }
-                    aliasMappings = MediaTypeRegistry.JSON.contentBuilder().map(Map.of("properties", aliasMap)).toString();
+                    aliasMappings =
+                            MediaTypeRegistry.JSON
+                                    .contentBuilder()
+                                    .map(Map.of("properties", aliasMap))
+                                    .toString();
                     break;
                 case PARTIAL_FIELD:
                     partial = xcp.booleanValue();
@@ -201,7 +222,8 @@ public class CreateIndexMappingsRequest extends ActionRequest implements ToXCont
 
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
-        return builder.startObject()
+        return builder
+                .startObject()
                 .field(INDEX_NAME_FIELD, indexName)
                 .field(RULE_TOPIC_FIELD, ruleTopic)
                 .field(ALIAS_MAPPINGS_FIELD, aliasMappings)

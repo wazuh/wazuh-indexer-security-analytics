@@ -95,9 +95,7 @@ public interface SecureTransportAction {
      * <p>This check will later to moved to the security plugin.
      */
     default boolean checkUserPermissionsWithResource(
-            User requesterUser,
-            User resourceUser,
-            boolean filterByEnabled) {
+            User requesterUser, User resourceUser, boolean filterByEnabled) {
 
         if (!doFilterForUser(requesterUser, filterByEnabled)) return true;
 

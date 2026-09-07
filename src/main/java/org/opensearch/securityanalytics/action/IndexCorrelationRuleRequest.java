@@ -1,11 +1,19 @@
 /*
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
  *
- * The OpenSearch Contributors require contributions made to
- * this file be licensed under the Apache-2.0 license or a
- * compatible open source license.
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-
 package org.opensearch.securityanalytics.action;
 
 import org.opensearch.action.ActionRequest;
@@ -13,12 +21,11 @@ import org.opensearch.action.ActionRequestValidationException;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
 import org.opensearch.rest.RestRequest;
+import org.opensearch.securityanalytics.model.CorrelationRule;
 
 import java.io.IOException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
-import org.opensearch.securityanalytics.model.CorrelationRule;
 
 /**
  * Transport request to create or update a correlation rule. A request from the REST layer carries
@@ -40,7 +47,8 @@ public class IndexCorrelationRuleRequest extends ActionRequest {
 
     private static final Pattern IS_VALID_RULE_NAME = Pattern.compile("[a-zA-Z0-9 _,-.]{5,50}");
 
-    public IndexCorrelationRuleRequest(String correlationRuleId, CorrelationRule correlationRule, RestRequest.Method method) {
+    public IndexCorrelationRuleRequest(
+            String correlationRuleId, CorrelationRule correlationRule, RestRequest.Method method) {
         super();
         this.correlationRuleId = correlationRuleId;
         this.correlationRule = correlationRule;
@@ -50,7 +58,8 @@ public class IndexCorrelationRuleRequest extends ActionRequest {
     }
 
     /** Builds a request whose rule the transport action still has to parse from the raw body. */
-    public IndexCorrelationRuleRequest(String correlationRuleId, RestRequest.Method method, byte[] body, String mediaType) {
+    public IndexCorrelationRuleRequest(
+            String correlationRuleId, RestRequest.Method method, byte[] body, String mediaType) {
         super();
         this.correlationRuleId = correlationRuleId;
         this.correlationRule = null;
@@ -75,7 +84,9 @@ public class IndexCorrelationRuleRequest extends ActionRequest {
         return null;
     }
 
-    /** @return true if the rule name is present and well-formed */
+    /**
+     * @return true if the rule name is present and well-formed
+     */
     public static boolean isValidRuleName(String name) {
         if (name == null) {
             return false;
@@ -104,7 +115,9 @@ public class IndexCorrelationRuleRequest extends ActionRequest {
         return correlationRuleId;
     }
 
-    /** @return the rule, or null while the raw body has not been parsed yet */
+    /**
+     * @return the rule, or null while the raw body has not been parsed yet
+     */
     public CorrelationRule getCorrelationRule() {
         return correlationRule;
     }

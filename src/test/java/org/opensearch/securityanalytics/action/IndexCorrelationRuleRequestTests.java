@@ -31,8 +31,8 @@ import java.util.UUID;
  * {@code writeTo} and the {@code StreamInput} constructor of this request are written by hand and
  * had drifted apart: the constructor read a method the writer never wrote, so any cross-node hop
  * misread the stream from the field after it onwards. This pins them to each other for the shape
- * the REST layer now sends, and covers the name check the transport action took over from
- * {@code validate()}.
+ * the REST layer now sends, and covers the name check the transport action took over from {@code
+ * validate()}.
  */
 public class IndexCorrelationRuleRequestTests extends OpenSearchTestCase {
 
@@ -46,8 +46,7 @@ public class IndexCorrelationRuleRequestTests extends OpenSearchTestCase {
         byte[] body = "{\"name\":\"a rule name\"}".getBytes(StandardCharsets.UTF_8);
 
         IndexCorrelationRuleRequest request =
-                new IndexCorrelationRuleRequest(
-                        ruleId, RestRequest.Method.POST, body, "application/json");
+                new IndexCorrelationRuleRequest(ruleId, RestRequest.Method.POST, body, "application/json");
 
         BytesStreamOutput out = new BytesStreamOutput();
         request.writeTo(out);
@@ -58,8 +57,7 @@ public class IndexCorrelationRuleRequestTests extends OpenSearchTestCase {
         Assert.assertEquals(ruleId, newRequest.getCorrelationRuleId());
         Assert.assertEquals(RestRequest.Method.POST, newRequest.getMethod());
         Assert.assertNull(
-                "the rule is parsed by the transport action, not carried",
-                newRequest.getCorrelationRule());
+                "the rule is parsed by the transport action, not carried", newRequest.getCorrelationRule());
         Assert.assertArrayEquals(body, newRequest.getBody());
         Assert.assertEquals("application/json", newRequest.getMediaType());
     }
@@ -67,19 +65,16 @@ public class IndexCorrelationRuleRequestTests extends OpenSearchTestCase {
     /** The name check the transport action took over from {@code validate()}. */
     public void testIsValidRuleName() {
         Assert.assertFalse(
-                "a null name must not dereference",
-                IndexCorrelationRuleRequest.isValidRuleName(null));
+                "a null name must not dereference", IndexCorrelationRuleRequest.isValidRuleName(null));
         Assert.assertFalse(IndexCorrelationRuleRequest.isValidRuleName(""));
         Assert.assertFalse(
-                "shorter than five characters",
-                IndexCorrelationRuleRequest.isValidRuleName("abcd"));
+                "shorter than five characters", IndexCorrelationRuleRequest.isValidRuleName("abcd"));
         Assert.assertFalse(
                 "longer than fifty characters",
                 IndexCorrelationRuleRequest.isValidRuleName("a".repeat(51)));
         Assert.assertTrue(IndexCorrelationRuleRequest.isValidRuleName("abcde"));
         Assert.assertTrue(
-                IndexCorrelationRuleRequest.isValidRuleName(
-                        "a rule name, with_the -allowed. chars"));
+                IndexCorrelationRuleRequest.isValidRuleName("a rule name, with_the -allowed. chars"));
         Assert.assertFalse(
                 "characters outside the allowed set",
                 IndexCorrelationRuleRequest.isValidRuleName("bad/name"));

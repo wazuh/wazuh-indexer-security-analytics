@@ -1,8 +1,19 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-
 package org.opensearch.securityanalytics.model;
 
 import org.opensearch.core.common.io.stream.StreamInput;
@@ -19,18 +30,13 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * A data transfer object for STIX2IOC containing additional details.
- */
+/** A data transfer object for STIX2IOC containing additional details. */
 public class DetailedSTIX2IOCDto implements Writeable, ToXContentObject {
     public static final String NUM_FINDINGS_FIELD = "num_findings";
     STIX2IOCDto ioc;
     private long numFindings = 0L;
 
-    public DetailedSTIX2IOCDto(
-            STIX2IOCDto ioc,
-            long numFindings
-    ) {
+    public DetailedSTIX2IOCDto(STIX2IOCDto ioc, long numFindings) {
         this.ioc = ioc;
         this.numFindings = numFindings;
     }
@@ -45,7 +51,8 @@ public class DetailedSTIX2IOCDto implements Writeable, ToXContentObject {
         out.writeLong(numFindings);
     }
 
-    public static DetailedSTIX2IOCDto parse(XContentParser xcp, String id, Long version) throws IOException {
+    public static DetailedSTIX2IOCDto parse(XContentParser xcp, String id, Long version)
+            throws IOException {
         long numFindings = 0;
         if (id == null) {
             id = STIX2IOC.NO_ID;
@@ -67,7 +74,8 @@ public class DetailedSTIX2IOCDto implements Writeable, ToXContentObject {
         String feedId = null;
         String feedName = null;
 
-        XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
+        XContentParserUtils.ensureExpectedToken(
+                XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
         while (xcp.nextToken() != XContentParser.Token.END_OBJECT) {
             String fieldName = xcp.currentName();
             xcp.nextToken();
@@ -127,7 +135,8 @@ public class DetailedSTIX2IOCDto implements Writeable, ToXContentObject {
                     description = xcp.text();
                     break;
                 case STIX2.LABELS_FIELD:
-                    XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_ARRAY, xcp.currentToken(), xcp);
+                    XContentParserUtils.ensureExpectedToken(
+                            XContentParser.Token.START_ARRAY, xcp.currentToken(), xcp);
                     while (xcp.nextToken() != XContentParser.Token.END_ARRAY) {
                         String entry = xcp.textOrNull();
                         if (entry != null) {
@@ -152,26 +161,28 @@ public class DetailedSTIX2IOCDto implements Writeable, ToXContentObject {
             }
         }
 
-        return new DetailedSTIX2IOCDto(new STIX2IOCDto(
-                id,
-                name,
-                type,
-                value,
-                severity,
-                created,
-                modified,
-                description,
-                labels,
-                specVersion,
-                feedId,
-                feedName,
-                version
-        ), numFindings);
+        return new DetailedSTIX2IOCDto(
+                new STIX2IOCDto(
+                        id,
+                        name,
+                        type,
+                        value,
+                        severity,
+                        created,
+                        modified,
+                        description,
+                        labels,
+                        specVersion,
+                        feedId,
+                        feedName,
+                        version),
+                numFindings);
     }
 
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
-        return builder.startObject()
+        return builder
+                .startObject()
                 .field(STIX2IOC.ID_FIELD, ioc.getId())
                 .field(STIX2IOC.NAME_FIELD, ioc.getName())
                 .field(STIX2IOC.TYPE_FIELD, ioc.getType())
