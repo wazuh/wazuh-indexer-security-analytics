@@ -1,25 +1,36 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.action;
+
+import org.opensearch.common.io.stream.BytesStreamOutput;
+import org.opensearch.common.xcontent.XContentFactory;
+import org.opensearch.common.xcontent.json.JsonXContent;
+import org.opensearch.core.common.bytes.BytesReference;
+import org.opensearch.core.common.io.stream.StreamInput;
+import org.opensearch.core.xcontent.ToXContent;
+import org.opensearch.core.xcontent.XContentParser;
+import org.opensearch.core.xcontent.XContentParserUtils;
+import org.opensearch.test.OpenSearchTestCase;
+import org.junit.Assert;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import org.junit.Assert;
-import org.opensearch.core.common.bytes.BytesReference;
-import org.opensearch.common.io.stream.BytesStreamOutput;
-import org.opensearch.core.common.io.stream.StreamInput;
-import org.opensearch.common.xcontent.XContentFactory;
-import org.opensearch.core.xcontent.XContentParserUtils;
-import org.opensearch.common.xcontent.json.JsonXContent;
-import org.opensearch.core.xcontent.ToXContent;
-import org.opensearch.core.xcontent.XContentParser;
-import org.opensearch.test.OpenSearchTestCase;
 
-
-import static org.opensearch.securityanalytics.action.ValidateRulesRequest.RULES_FIELD;
 import static org.opensearch.securityanalytics.action.ValidateRulesResponse.NONAPPLICABLE_FIELDS;
 
 public class ValidateRulesResponseTests extends OpenSearchTestCase {
@@ -27,19 +38,23 @@ public class ValidateRulesResponseTests extends OpenSearchTestCase {
     public void testValidateRulesResponse_parseXContent() throws IOException {
 
         ValidateRulesResponse response = new ValidateRulesResponse(List.of("rule_id_1"));
-        BytesReference bytes = BytesReference.bytes(response.toXContent(XContentFactory.jsonBuilder(), ToXContent.EMPTY_PARAMS));
+        BytesReference bytes =
+                BytesReference.bytes(
+                        response.toXContent(XContentFactory.jsonBuilder(), ToXContent.EMPTY_PARAMS));
         try (XContentParser xcp = createParser(JsonXContent.jsonXContent, bytes)) {
             if (xcp.currentToken() == null) {
                 xcp.nextToken();
             }
-            XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
-            List<String> ruleIds = null;
+            XContentParserUtils.ensureExpectedToken(
+                    XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
+            List<String> ruleIds = new ArrayList<>();
             while (xcp.nextToken() != XContentParser.Token.END_OBJECT) {
                 String fieldName = xcp.currentName();
                 xcp.nextToken();
                 assertEquals(NONAPPLICABLE_FIELDS, fieldName);
                 ruleIds = new ArrayList<>();
-                XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_ARRAY, xcp.currentToken(), xcp);
+                XContentParserUtils.ensureExpectedToken(
+                        XContentParser.Token.START_ARRAY, xcp.currentToken(), xcp);
                 while (xcp.nextToken() != XContentParser.Token.END_ARRAY) {
                     ruleIds.add(xcp.text());
                 }
@@ -62,5 +77,4 @@ public class ValidateRulesResponseTests extends OpenSearchTestCase {
         assertEquals("rule_id_1", newResponse.getNonapplicableFields().get(0));
         assertEquals("rule_id_2", newResponse.getNonapplicableFields().get(1));
     }
-
 }

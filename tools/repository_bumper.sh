@@ -54,7 +54,7 @@ function log() {
 function navigate_to_project_root() {
     local repo_root_marker=".github"
     local script_path
-    script_path=$(dirname "$(realpath "$0")")
+    script_path=$(dirname "$(realpath "${BASH_SOURCE[0]}")")
 
     while [[ "$script_path" != "/" ]] && [[ ! -d "$script_path/$repo_root_marker" ]]; do
         script_path=$(dirname "$script_path")
@@ -129,33 +129,6 @@ function update_version_file() {
         '.version = $v | .stage = $s' "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
 
     log "Updated $file with version=$version and stage=$stage"
-}
-
-# ====
-# Sync the hardcoded version fallback in build.gradle to the release version.
-# build.gradle resolves the build version from the `version` system property and
-# falls back to a hardcoded default when it is not passed (e.g. a bare `./gradlew`
-# with no -Dversion). Keeping that default equal to VERSION.json stops it drifting
-# behind the real version.
-# Arguments:
-#   $1 - version
-# ====
-function update_build_gradle_version() {
-    local version="$1"
-    local file="build.gradle"
-
-    if [[ ! -f "$file" ]]; then
-        log "Warning: $file not found; skipping build.gradle version sync."
-        return 0
-    fi
-
-    if ! grep -qE 'System\.getProperty\("version", "[0-9]+\.[0-9]+\.[0-9]+"\)' "$file"; then
-        log "Warning: hardcoded 'version' fallback not found in $file; skipping sync."
-        return 0
-    fi
-
-    sed -i -E "s/(System\.getProperty\(\"version\", \")[0-9]+\.[0-9]+\.[0-9]+(\"\))/\1${version}\2/" "$file"
-    log "Synced $file hardcoded version fallback to $version"
 }
 
 # ====

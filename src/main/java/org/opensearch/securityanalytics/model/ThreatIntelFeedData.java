@@ -1,6 +1,18 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.model;
 
@@ -22,9 +34,7 @@ import java.time.Instant;
 import java.util.Locale;
 import java.util.Objects;
 
-/**
- * Model for threat intel feed data stored in system index.
- */
+/** Model for threat intel feed data stored in system index. */
 public class ThreatIntelFeedData implements Writeable, ToXContentObject {
     private static final Logger log = LogManager.getLogger(ThreatIntelFeedData.class);
     private static final String FEED_TYPE = "feed";
@@ -34,11 +44,9 @@ public class ThreatIntelFeedData implements Writeable, ToXContentObject {
     private static final String FEED_ID_FIELD = "feed_id";
     private static final String TIMESTAMP_FIELD = "timestamp";
 
-    public static final NamedXContentRegistry.Entry XCONTENT_REGISTRY = new NamedXContentRegistry.Entry(
-            ThreatIntelFeedData.class,
-            new ParseField(FEED_TYPE),
-            xcp -> parse(xcp, null, null)
-    );
+    public static final NamedXContentRegistry.Entry XCONTENT_REGISTRY =
+            new NamedXContentRegistry.Entry(
+                    ThreatIntelFeedData.class, new ParseField(FEED_TYPE), xcp -> parse(xcp));
 
     private final String iocType;
     private final String iocValue;
@@ -55,12 +63,13 @@ public class ThreatIntelFeedData implements Writeable, ToXContentObject {
         this.timestamp = timestamp;
     }
 
-    public static ThreatIntelFeedData parse(XContentParser xcp, String id, Long version) throws IOException {
+    public static ThreatIntelFeedData parse(XContentParser xcp) throws IOException {
         String iocType = null;
         String iocValue = null;
         String feedId = null;
         Instant timestamp = null;
-        XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
+        XContentParserUtils.ensureExpectedToken(
+                XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
         while (xcp.nextToken() != XContentParser.Token.END_OBJECT) {
             String fieldName = xcp.currentName();
             xcp.nextToken();
@@ -108,7 +117,6 @@ public class ThreatIntelFeedData implements Writeable, ToXContentObject {
         return timestamp;
     }
 
-
     @Override
     public void writeTo(StreamOutput out) throws IOException {
         out.writeString(iocType);
@@ -118,21 +126,16 @@ public class ThreatIntelFeedData implements Writeable, ToXContentObject {
     }
 
     public ThreatIntelFeedData(StreamInput sin) throws IOException {
-        this(
-                sin.readString(),
-                sin.readString(),
-                sin.readString(),
-                sin.readInstant()
-        );
+        this(sin.readString(), sin.readString(), sin.readString(), sin.readInstant());
     }
 
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
         return createXContentBuilder(builder, params);
-
     }
 
-    private XContentBuilder createXContentBuilder(XContentBuilder builder, ToXContent.Params params) throws IOException {
+    private XContentBuilder createXContentBuilder(XContentBuilder builder, ToXContent.Params params)
+            throws IOException {
         builder.startObject();
         if (params.paramAsBoolean("with_type", false)) {
             builder.startObject(type);
@@ -142,18 +145,22 @@ public class ThreatIntelFeedData implements Writeable, ToXContentObject {
                 .field(IOC_TYPE_FIELD, iocType)
                 .field(IOC_VALUE_FIELD, iocValue)
                 .field(FEED_ID_FIELD, feedId)
-                .timeField(TIMESTAMP_FIELD, String.format(Locale.getDefault(), "%s_in_millis", TIMESTAMP_FIELD), timestamp.toEpochMilli());
+                .timeField(
+                        TIMESTAMP_FIELD,
+                        String.format(Locale.getDefault(), "%s_in_millis", TIMESTAMP_FIELD),
+                        timestamp.toEpochMilli());
 
         return builder.endObject();
     }
-
 
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         ThreatIntelFeedData tif = (ThreatIntelFeedData) o;
-        return Objects.equals(iocType, tif.iocType) && Objects.equals(iocValue, tif.iocValue) && Objects.equals(feedId, tif.feedId);
+        return Objects.equals(iocType, tif.iocType)
+                && Objects.equals(iocValue, tif.iocValue)
+                && Objects.equals(feedId, tif.feedId);
     }
 
     @Override

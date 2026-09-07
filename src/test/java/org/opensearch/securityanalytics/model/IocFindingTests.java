@@ -1,3 +1,19 @@
+/*
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.opensearch.securityanalytics.model;
 
 import org.opensearch.common.io.stream.BytesStreamOutput;
@@ -13,13 +29,10 @@ import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
 
-import static org.opensearch.securityanalytics.TestHelpers.toJsonString;
-
 public class IocFindingTests extends OpenSearchTestCase {
 
     public void testIoCMatchAsAStream() throws IOException {
         IocFinding iocFinding = getRandomIoCMatch();
-        String jsonString = toJsonString(iocFinding);
         BytesStreamOutput out = new BytesStreamOutput();
         iocFinding.writeTo(out);
         StreamInput sin = StreamInput.wrap(out.bytes().toBytesRef().bytes);
@@ -36,10 +49,11 @@ public class IocFindingTests extends OpenSearchTestCase {
     }
 
     public void testIoCMatchParse() throws IOException {
-        String iocMatchString = "{ \"id\": \"exampleId123\", \"related_doc_ids\": [\"relatedDocId1\", " +
-                "\"relatedDocId2\"], \"feed_ids\": [\"feedId1\", \"feedId2\"], \"monitor_id\":" +
-                " \"scanJob123\", \"monitor_name\": \"Example Scan Job\", \"ioc_value\": \"exampleIocValue\", " +
-                "\"ioc_type\": \"exampleIocType\", \"timestamp\": 1620912896000, \"execution_id\": \"execution123\" }";
+        String iocMatchString =
+                "{ \"id\": \"exampleId123\", \"related_doc_ids\": [\"relatedDocId1\", "
+                        + "\"relatedDocId2\"], \"feed_ids\": [\"feedId1\", \"feedId2\"], \"monitor_id\":"
+                        + " \"scanJob123\", \"monitor_name\": \"Example Scan Job\", \"ioc_value\": \"exampleIocValue\", "
+                        + "\"ioc_type\": \"exampleIocType\", \"timestamp\": 1620912896000, \"execution_id\": \"execution123\" }";
         IocFinding iocFinding = IocFinding.parse((getParser(iocMatchString)));
         BytesStreamOutput out = new BytesStreamOutput();
         iocFinding.writeTo(out);
@@ -57,17 +71,24 @@ public class IocFindingTests extends OpenSearchTestCase {
     }
 
     public XContentParser getParser(String xc) throws IOException {
-        XContentParser parser = XContentType.JSON.xContent().createParser(xContentRegistry(), LoggingDeprecationHandler.INSTANCE, xc);
+        XContentParser parser =
+                XContentType.JSON
+                        .xContent()
+                        .createParser(xContentRegistry(), LoggingDeprecationHandler.INSTANCE, xc);
         parser.nextToken();
         return parser;
-
     }
 
     private static IocFinding getRandomIoCMatch() {
         return new IocFinding(
                 randomAlphaOfLength(10),
                 List.of(randomAlphaOfLength(10), randomAlphaOfLength(10)),
-                List.of(new IocWithFeeds(randomAlphaOfLength(10),randomAlphaOfLength(10), randomAlphaOfLength(10), randomAlphaOfLength(10))),
+                List.of(
+                        new IocWithFeeds(
+                                randomAlphaOfLength(10),
+                                randomAlphaOfLength(10),
+                                randomAlphaOfLength(10),
+                                randomAlphaOfLength(10))),
                 randomAlphaOfLength(10),
                 randomAlphaOfLength(10),
                 randomAlphaOfLength(10),
@@ -75,6 +96,4 @@ public class IocFindingTests extends OpenSearchTestCase {
                 Instant.now(),
                 randomAlphaOfLength(10));
     }
-
-
 }

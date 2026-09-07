@@ -552,8 +552,8 @@ public class LogTypeService {
                         newFieldMappings.add(newFieldMapping);
                     } else {
                         // Merge new with existing by merging schema field mappings and log type arrays
-                        foundFieldMappingDoc.get().getSchemaFields().putAll(newFieldMapping.getSchemaFields());
-                        foundFieldMappingDoc.get().getLogTypes().addAll(newFieldMapping.getLogTypes());
+                        foundFieldMappingDoc.get().mergeSchemaFields(newFieldMapping.getSchemaFields());
+                        foundFieldMappingDoc.get().addLogTypes(newFieldMapping.getLogTypes());
                         foundFieldMappingDoc.get().setIsDirty(true);
                     }
                 });
@@ -791,9 +791,9 @@ public class LogTypeService {
                                                                         Sets.newHashSet(logType.getName())));
                                                     } else {
                                                         // merge with existing doc
-                                                        existingDoc.getSchemaFields().put("ocsf", mapping.getOcsf());
-                                                        existingDoc.getSchemaFields().put("ocsf11", mapping.getOcsf11());
-                                                        existingDoc.getLogTypes().add(logType.getName());
+                                                        existingDoc.putSchemaField("ocsf", mapping.getOcsf());
+                                                        existingDoc.putSchemaField("ocsf11", mapping.getOcsf11());
+                                                        existingDoc.addLogType(logType.getName());
                                                     }
                                                 }));
         return new ArrayList<>(fieldMappingMap.values());

@@ -1174,8 +1174,7 @@ public class DetectorRestApiIT extends SecurityAnalyticsRestTestCase {
 
         indexDoc(index, "1", randomProductDocument());
 
-        Response executeResponse = executeAlertingMonitor(bucketLevelMonitorId, Collections.emptyMap());
-        Map<String, Object> executeResults = entityAsMap(executeResponse);
+        executeAlertingMonitor(bucketLevelMonitorId, Collections.emptyMap());
         // verify bucket level monitor findings
         Map<String, String> params = new HashMap<>();
         params.put("detector_id", detectorId);
@@ -2337,8 +2336,7 @@ public class DetectorRestApiIT extends SecurityAnalyticsRestTestCase {
 
         indexDoc(index, "1", randomProductDocumentWithTime(System.currentTimeMillis()));
 
-        Response executeResponse = executeAlertingMonitor(bucketLevelMonitorId, Collections.emptyMap());
-        Map<String, Object> executeResults = entityAsMap(executeResponse);
+        executeAlertingMonitor(bucketLevelMonitorId, Collections.emptyMap());
         // verify bucket level monitor findings
         Map<String, String> params = new HashMap<>();
         params.put("detector_id", detectorId);
@@ -2506,8 +2504,7 @@ public class DetectorRestApiIT extends SecurityAnalyticsRestTestCase {
                 randomProductDocumentWithTime(
                         System.currentTimeMillis() - 1000 * 60 * 70)); // doc's timestamp is older than 1 hr
 
-        Response executeResponse = executeAlertingMonitor(bucketLevelMonitorId, Collections.emptyMap());
-        Map<String, Object> executeResults = entityAsMap(executeResponse);
+        executeAlertingMonitor(bucketLevelMonitorId, Collections.emptyMap());
         // verify bucket level monitor findings
         Map<String, String> params = new HashMap<>();
         params.put("detector_id", detectorId);

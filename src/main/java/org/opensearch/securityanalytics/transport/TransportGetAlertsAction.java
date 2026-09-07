@@ -1,29 +1,39 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.transport;
 
-import java.io.IOException;
-import java.util.List;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.search.join.ScoreMode;
 import org.opensearch.OpenSearchStatusException;
-import org.opensearch.cluster.routing.Preference;
-import org.opensearch.core.action.ActionListener;
 import org.opensearch.action.search.SearchRequest;
 import org.opensearch.action.search.SearchResponse;
 import org.opensearch.action.support.ActionFilters;
 import org.opensearch.action.support.HandledTransportAction;
+import org.opensearch.cluster.routing.Preference;
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.inject.Inject;
 import org.opensearch.common.settings.Settings;
 import org.opensearch.commons.authuser.User;
+import org.opensearch.core.action.ActionListener;
+import org.opensearch.core.rest.RestStatus;
 import org.opensearch.core.xcontent.NamedXContentRegistry;
 import org.opensearch.index.query.NestedQueryBuilder;
 import org.opensearch.index.query.QueryBuilders;
-import org.opensearch.core.rest.RestStatus;
 import org.opensearch.search.builder.SearchSourceBuilder;
 import org.opensearch.securityanalytics.action.GetAlertsAction;
 import org.opensearch.securityanalytics.action.GetAlertsRequest;
@@ -39,9 +49,14 @@ import org.opensearch.threadpool.ThreadPool;
 import org.opensearch.transport.TransportService;
 import org.opensearch.transport.client.Client;
 
+import java.io.IOException;
+import java.util.List;
+
 import static org.opensearch.securityanalytics.util.DetectorUtils.DETECTOR_TYPE_PATH;
 
-public class TransportGetAlertsAction extends HandledTransportAction<GetAlertsRequest, GetAlertsResponse> implements SecureTransportAction {
+public class TransportGetAlertsAction
+        extends HandledTransportAction<GetAlertsRequest, GetAlertsResponse>
+        implements SecureTransportAction {
 
     private final TransportSearchDetectorAction transportSearchDetectorAction;
 
@@ -59,9 +74,16 @@ public class TransportGetAlertsAction extends HandledTransportAction<GetAlertsRe
 
     private static final Logger log = LogManager.getLogger(TransportGetAlertsAction.class);
 
-
     @Inject
-    public TransportGetAlertsAction(TransportService transportService, ActionFilters actionFilters, ClusterService clusterService, TransportSearchDetectorAction transportSearchDetectorAction, ThreadPool threadPool, Settings settings, NamedXContentRegistry xContentRegistry, Client client) {
+    public TransportGetAlertsAction(
+            TransportService transportService,
+            ActionFilters actionFilters,
+            ClusterService clusterService,
+            TransportSearchDetectorAction transportSearchDetectorAction,
+            ThreadPool threadPool,
+            Settings settings,
+            NamedXContentRegistry xContentRegistry,
+            Client client) {
         super(GetAlertsAction.NAME, transportService, actionFilters, GetAlertsRequest::new);
         this.transportSearchDetectorAction = transportSearchDetectorAction;
         this.xContentRegistry = xContentRegistry;
@@ -70,17 +92,23 @@ public class TransportGetAlertsAction extends HandledTransportAction<GetAlertsRe
         this.threadPool = threadPool;
         this.settings = settings;
         this.filterByEnabled = SecurityAnalyticsSettings.FILTER_BY_BACKEND_ROLES.get(this.settings);
-        this.clusterService.getClusterSettings().addSettingsUpdateConsumer(SecurityAnalyticsSettings.FILTER_BY_BACKEND_ROLES, this::setFilterByEnabled);
+        this.clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        SecurityAnalyticsSettings.FILTER_BY_BACKEND_ROLES, this::setFilterByEnabled);
     }
 
     @Override
-    protected void doExecute(Task task, GetAlertsRequest request, ActionListener<GetAlertsResponse> actionListener) {
+    protected void doExecute(
+            Task task, GetAlertsRequest request, ActionListener<GetAlertsResponse> actionListener) {
 
         User user = readUserFromThreadContext(this.threadPool);
 
         String validateBackendRoleMessage = validateUserBackendRoles(user, this.filterByEnabled);
-        if (!"".equals(validateBackendRoleMessage)) {
-            actionListener.onFailure(new OpenSearchStatusException("Do not have permissions to resource", RestStatus.FORBIDDEN));
+        if (!validateBackendRoleMessage.isEmpty()) {
+            actionListener.onFailure(
+                    new OpenSearchStatusException(
+                            "Do not have permissions to resource", RestStatus.FORBIDDEN));
             return;
         }
 
@@ -92,21 +120,15 @@ public class TransportGetAlertsAction extends HandledTransportAction<GetAlertsRe
                     request.getAlertState(),
                     request.getStartTime(),
                     request.getEndTime(),
-                    actionListener
-            );
+                    actionListener);
         } else {
             // "detector" is nested type so we have to use nested query
             NestedQueryBuilder queryBuilder =
                     QueryBuilders.nestedQuery(
                             "detector",
-                            QueryBuilders.boolQuery().must(
-                                    QueryBuilders.matchQuery(
-                                            DETECTOR_TYPE_PATH,
-                                            request.getLogType()
-                                    )
-                            ),
-                            ScoreMode.None
-                    );
+                            QueryBuilders.boolQuery()
+                                    .must(QueryBuilders.matchQuery(DETECTOR_TYPE_PATH, request.getLogType())),
+                            ScoreMode.None);
             SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
             searchSourceBuilder.query(queryBuilder);
             searchSourceBuilder.fetchSource(true);
@@ -115,42 +137,40 @@ public class TransportGetAlertsAction extends HandledTransportAction<GetAlertsRe
             searchRequest.source(searchSourceBuilder);
             searchRequest.preference(Preference.PRIMARY_FIRST.type());
 
-            transportSearchDetectorAction.execute(new SearchDetectorRequest(searchRequest), new ActionListener<>() {
-                @Override
-                public void onResponse(SearchResponse searchResponse) {
-                    try {
-                        List<Detector> detectors = DetectorUtils.getDetectors(searchResponse, xContentRegistry);
-                        if (detectors.size() == 0) {
-                            actionListener.onFailure(
-                                SecurityAnalyticsException.wrap(
-                                    new OpenSearchStatusException(
-                                            "No detectors found for provided type", RestStatus.NOT_FOUND
-                                    )
-                                )
-                            );
-                            return;
+            transportSearchDetectorAction.execute(
+                    new SearchDetectorRequest(searchRequest),
+                    new ActionListener<>() {
+                        @Override
+                        public void onResponse(SearchResponse searchResponse) {
+                            try {
+                                List<Detector> detectors =
+                                        DetectorUtils.getDetectors(searchResponse, xContentRegistry);
+                                if (detectors.size() == 0) {
+                                    actionListener.onFailure(
+                                            SecurityAnalyticsException.wrap(
+                                                    new OpenSearchStatusException(
+                                                            "No detectors found for provided type", RestStatus.NOT_FOUND)));
+                                    return;
+                                }
+                                alertsService.getAlerts(
+                                        detectors,
+                                        request.getLogType(),
+                                        request.getTable(),
+                                        request.getSeverityLevel(),
+                                        request.getAlertState(),
+                                        request.getStartTime(),
+                                        request.getEndTime(),
+                                        actionListener);
+                            } catch (IOException e) {
+                                actionListener.onFailure(e);
+                            }
                         }
-                        alertsService.getAlerts(
-                                detectors,
-                                request.getLogType(),
-                                request.getTable(),
-                                request.getSeverityLevel(),
-                                request.getAlertState(),
-                                request.getStartTime(),
-                                request.getEndTime(),
-                                actionListener
-                        );
-                    } catch (IOException e) {
-                        actionListener.onFailure(e);
-                    }
-                }
 
-                @Override
-                public void onFailure(Exception e) {
-                    actionListener.onFailure(e);
-                }
-            });
-
+                        @Override
+                        public void onFailure(Exception e) {
+                            actionListener.onFailure(e);
+                        }
+                    });
         }
     }
 

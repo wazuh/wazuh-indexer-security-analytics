@@ -260,7 +260,7 @@ public class TransportIndexRuleAction
                                     AsyncIndexRulesAction.this.onFailures(parsedRule.getErrors());
                                     return;
                                 }
-                                QueryBackend backend = new OSQueryBackend(fieldMappings, true, true);
+                                QueryBackend backend = new OSQueryBackend(fieldMappings, true);
                                 if (AsyncIndexRulesAction.this.request.getDocumentId() != null) {
                                     ruleId = UUID.randomUUID().toString();
                                 } else if (AsyncIndexRulesAction.this.request.getRuleId() != null) {
@@ -570,11 +570,9 @@ public class TransportIndexRuleAction
                                 FieldMappingDoc mappingDoc =
                                         new FieldMappingDoc(field.getValue(), Set.of(rule.getCategory()));
                                 if (ruleFieldMappings.containsKey(field.getValue())) {
-                                    mappingDoc
-                                            .getSchemaFields()
-                                            .put(
-                                                    TransportIndexRuleAction.this.logTypeService.getDefaultSchemaField(),
-                                                    ruleFieldMappings.get(field.getValue()));
+                                    mappingDoc.putSchemaField(
+                                            TransportIndexRuleAction.this.logTypeService.getDefaultSchemaField(),
+                                            ruleFieldMappings.get(field.getValue()));
                                 }
                                 fieldMappingDocs.add(mappingDoc);
                             });

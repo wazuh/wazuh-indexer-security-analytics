@@ -1,14 +1,26 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.rules.types;
 
-import org.junit.Assert;
 import org.opensearch.securityanalytics.rules.exceptions.SigmaValueError;
 import org.opensearch.securityanalytics.rules.utils.AnyOneOf;
 import org.opensearch.securityanalytics.rules.utils.Either;
 import org.opensearch.test.OpenSearchTestCase;
+import org.junit.Assert;
 
 import java.nio.charset.Charset;
 import java.util.List;
@@ -31,8 +43,12 @@ public class SigmaStringTests extends OpenSearchTestCase {
 
     public void testStringsMerge() {
         SigmaString s = new SigmaString(null);
-        s.setsOpt(List.of(AnyOneOf.middleVal(WILDCARD_MULTI), AnyOneOf.leftVal("te"),
-                AnyOneOf.leftVal("st"), AnyOneOf.middleVal(WILDCARD_MULTI)));
+        s.setsOpt(
+                List.of(
+                        AnyOneOf.middleVal(WILDCARD_MULTI),
+                        AnyOneOf.leftVal("te"),
+                        AnyOneOf.leftVal("st"),
+                        AnyOneOf.middleVal(WILDCARD_MULTI)));
         s.mergeStrings();
         List<AnyOneOf<String, Character, Placeholder>> sOpt = s.getsOpt();
         Assert.assertEquals(3, sOpt.size());
@@ -43,8 +59,14 @@ public class SigmaStringTests extends OpenSearchTestCase {
 
     public void testStringsMergeEnd() {
         SigmaString s = new SigmaString(null);
-        s.setsOpt(List.of(AnyOneOf.middleVal(WILDCARD_MULTI), AnyOneOf.leftVal("test"),
-                AnyOneOf.middleVal(WILDCARD_MULTI), AnyOneOf.leftVal("te"), AnyOneOf.leftVal("st"), AnyOneOf.leftVal("test")));
+        s.setsOpt(
+                List.of(
+                        AnyOneOf.middleVal(WILDCARD_MULTI),
+                        AnyOneOf.leftVal("test"),
+                        AnyOneOf.middleVal(WILDCARD_MULTI),
+                        AnyOneOf.leftVal("te"),
+                        AnyOneOf.leftVal("st"),
+                        AnyOneOf.leftVal("test")));
         s.mergeStrings();
         List<AnyOneOf<String, Character, Placeholder>> sOpt = s.getsOpt();
         Assert.assertEquals(4, sOpt.size());
@@ -56,8 +78,14 @@ public class SigmaStringTests extends OpenSearchTestCase {
 
     public void testStringsMergeStart() {
         SigmaString s = new SigmaString(null);
-        s.setsOpt(List.of(AnyOneOf.leftVal("te"), AnyOneOf.leftVal("st"), AnyOneOf.leftVal("test"),
-                AnyOneOf.middleVal(WILDCARD_MULTI), AnyOneOf.leftVal("test"), AnyOneOf.middleVal(WILDCARD_MULTI)));
+        s.setsOpt(
+                List.of(
+                        AnyOneOf.leftVal("te"),
+                        AnyOneOf.leftVal("st"),
+                        AnyOneOf.leftVal("test"),
+                        AnyOneOf.middleVal(WILDCARD_MULTI),
+                        AnyOneOf.leftVal("test"),
+                        AnyOneOf.middleVal(WILDCARD_MULTI)));
         s.mergeStrings();
         List<AnyOneOf<String, Character, Placeholder>> sOpt = s.getsOpt();
         Assert.assertEquals(4, sOpt.size());
@@ -193,17 +221,42 @@ public class SigmaStringTests extends OpenSearchTestCase {
     }
 
     public void testStringsConvertNoMultiWildcard() {
-        assertThrows(SigmaValueError.class, () -> {
-            SigmaString s = new SigmaString("foo*bar");
-            s.convert("\\", null, "?", "f", "", "o");
-        });
+        assertThrows(
+                SigmaValueError.class,
+                () -> {
+                    SigmaString s = new SigmaString("foo*bar");
+                    s.convert("\\", null, "?", "f", "", "o");
+                });
     }
 
     public void testStringsConvertNoSingleWildcard() {
-        assertThrows(SigmaValueError.class, () -> {
-            SigmaString s = new SigmaString("foo?bar");
-            s.convert("\\", "*", null, "f", "", "o");
-        });
+        assertThrows(
+                SigmaValueError.class,
+                () -> {
+                    SigmaString s = new SigmaString("foo?bar");
+                    s.convert("\\", "*", null, "f", "", "o");
+                });
+    }
+
+    public void testStringEqualsForSameValue() {
+        Assert.assertEquals(new SigmaString("abc"), new SigmaString("abc"));
+    }
+
+    public void testStringNotEqualsForDifferentValues() {
+        Assert.assertNotEquals(new SigmaString("abc"), new SigmaString("xyz"));
+    }
+
+    public void testStringNotEqualsForDifferentWildcards() {
+        Assert.assertNotEquals(new SigmaString("abc*"), new SigmaString("abc?"));
+    }
+
+    public void testStringHashCodeConsistentForSameValue() {
+        Assert.assertEquals(
+                new SigmaString("abc*def").hashCode(), new SigmaString("abc*def").hashCode());
+    }
+
+    public void testStringHashCodeDiffersForDifferentValues() {
+        Assert.assertNotEquals(new SigmaString("abc").hashCode(), new SigmaString("xyz").hashCode());
     }
 
     private SigmaString sigmaString() {

@@ -1,6 +1,18 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.action;
 
@@ -9,8 +21,6 @@ import org.opensearch.action.ActionRequestValidationException;
 import org.opensearch.action.ValidateActions;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
-import org.opensearch.core.xcontent.ToXContent;
-import org.opensearch.core.xcontent.XContentBuilder;
 
 import java.io.IOException;
 import java.util.Collections;
@@ -36,27 +46,19 @@ public class AckAlertsRequest extends ActionRequest {
     public ActionRequestValidationException validate() {
         ActionRequestValidationException validationException = null;
         if (detectorId == null) {
-            validationException = ValidateActions.addValidationError("detector id is mandatory", validationException);
-        } else if(alertIds == null || alertIds.isEmpty()) {
-            validationException = ValidateActions.addValidationError("alert ids list cannot be empty", validationException);
+            validationException =
+                    ValidateActions.addValidationError("detector id is mandatory", validationException);
+        } else if (alertIds == null || alertIds.isEmpty()) {
+            validationException =
+                    ValidateActions.addValidationError("alert ids list cannot be empty", validationException);
         }
         return validationException;
     }
 
+    @Override
     public void writeTo(StreamOutput out) throws IOException {
         out.writeString(this.detectorId);
         out.writeStringCollection(this.alertIds);
-    }
-
-    public XContentBuilder toXContent(XContentBuilder builder, ToXContent.Params params) throws IOException {
-        return builder.startObject()
-                .field("detector_id", detectorId)
-                .field("alert_ids", alertIds)
-                .endObject();
-    }
-
-    public static AckAlertsRequest readFrom(StreamInput sin) throws IOException {
-        return new AckAlertsRequest(sin);
     }
 
     public String getDetectorId() {

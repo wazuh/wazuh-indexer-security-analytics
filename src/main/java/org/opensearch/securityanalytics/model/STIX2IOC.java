@@ -1,8 +1,19 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-
 package org.opensearch.securityanalytics.model;
 
 import org.apache.commons.lang3.StringUtils;
@@ -51,9 +62,20 @@ public class STIX2IOC extends STIX2 implements Writeable, ToXContentObject {
             String specVersion,
             String feedId,
             String feedName,
-            Long version
-    ) {
-        super(StringUtils.isBlank(id) ? UUID.randomUUID().toString() : id, name, type, value, severity, created, modified, description, labels, specVersion, feedId, feedName);
+            Long version) {
+        super(
+                StringUtils.isBlank(id) ? UUID.randomUUID().toString() : id,
+                name,
+                type,
+                value,
+                severity,
+                created,
+                modified,
+                description,
+                labels,
+                specVersion,
+                feedId,
+                feedName);
         this.version = version;
         validate();
     }
@@ -73,8 +95,7 @@ public class STIX2IOC extends STIX2 implements Writeable, ToXContentObject {
                 ioc.getSpecVersion(),
                 feedId,
                 feedName,
-                NO_VERSION
-        );
+                NO_VERSION);
     }
 
     public STIX2IOC(StreamInput sin) throws IOException {
@@ -92,7 +113,7 @@ public class STIX2IOC extends STIX2 implements Writeable, ToXContentObject {
                 sin.readString(), // feedId
                 sin.readString(), // feedName
                 sin.readLong() // version
-        );
+                );
     }
 
     public STIX2IOC(STIX2IOCDto iocDto) {
@@ -109,8 +130,7 @@ public class STIX2IOC extends STIX2 implements Writeable, ToXContentObject {
                 iocDto.getSpecVersion(),
                 iocDto.getFeedId(),
                 iocDto.getFeedName(),
-                iocDto.getVersion()
-        );
+                iocDto.getVersion());
     }
 
     public STIX2IOC(STIX2IOCDto ioc, String feedId, String feedName) {
@@ -127,8 +147,7 @@ public class STIX2IOC extends STIX2 implements Writeable, ToXContentObject {
                 ioc.getSpecVersion(),
                 feedId,
                 feedName,
-                NO_VERSION
-        );
+                NO_VERSION);
     }
 
     public static STIX2IOC readFrom(StreamInput sin) throws IOException {
@@ -139,7 +158,7 @@ public class STIX2IOC extends STIX2 implements Writeable, ToXContentObject {
     public void writeTo(StreamOutput out) throws IOException {
         out.writeString(super.getId());
         out.writeString(super.getName());
-        out.writeString(super.getType().toString());
+        out.writeString(super.getType());
         out.writeString(super.getValue());
         out.writeString(super.getSeverity());
         out.writeInstant(super.getCreated());
@@ -154,15 +173,17 @@ public class STIX2IOC extends STIX2 implements Writeable, ToXContentObject {
 
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
-        builder.startObject()
+        builder
+                .startObject()
                 .field(ID_FIELD, super.getId())
                 .field(NAME_FIELD, super.getName())
-                .field(TYPE_FIELD, super.getType().toString())
+                .field(TYPE_FIELD, super.getType())
                 .field(VALUE_FIELD, super.getValue())
                 .field(SEVERITY_FIELD, super.getSeverity());
         XContentUtils.buildInstantAsField(builder, super.getCreated(), CREATED_FIELD);
         XContentUtils.buildInstantAsField(builder, super.getModified(), MODIFIED_FIELD);
-        return builder.field(DESCRIPTION_FIELD, super.getDescription())
+        return builder
+                .field(DESCRIPTION_FIELD, super.getDescription())
                 .field(LABELS_FIELD, super.getLabels())
                 .field(SPEC_VERSION_FIELD, super.getSpecVersion())
                 .field(FEED_ID_FIELD, super.getFeedId())
@@ -192,7 +213,8 @@ public class STIX2IOC extends STIX2 implements Writeable, ToXContentObject {
         String feedId = null;
         String feedName = null;
 
-        XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
+        XContentParserUtils.ensureExpectedToken(
+                XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
         while (xcp.nextToken() != XContentParser.Token.END_OBJECT) {
             String fieldName = xcp.currentName();
             xcp.nextToken();
@@ -257,7 +279,8 @@ public class STIX2IOC extends STIX2 implements Writeable, ToXContentObject {
                     description = xcp.text();
                     break;
                 case LABELS_FIELD:
-                    XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_ARRAY, xcp.currentToken(), xcp);
+                    XContentParserUtils.ensureExpectedToken(
+                            XContentParser.Token.START_ARRAY, xcp.currentToken(), xcp);
                     while (xcp.nextToken() != XContentParser.Token.END_ARRAY) {
                         String entry = xcp.textOrNull();
                         if (entry != null) {
@@ -301,8 +324,7 @@ public class STIX2IOC extends STIX2 implements Writeable, ToXContentObject {
                 specVersion,
                 feedId,
                 feedName,
-                version
-        );
+                version);
     }
 
     /**

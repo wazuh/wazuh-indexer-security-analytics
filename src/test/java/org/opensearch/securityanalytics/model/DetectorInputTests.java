@@ -1,15 +1,23 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.model;
 
-import org.junit.Assert;
-import org.opensearch.core.common.bytes.BytesReference;
-import org.opensearch.common.xcontent.XContentType;
-import org.opensearch.core.xcontent.ToXContent;
-import org.opensearch.core.xcontent.XContentBuilder;
 import org.opensearch.test.OpenSearchTestCase;
+import org.junit.Assert;
 
 import java.io.IOException;
 import java.util.List;
@@ -25,28 +33,38 @@ public class DetectorInputTests extends OpenSearchTestCase {
 
         Map<String, Object> templateArgs = rule.asTemplateArg();
 
-        Assert.assertEquals("Template args 'id' field does not match:", templateArgs.get(DetectorRule.RULE_ID_FIELD), rule.getId());
+        Assert.assertEquals(
+                "Template args 'id' field does not match:",
+                templateArgs.get(DetectorRule.RULE_ID_FIELD),
+                rule.getId());
     }
 
     public void testDetectorInputAsTemplateArgs() throws IOException {
         DetectorInput input = randomDetectorInput();
 
-        String inputString = BytesReference.bytes(input.toXContent(XContentBuilder.builder(XContentType.JSON.xContent()), ToXContent.EMPTY_PARAMS)).utf8ToString();
-
         Map<String, Object> templateArgs = input.asTemplateArg();
 
-        Assert.assertEquals("Template args 'description' field does not match:",
+        Assert.assertEquals(
+                "Template args 'description' field does not match:",
                 templateArgs.get(DetectorInput.DESCRIPTION_FIELD),
                 input.getDescription());
 
-        Assert.assertEquals("Template args 'indices' field does not match:",
+        Assert.assertEquals(
+                "Template args 'indices' field does not match:",
                 templateArgs.get(DetectorInput.INDICES_FIELD),
                 input.getIndices());
 
-        Assert.assertEquals("Template args 'rules' field does not contain the expected number of rules:",
+        Assert.assertEquals(
+                "Template args 'rules' field does not contain the expected number of rules:",
                 ((List<?>) templateArgs.get(DetectorInput.CUSTOM_RULES_FIELD)).size(),
                 input.getCustomRules().size());
 
-        input.getCustomRules().forEach(detectorRule -> Assert.assertTrue(((List<?>) templateArgs.get(DetectorInput.CUSTOM_RULES_FIELD)).contains(detectorRule.asTemplateArg())));
+        input
+                .getCustomRules()
+                .forEach(
+                        detectorRule ->
+                                Assert.assertTrue(
+                                        ((List<?>) templateArgs.get(DetectorInput.CUSTOM_RULES_FIELD))
+                                                .contains(detectorRule.asTemplateArg())));
     }
 }
