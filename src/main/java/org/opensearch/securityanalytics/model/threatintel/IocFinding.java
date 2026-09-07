@@ -1,3 +1,19 @@
+/*
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package org.opensearch.securityanalytics.model.threatintel;
 
 import org.apache.commons.lang3.StringUtils;
@@ -17,11 +33,12 @@ import java.util.stream.Collectors;
 import static org.opensearch.core.xcontent.XContentParserUtils.ensureExpectedToken;
 
 /**
- * IoC Match provides mapping of the IoC Value to the list of docs that contain the ioc in a given execution of IoC_Scan_job
- * It's the inverse of an IoC finding which maps a document to list of IoC's
+ * IoC Match provides mapping of the IoC Value to the list of docs that contain the ioc in a given
+ * execution of IoC_Scan_job It's the inverse of an IoC finding which maps a document to list of
+ * IoC's
  */
 public class IocFinding extends BaseEntity {
-    //TODO implement IoC_Match interface from security-analytics-commons
+    // TODO implement IoC_Match interface from security-analytics-commons
     public static final String ID_FIELD = "id";
     public static final String RELATED_DOC_IDS_FIELD = "related_doc_ids";
     public static final String IOC_WITH_FEED_IDS_FIELD = "ioc_feed_ids";
@@ -42,8 +59,16 @@ public class IocFinding extends BaseEntity {
     private final Instant timestamp;
     private final String executionId;
 
-    public IocFinding(String id, List<String> relatedDocIds, List<IocWithFeeds> iocWithFeeds, String monitorId,
-                      String monitorName, String iocValue, String iocType, Instant timestamp, String executionId) {
+    public IocFinding(
+            String id,
+            List<String> relatedDocIds,
+            List<IocWithFeeds> iocWithFeeds,
+            String monitorId,
+            String monitorName,
+            String iocValue,
+            String iocType,
+            Instant timestamp,
+            String executionId) {
         validateIoCMatch(id, monitorId, monitorName, iocValue, timestamp, executionId, relatedDocIds);
         this.id = id;
         this.relatedDocIds = relatedDocIds;
@@ -85,19 +110,20 @@ public class IocFinding extends BaseEntity {
         return Map.of(
                 ID_FIELD, id,
                 RELATED_DOC_IDS_FIELD, relatedDocIds,
-                IOC_WITH_FEED_IDS_FIELD, iocWithFeeds.stream().map(IocWithFeeds::asTemplateArg).collect(Collectors.toList()),
+                IOC_WITH_FEED_IDS_FIELD,
+                        iocWithFeeds.stream().map(IocWithFeeds::asTemplateArg).collect(Collectors.toList()),
                 MONITOR_ID_FIELD, monitorId,
                 MONITOR_NAME_FIELD, monitorName,
                 IOC_VALUE_FIELD, iocValue,
                 IOC_TYPE_FIELD, iocType,
                 TIMESTAMP_FIELD, timestamp,
-                EXECUTION_ID_FIELD, executionId
-        );
+                EXECUTION_ID_FIELD, executionId);
     }
 
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
-        builder.startObject()
+        builder
+                .startObject()
                 .field(ID_FIELD, id)
                 .field(RELATED_DOC_IDS_FIELD, relatedDocIds)
                 .field(IOC_WITH_FEED_IDS_FIELD, iocWithFeeds)
@@ -214,15 +240,30 @@ public class IocFinding extends BaseEntity {
             }
         }
 
-        return new IocFinding(id, relatedDocIds, feedIds, monitorId, monitorName, iocValue, iocType, timestamp, executionId);
+        return new IocFinding(
+                id,
+                relatedDocIds,
+                feedIds,
+                monitorId,
+                monitorName,
+                iocValue,
+                iocType,
+                timestamp,
+                executionId);
     }
 
     public static IocFinding readFrom(StreamInput in) throws IOException {
         return new IocFinding(in);
     }
 
-
-    private static void validateIoCMatch(String id, String iocScanJobId, String iocScanName, String iocValue, Instant timestamp, String executionId, List<String> relatedDocIds) {
+    private static void validateIoCMatch(
+            String id,
+            String iocScanJobId,
+            String iocScanName,
+            String iocValue,
+            Instant timestamp,
+            String executionId,
+            List<String> relatedDocIds) {
         if (StringUtils.isBlank(id)) {
             throw new IllegalArgumentException("id cannot be empty in IoC_Match Object");
         }
@@ -245,7 +286,8 @@ public class IocFinding extends BaseEntity {
             throw new IllegalArgumentException("timestamp cannot be null in IoC_Match Object");
         }
         if (relatedDocIds == null || relatedDocIds.isEmpty()) {
-            throw new IllegalArgumentException("related_doc_ids cannot be null or empty in IoC_Match Object");
+            throw new IllegalArgumentException(
+                    "related_doc_ids cannot be null or empty in IoC_Match Object");
         }
     }
 }

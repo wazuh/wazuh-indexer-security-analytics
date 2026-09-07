@@ -19,6 +19,7 @@ package org.opensearch.securityanalytics.resthandler;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.action.support.WriteRequest;
+import org.opensearch.core.rest.RestStatus;
 import org.opensearch.core.xcontent.ToXContent;
 import org.opensearch.rest.BaseRestHandler;
 import org.opensearch.rest.BytesRestResponse;
@@ -83,13 +84,20 @@ public class RestIndexDetectorAction extends BaseRestHandler {
         // the transport ActionFilters chain, which runs after every REST handler, so parsing here
         // exposed the whole parsing path to accounts the same request, well-formed, refuses with 403.
         byte[] body = request.hasContent() ? request.content().streamInput().readAllBytes() : null;
-        String mediaType = request.getMediaType() != null ? request.getMediaType().mediaTypeWithoutParameters() : null;
+        String mediaType =
+                request.getMediaType() != null ? request.getMediaType().mediaTypeWithoutParameters() : null;
 
-        IndexDetectorRequest indexDetectorRequest = new IndexDetectorRequest(id, refreshPolicy, request.method(), body, mediaType);
-        return channel -> client.execute(IndexDetectorAction.INSTANCE, indexDetectorRequest, indexDetectorResponse(channel, request.method(), client));
+        IndexDetectorRequest indexDetectorRequest =
+                new IndexDetectorRequest(id, refreshPolicy, request.method(), body, mediaType);
+        return channel ->
+                client.execute(
+                        IndexDetectorAction.INSTANCE,
+                        indexDetectorRequest,
+                        indexDetectorResponse(channel, request.method(), client));
     }
 
-    private RestResponseListener<IndexDetectorResponse> indexDetectorResponse(RestChannel channel, RestRequest.Method restMethod, NodeClient client) {
+    private RestResponseListener<IndexDetectorResponse> indexDetectorResponse(
+            RestChannel channel, RestRequest.Method restMethod, NodeClient client) {
         return new RestResponseListener<>(channel) {
             @Override
             public RestResponse buildResponse(IndexDetectorResponse response) throws Exception {
@@ -105,9 +113,12 @@ public class RestIndexDetectorAction extends BaseRestHandler {
                 // The detector from the response, not the one parsed from the request: a toggle sends
                 // only the fields the client happened to hold, and the transport action restores the
                 // rest -- including `source` -- from the stored document.
-                RegistryOverrideWriter.recordDetectorEnabled(client, response.getId(), response.getDetector());
+                RegistryOverrideWriter.recordDetectorEnabled(
+                        client, response.getId(), response.getDetector());
 
-                BytesRestResponse restResponse = new BytesRestResponse(returnStatus, response.toXContent(channel.newBuilder(), ToXContent.EMPTY_PARAMS));
+                BytesRestResponse restResponse =
+                        new BytesRestResponse(
+                                returnStatus, response.toXContent(channel.newBuilder(), ToXContent.EMPTY_PARAMS));
 
                 if (restMethod == RestRequest.Method.POST) {
                     String location =

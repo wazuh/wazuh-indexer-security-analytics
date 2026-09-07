@@ -67,10 +67,10 @@ import org.opensearch.commons.authuser.User;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.common.io.stream.NamedWriteableRegistry;
 import org.opensearch.core.rest.RestStatus;
-import org.opensearch.core.xcontent.NamedXContentRegistry;
-import org.opensearch.core.xcontent.ToXContent;
 import org.opensearch.core.xcontent.MediaType;
 import org.opensearch.core.xcontent.MediaTypeRegistry;
+import org.opensearch.core.xcontent.NamedXContentRegistry;
+import org.opensearch.core.xcontent.ToXContent;
 import org.opensearch.core.xcontent.XContentParser;
 import org.opensearch.core.xcontent.XContentParserUtils;
 import org.opensearch.index.IndexNotFoundException;
@@ -458,10 +458,21 @@ public class TransportIndexDetectorAction
         if (detector.getTriggers() != null) {
             for (DetectorTrigger trigger : detector.getTriggers()) {
                 if (trigger.getDetectionTypes().isEmpty())
-                    throw new IllegalArgumentException(String.format(Locale.ROOT, "Trigger [%s] should mention at least one detection type but found none", trigger.getName()));
+                    throw new IllegalArgumentException(
+                            String.format(
+                                    Locale.ROOT,
+                                    "Trigger [%s] should mention at least one detection type but found none",
+                                    trigger.getName()));
                 for (String detectionType : trigger.getDetectionTypes()) {
-                    if (false == (DetectorTrigger.THREAT_INTEL_DETECTION_TYPE.equals(detectionType) || DetectorTrigger.RULES_DETECTION_TYPE.equals(detectionType))) {
-                        throw new IllegalArgumentException(String.format(Locale.ROOT, "Trigger [%s] has unsupported detection type [%s]", trigger.getName(), detectionType));
+                    if (false
+                            == (DetectorTrigger.THREAT_INTEL_DETECTION_TYPE.equals(detectionType)
+                                    || DetectorTrigger.RULES_DETECTION_TYPE.equals(detectionType))) {
+                        throw new IllegalArgumentException(
+                                String.format(
+                                        Locale.ROOT,
+                                        "Trigger [%s] has unsupported detection type [%s]",
+                                        trigger.getName(),
+                                        detectionType));
                     }
                 }
             }
@@ -965,8 +976,7 @@ public class TransportIndexDetectorAction
                                                 Map<String, QueryBackend> queryBackendMap = new HashMap<>();
                                                 for (String category : ruleCategories) {
                                                     Map<String, String> fieldMappings = ruleFieldMappings.get(category);
-                                                    queryBackendMap.put(
-                                                            category, new OSQueryBackend(fieldMappings, true));
+                                                    queryBackendMap.put(category, new OSQueryBackend(fieldMappings, true));
                                                 }
 
                                                 // Pair of RuleId - MonitorId for existing monitors of the detector
