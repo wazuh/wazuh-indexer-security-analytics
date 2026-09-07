@@ -1,6 +1,18 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.transport;
 
@@ -25,7 +37,9 @@ import org.opensearch.tasks.Task;
 import org.opensearch.threadpool.ThreadPool;
 import org.opensearch.transport.TransportService;
 
-public class TransportGetCorrelationAlertsAction extends HandledTransportAction<GetCorrelationAlertsRequest, GetCorrelationAlertsResponse> implements SecureTransportAction {
+public class TransportGetCorrelationAlertsAction
+        extends HandledTransportAction<GetCorrelationAlertsRequest, GetCorrelationAlertsResponse>
+        implements SecureTransportAction {
 
     private final NamedXContentRegistry xContentRegistry;
 
@@ -41,27 +55,46 @@ public class TransportGetCorrelationAlertsAction extends HandledTransportAction<
 
     private static final Logger log = LogManager.getLogger(TransportGetCorrelationAlertsAction.class);
 
-
     @Inject
-    public TransportGetCorrelationAlertsAction(TransportService transportService, CorrelationAlertService correlationAlertService, ActionFilters actionFilters, ClusterService clusterService, GetCorrelationAlertsAction getCorrelationAlertsAction, ThreadPool threadPool, Settings settings, NamedXContentRegistry xContentRegistry) {
-        super(getCorrelationAlertsAction.NAME, transportService, actionFilters, GetCorrelationAlertsRequest::new);
+    public TransportGetCorrelationAlertsAction(
+            TransportService transportService,
+            CorrelationAlertService correlationAlertService,
+            ActionFilters actionFilters,
+            ClusterService clusterService,
+            GetCorrelationAlertsAction getCorrelationAlertsAction,
+            ThreadPool threadPool,
+            Settings settings,
+            NamedXContentRegistry xContentRegistry) {
+        super(
+                getCorrelationAlertsAction.NAME,
+                transportService,
+                actionFilters,
+                GetCorrelationAlertsRequest::new);
         this.xContentRegistry = xContentRegistry;
         this.correlationAlertService = correlationAlertService;
         this.clusterService = clusterService;
         this.threadPool = threadPool;
         this.settings = settings;
         this.filterByEnabled = SecurityAnalyticsSettings.FILTER_BY_BACKEND_ROLES.get(this.settings);
-        this.clusterService.getClusterSettings().addSettingsUpdateConsumer(SecurityAnalyticsSettings.FILTER_BY_BACKEND_ROLES, this::setFilterByEnabled);
+        this.clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        SecurityAnalyticsSettings.FILTER_BY_BACKEND_ROLES, this::setFilterByEnabled);
     }
 
     @Override
-    protected void doExecute(Task task, GetCorrelationAlertsRequest request, ActionListener<GetCorrelationAlertsResponse> actionListener) {
+    protected void doExecute(
+            Task task,
+            GetCorrelationAlertsRequest request,
+            ActionListener<GetCorrelationAlertsResponse> actionListener) {
 
         User user = readUserFromThreadContext(this.threadPool);
 
         String validateBackendRoleMessage = validateUserBackendRoles(user, this.filterByEnabled);
         if (!validateBackendRoleMessage.isEmpty()) {
-            actionListener.onFailure(new OpenSearchStatusException("Do not have permissions to resource", RestStatus.FORBIDDEN));
+            actionListener.onFailure(
+                    new OpenSearchStatusException(
+                            "Do not have permissions to resource", RestStatus.FORBIDDEN));
             return;
         }
 
@@ -69,16 +102,9 @@ public class TransportGetCorrelationAlertsAction extends HandledTransportAction<
 
         if (request.getCorrelationRuleId() != null) {
             correlationAlertService.getCorrelationAlerts(
-                    request.getCorrelationRuleId(),
-                    request.getTable(),
-                    actionListener
-            );
+                    request.getCorrelationRuleId(), request.getTable(), actionListener);
         } else {
-            correlationAlertService.getCorrelationAlerts(
-                    null,
-                    request.getTable(),
-                    actionListener
-            );
+            correlationAlertService.getCorrelationAlerts(null, request.getTable(), actionListener);
         }
     }
 

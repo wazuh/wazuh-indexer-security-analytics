@@ -1,8 +1,19 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-
 package org.opensearch.securityanalytics;
 
 import org.opensearch.action.admin.indices.mapping.get.GetMappingsResponse;
@@ -11,11 +22,11 @@ import org.opensearch.client.Request;
 import org.opensearch.client.Response;
 import org.opensearch.cluster.ClusterModule;
 import org.opensearch.cluster.metadata.MappingMetadata;
+import org.opensearch.common.xcontent.json.JsonXContent;
 import org.opensearch.core.xcontent.DeprecationHandler;
 import org.opensearch.core.xcontent.NamedXContentRegistry;
 import org.opensearch.core.xcontent.XContentParser;
 import org.opensearch.core.xcontent.XContentParserUtils;
-import org.opensearch.common.xcontent.json.JsonXContent;
 import org.opensearch.index.mapper.MapperService;
 import org.opensearch.test.rest.OpenSearchRestTestCase;
 
@@ -27,52 +38,55 @@ import static org.opensearch.action.admin.indices.create.CreateIndexRequest.MAPP
 
 public class SecurityAnalyticsClientUtils extends OpenSearchRestTestCase {
 
-
     public static GetMappingsResponse executeGetMappingsRequest(String indexName) throws IOException {
 
         Request getMappingsRequest = new Request("GET", indexName + "/_mapping");
         Response response = client().performRequest(getMappingsRequest);
 
-        XContentParser parser = JsonXContent.jsonXContent.createParser(
-                new NamedXContentRegistry(ClusterModule.getNamedXWriteables()),
-                DeprecationHandler.THROW_UNSUPPORTED_OPERATION,
-                response.getEntity().getContent()
-        );
+        XContentParser parser =
+                JsonXContent.jsonXContent.createParser(
+                        new NamedXContentRegistry(ClusterModule.getNamedXWriteables()),
+                        DeprecationHandler.THROW_UNSUPPORTED_OPERATION,
+                        response.getEntity().getContent());
         if (parser.currentToken() == null) {
             parser.nextToken();
         }
 
-        XContentParserUtils.ensureExpectedToken(parser.currentToken(), XContentParser.Token.START_OBJECT, parser);
+        XContentParserUtils.ensureExpectedToken(
+                parser.currentToken(), XContentParser.Token.START_OBJECT, parser);
 
         Map<String, Object> parts = parser.map();
 
         Map<String, MappingMetadata> mappings = new HashMap<>();
         for (Map.Entry<String, Object> entry : parts.entrySet()) {
             String _indexName = entry.getKey();
-            assert entry.getValue() instanceof Map : "expected a map as type mapping, but got: " + entry.getValue().getClass();
+            assert entry.getValue() instanceof Map
+                    : "expected a map as type mapping, but got: " + entry.getValue().getClass();
 
-            @SuppressWarnings("unchecked") final Map<String, Object> fieldMappings = (Map<String, Object>) ((Map<String, ?>) entry.getValue()).get(
-                    MAPPINGS.getPreferredName()
-            );
+            @SuppressWarnings("unchecked")
+            final Map<String, Object> fieldMappings =
+                    (Map<String, Object>)
+                            ((Map<String, ?>) entry.getValue()).get(MAPPINGS.getPreferredName());
 
-            mappings.put(_indexName, new MappingMetadata(MapperService.SINGLE_MAPPING_NAME, fieldMappings));
+            mappings.put(
+                    _indexName, new MappingMetadata(MapperService.SINGLE_MAPPING_NAME, fieldMappings));
         }
-        Map<String, MappingMetadata> mappingsMap =  new HashMap<>(mappings);
+        Map<String, MappingMetadata> mappingsMap = new HashMap<>(mappings);
         return new GetMappingsResponse(mappingsMap);
     }
 
-    public static SearchResponse executeSearchRequest(String indexName, String queryJson) throws IOException {
+    public static SearchResponse executeSearchRequest(String indexName, String queryJson)
+            throws IOException {
 
         Request request = new Request("GET", indexName + "/_search");
         request.setJsonEntity(queryJson);
         Response response = client().performRequest(request);
 
-        XContentParser parser = JsonXContent.jsonXContent.createParser(
-                new NamedXContentRegistry(ClusterModule.getNamedXWriteables()),
-                DeprecationHandler.THROW_UNSUPPORTED_OPERATION,
-                response.getEntity().getContent()
-        );
+        XContentParser parser =
+                JsonXContent.jsonXContent.createParser(
+                        new NamedXContentRegistry(ClusterModule.getNamedXWriteables()),
+                        DeprecationHandler.THROW_UNSUPPORTED_OPERATION,
+                        response.getEntity().getContent());
         return SearchResponse.fromXContent(parser);
     }
-
 }

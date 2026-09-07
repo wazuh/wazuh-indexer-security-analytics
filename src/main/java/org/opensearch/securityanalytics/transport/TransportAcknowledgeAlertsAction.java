@@ -1,6 +1,18 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.transport;
 
@@ -8,7 +20,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.OpenSearchException;
 import org.opensearch.OpenSearchStatusException;
-import org.opensearch.core.action.ActionListener;
 import org.opensearch.action.StepListener;
 import org.opensearch.action.support.ActionFilters;
 import org.opensearch.action.support.HandledTransportAction;
@@ -18,11 +29,12 @@ import org.opensearch.common.settings.Settings;
 import org.opensearch.commons.alerting.action.GetAlertsResponse;
 import org.opensearch.commons.alerting.model.Table;
 import org.opensearch.commons.authuser.User;
-import org.opensearch.core.xcontent.NamedXContentRegistry;
+import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.rest.RestStatus;
+import org.opensearch.core.xcontent.NamedXContentRegistry;
+import org.opensearch.securityanalytics.action.AckAlertsAction;
 import org.opensearch.securityanalytics.action.AckAlertsRequest;
 import org.opensearch.securityanalytics.action.AckAlertsResponse;
-import org.opensearch.securityanalytics.action.AckAlertsAction;
 import org.opensearch.securityanalytics.action.GetDetectorRequest;
 import org.opensearch.securityanalytics.action.GetDetectorResponse;
 import org.opensearch.securityanalytics.alerts.AlertsService;
@@ -33,7 +45,9 @@ import org.opensearch.threadpool.ThreadPool;
 import org.opensearch.transport.TransportService;
 import org.opensearch.transport.client.Client;
 
-public class TransportAcknowledgeAlertsAction extends HandledTransportAction<AckAlertsRequest, AckAlertsResponse> implements SecureTransportAction {
+public class TransportAcknowledgeAlertsAction
+        extends HandledTransportAction<AckAlertsRequest, AckAlertsResponse>
+        implements SecureTransportAction {
     private final TransportGetDetectorAction transportGetDetectorAction;
 
     private final NamedXContentRegistry xContentRegistry;
@@ -50,7 +64,15 @@ public class TransportAcknowledgeAlertsAction extends HandledTransportAction<Ack
     private static final Logger log = LogManager.getLogger(TransportAcknowledgeAlertsAction.class);
 
     @Inject
-    public TransportAcknowledgeAlertsAction(TransportService transportService, ActionFilters actionFilters, ClusterService clusterService, ThreadPool threadPool, Settings settings, TransportGetDetectorAction transportGetDetectorAction, NamedXContentRegistry xContentRegistry, Client client) {
+    public TransportAcknowledgeAlertsAction(
+            TransportService transportService,
+            ActionFilters actionFilters,
+            ClusterService clusterService,
+            ThreadPool threadPool,
+            Settings settings,
+            TransportGetDetectorAction transportGetDetectorAction,
+            NamedXContentRegistry xContentRegistry,
+            Client client) {
         super(AckAlertsAction.NAME, transportService, actionFilters, AckAlertsRequest::new);
         this.transportGetDetectorAction = transportGetDetectorAction;
         this.xContentRegistry = xContentRegistry;
@@ -59,52 +81,67 @@ public class TransportAcknowledgeAlertsAction extends HandledTransportAction<Ack
         this.settings = settings;
         this.filterByEnabled = SecurityAnalyticsSettings.FILTER_BY_BACKEND_ROLES.get(this.settings);
         this.alertsService = new AlertsService(client);
-        this.clusterService.getClusterSettings().addSettingsUpdateConsumer(SecurityAnalyticsSettings.FILTER_BY_BACKEND_ROLES, this::setFilterByEnabled);
+        this.clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        SecurityAnalyticsSettings.FILTER_BY_BACKEND_ROLES, this::setFilterByEnabled);
     }
 
     @Override
-    protected void doExecute(Task task, AckAlertsRequest request, ActionListener<AckAlertsResponse> actionListener) {
+    protected void doExecute(
+            Task task, AckAlertsRequest request, ActionListener<AckAlertsResponse> actionListener) {
 
         User user = readUserFromThreadContext(this.threadPool);
 
         String validateBackendRoleMessage = validateUserBackendRoles(user, this.filterByEnabled);
         if (!validateBackendRoleMessage.isEmpty()) {
-            actionListener.onFailure(new OpenSearchStatusException("Do not have permissions to resource", RestStatus.FORBIDDEN));
+            actionListener.onFailure(
+                    new OpenSearchStatusException(
+                            "Do not have permissions to resource", RestStatus.FORBIDDEN));
             return;
         }
 
         GetDetectorRequest getDetectorRequest = new GetDetectorRequest(request.getDetectorId(), -3L);
-        transportGetDetectorAction.doExecute(task, getDetectorRequest, new ActionListener<GetDetectorResponse>() {
-            @Override
-            public void onResponse(GetDetectorResponse getDetectorResponse) {
-                StepListener<GetAlertsResponse> getAlertsResponseStepListener = new StepListener<>();
-                alertsService.getAlerts(
-                        request.getAlertIds(),
-                        getDetectorResponse.getDetector(),
-                        new Table("asc", "id", null, 10000, 0, null),
-                        null,
-                        null,
-                        getAlertsResponseStepListener
-                );
-                getAlertsResponseStepListener.whenComplete(getAlertsResponse -> {
-                    if (getAlertsResponse.getAlerts().size() == 0 || isDetectorAlertsMonitorMismatch(getDetectorResponse.getDetector(), getAlertsResponse)) {
-                        actionListener.onFailure(new OpenSearchException("Detector alert mapping is not valid"));
-                    } else {
-                        alertsService.ackknowledgeAlerts(getAlertsResponse, getDetectorResponse, actionListener);
+        transportGetDetectorAction.doExecute(
+                task,
+                getDetectorRequest,
+                new ActionListener<GetDetectorResponse>() {
+                    @Override
+                    public void onResponse(GetDetectorResponse getDetectorResponse) {
+                        StepListener<GetAlertsResponse> getAlertsResponseStepListener = new StepListener<>();
+                        alertsService.getAlerts(
+                                request.getAlertIds(),
+                                getDetectorResponse.getDetector(),
+                                new Table("asc", "id", null, 10000, 0, null),
+                                null,
+                                null,
+                                getAlertsResponseStepListener);
+                        getAlertsResponseStepListener.whenComplete(
+                                getAlertsResponse -> {
+                                    if (getAlertsResponse.getAlerts().size() == 0
+                                            || isDetectorAlertsMonitorMismatch(
+                                                    getDetectorResponse.getDetector(), getAlertsResponse)) {
+                                        actionListener.onFailure(
+                                                new OpenSearchException("Detector alert mapping is not valid"));
+                                    } else {
+                                        alertsService.ackknowledgeAlerts(
+                                                getAlertsResponse, getDetectorResponse, actionListener);
+                                    }
+                                },
+                                actionListener::onFailure);
                     }
-                }, actionListener::onFailure);
-            }
 
-            @Override
-            public void onFailure(Exception e) {
-                actionListener.onFailure(e);
-            }
-        });
+                    @Override
+                    public void onFailure(Exception e) {
+                        actionListener.onFailure(e);
+                    }
+                });
     }
 
-    private boolean isDetectorAlertsMonitorMismatch(Detector detector, GetAlertsResponse getAlertsResponse) {
+    private boolean isDetectorAlertsMonitorMismatch(
+            Detector detector, GetAlertsResponse getAlertsResponse) {
         return getAlertsResponse.getAlerts().stream()
-                .anyMatch(alert -> false == detector.getMonitorIds().contains(alert.getMonitorId())) ;
+                .anyMatch(alert -> false == detector.getMonitorIds().contains(alert.getMonitorId()));
     }
 
     private void setFilterByEnabled(boolean filterByEnabled) {

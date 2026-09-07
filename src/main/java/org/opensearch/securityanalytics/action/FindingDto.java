@@ -1,21 +1,33 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.action;
+
+import org.opensearch.commons.alerting.model.DocLevelQuery;
+import org.opensearch.commons.alerting.model.FindingDocument;
+import org.opensearch.core.common.io.stream.StreamInput;
+import org.opensearch.core.common.io.stream.StreamOutput;
+import org.opensearch.core.common.io.stream.Writeable;
+import org.opensearch.core.xcontent.ToXContent;
+import org.opensearch.core.xcontent.ToXContentObject;
+import org.opensearch.core.xcontent.XContentBuilder;
 
 import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
-import org.opensearch.core.common.io.stream.StreamInput;
-import org.opensearch.core.common.io.stream.StreamOutput;
-import org.opensearch.core.common.io.stream.Writeable;
-import org.opensearch.commons.alerting.model.DocLevelQuery;
-import org.opensearch.commons.alerting.model.FindingDocument;
-import org.opensearch.commons.alerting.model.FindingWithDocs;
-import org.opensearch.core.xcontent.ToXContent;
-import org.opensearch.core.xcontent.ToXContentObject;
-import org.opensearch.core.xcontent.XContentBuilder;
 
 public class FindingDto implements ToXContentObject, Writeable {
 
@@ -43,8 +55,7 @@ public class FindingDto implements ToXContentObject, Writeable {
             String index,
             List<DocLevelQuery> docLevelQueries,
             Instant timestamp,
-            List<FindingDocument> documents
-    ) {
+            List<FindingDocument> documents) {
         this.detectorId = detectorId;
         this.id = id;
         this.relatedDocIds = relatedDocIds;
@@ -56,19 +67,20 @@ public class FindingDto implements ToXContentObject, Writeable {
 
     public FindingDto(StreamInput sin) throws IOException {
         this(
-            sin.readString(),
-            sin.readString(),
-            sin.readStringList(),
-            sin.readString(),
-            sin.readList(DocLevelQuery::readFrom),
-            sin.readInstant(),
-            sin.readList(FindingDocument::new)
-        );
+                sin.readString(),
+                sin.readString(),
+                sin.readStringList(),
+                sin.readString(),
+                sin.readList(DocLevelQuery::readFrom),
+                sin.readInstant(),
+                sin.readList(FindingDocument::new));
     }
 
     @Override
-    public XContentBuilder toXContent(XContentBuilder builder, ToXContent.Params params) throws IOException {
-        builder.startObject()
+    public XContentBuilder toXContent(XContentBuilder builder, ToXContent.Params params)
+            throws IOException {
+        builder
+                .startObject()
                 .field(DETECTOR_ID_FIELD, detectorId)
                 .field(FINDING_ID_FIELD, id)
                 .field(RELATED_DOC_IDS_FIELD, relatedDocIds)

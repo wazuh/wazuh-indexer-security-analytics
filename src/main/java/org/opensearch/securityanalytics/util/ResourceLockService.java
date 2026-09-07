@@ -99,7 +99,8 @@ public class ResourceLockService {
                         .put("index.hidden", true)
                         .put("index.number_of_shards", 1)
                         .put("index.number_of_replicas", 0)
-                        .put("index.auto_expand_replicas", minSystemIndexReplicas + "-" + maxSystemIndexReplicas)
+                        .put(
+                                "index.auto_expand_replicas", minSystemIndexReplicas + "-" + maxSystemIndexReplicas)
                         .put("index.refresh_interval", "-1")
                         .build();
         CreateIndexRequest request;

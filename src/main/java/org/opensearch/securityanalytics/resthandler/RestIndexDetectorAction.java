@@ -1,19 +1,31 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.resthandler;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.action.support.WriteRequest;
+import org.opensearch.core.rest.RestStatus;
 import org.opensearch.core.xcontent.ToXContent;
 import org.opensearch.rest.BaseRestHandler;
 import org.opensearch.rest.BytesRestResponse;
 import org.opensearch.rest.RestChannel;
 import org.opensearch.rest.RestRequest;
 import org.opensearch.rest.RestResponse;
-import org.opensearch.core.rest.RestStatus;
 import org.opensearch.rest.action.RestResponseListener;
 import org.opensearch.securityanalytics.SecurityAnalyticsPlugin;
 import org.opensearch.securityanalytics.action.IndexDetectorAction;
@@ -42,16 +54,24 @@ public class RestIndexDetectorAction extends BaseRestHandler {
     public List<Route> routes() {
         return List.of(
                 new Route(RestRequest.Method.POST, SecurityAnalyticsPlugin.DETECTOR_BASE_URI),
-                new Route(RestRequest.Method.PUT, String.format(Locale.getDefault(),
-                        "%s/{%s}",
-                        SecurityAnalyticsPlugin.DETECTOR_BASE_URI,
-                        DetectorUtils.DETECTOR_ID_FIELD))
-        );
+                new Route(
+                        RestRequest.Method.PUT,
+                        String.format(
+                                Locale.getDefault(),
+                                "%s/{%s}",
+                                SecurityAnalyticsPlugin.DETECTOR_BASE_URI,
+                                DetectorUtils.DETECTOR_ID_FIELD)));
     }
 
     @Override
-    protected RestChannelConsumer prepareRequest(RestRequest request, NodeClient client) throws IOException {
-        log.debug(String.format(Locale.getDefault(), "%s %s", request.method(), SecurityAnalyticsPlugin.DETECTOR_BASE_URI));
+    protected RestChannelConsumer prepareRequest(RestRequest request, NodeClient client)
+            throws IOException {
+        log.debug(
+                String.format(
+                        Locale.getDefault(),
+                        "%s %s",
+                        request.method(),
+                        SecurityAnalyticsPlugin.DETECTOR_BASE_URI));
 
         WriteRequest.RefreshPolicy refreshPolicy = WriteRequest.RefreshPolicy.IMMEDIATE;
         if (request.hasParam(RestHandlerUtils.REFRESH)) {
@@ -64,13 +84,20 @@ public class RestIndexDetectorAction extends BaseRestHandler {
         // the transport ActionFilters chain, which runs after every REST handler, so parsing here
         // exposed the whole parsing path to accounts the same request, well-formed, refuses with 403.
         byte[] body = request.hasContent() ? request.content().streamInput().readAllBytes() : null;
-        String mediaType = request.getMediaType() != null ? request.getMediaType().mediaTypeWithoutParameters() : null;
+        String mediaType =
+                request.getMediaType() != null ? request.getMediaType().mediaTypeWithoutParameters() : null;
 
-        IndexDetectorRequest indexDetectorRequest = new IndexDetectorRequest(id, refreshPolicy, request.method(), body, mediaType);
-        return channel -> client.execute(IndexDetectorAction.INSTANCE, indexDetectorRequest, indexDetectorResponse(channel, request.method(), client));
+        IndexDetectorRequest indexDetectorRequest =
+                new IndexDetectorRequest(id, refreshPolicy, request.method(), body, mediaType);
+        return channel ->
+                client.execute(
+                        IndexDetectorAction.INSTANCE,
+                        indexDetectorRequest,
+                        indexDetectorResponse(channel, request.method(), client));
     }
 
-    private RestResponseListener<IndexDetectorResponse> indexDetectorResponse(RestChannel channel, RestRequest.Method restMethod, NodeClient client) {
+    private RestResponseListener<IndexDetectorResponse> indexDetectorResponse(
+            RestChannel channel, RestRequest.Method restMethod, NodeClient client) {
         return new RestResponseListener<>(channel) {
             @Override
             public RestResponse buildResponse(IndexDetectorResponse response) throws Exception {
@@ -86,12 +113,20 @@ public class RestIndexDetectorAction extends BaseRestHandler {
                 // The detector from the response, not the one parsed from the request: a toggle sends
                 // only the fields the client happened to hold, and the transport action restores the
                 // rest -- including `source` -- from the stored document.
-                RegistryOverrideWriter.recordDetectorEnabled(client, response.getId(), response.getDetector());
+                RegistryOverrideWriter.recordDetectorEnabled(
+                        client, response.getId(), response.getDetector());
 
-                BytesRestResponse restResponse = new BytesRestResponse(returnStatus, response.toXContent(channel.newBuilder(), ToXContent.EMPTY_PARAMS));
+                BytesRestResponse restResponse =
+                        new BytesRestResponse(
+                                returnStatus, response.toXContent(channel.newBuilder(), ToXContent.EMPTY_PARAMS));
 
                 if (restMethod == RestRequest.Method.POST) {
-                    String location = String.format(Locale.getDefault(), "%s/%s", SecurityAnalyticsPlugin.DETECTOR_BASE_URI, response.getId());
+                    String location =
+                            String.format(
+                                    Locale.getDefault(),
+                                    "%s/%s",
+                                    SecurityAnalyticsPlugin.DETECTOR_BASE_URI,
+                                    response.getId());
                     restResponse.addHeader("Location", location);
                 }
 

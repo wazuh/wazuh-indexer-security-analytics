@@ -91,9 +91,9 @@ public class IndexDetectorRequestTests extends OpenSearchTestCase {
 
     /**
      * The raw-body constructor is what the REST layer now uses: the detector is absent and the
-     * client's bytes travel in its place, for the transport action to parse once privileges have
-     * been evaluated. Both halves of that shape have to survive the wire, since {@code writeTo} and
-     * the {@code StreamInput} constructor are written by hand and drifted apart before.
+     * client's bytes travel in its place, for the transport action to parse once privileges have been
+     * evaluated. Both halves of that shape have to survive the wire, since {@code writeTo} and the
+     * {@code StreamInput} constructor are written by hand and drifted apart before.
      */
     public void testIndexDetectorRawBodyRequestRoundTrip() throws IOException {
         String detectorId = UUID.randomUUID().toString();
@@ -117,16 +117,13 @@ public class IndexDetectorRequestTests extends OpenSearchTestCase {
         Assert.assertEquals(WriteRequest.RefreshPolicy.IMMEDIATE, newRequest.getRefreshPolicy());
         Assert.assertEquals(RestRequest.Method.PUT, newRequest.getMethod());
         Assert.assertNull(
-                "the detector is parsed by the transport action, not carried",
-                newRequest.getDetector());
+                "the detector is parsed by the transport action, not carried", newRequest.getDetector());
         Assert.assertArrayEquals(body, newRequest.getBody());
         Assert.assertEquals("application/json", newRequest.getMediaType());
         Assert.assertFalse(newRequest.isInternalCaller());
     }
 
-    /**
-     * A request carrying a parsed detector carries no body, and that asymmetry survives the wire.
-     */
+    /** A request carrying a parsed detector carries no body, and that asymmetry survives the wire. */
     public void testIndexDetectorParsedRequestCarriesNoBody() throws IOException {
         IndexDetectorRequest request =
                 new IndexDetectorRequest(
