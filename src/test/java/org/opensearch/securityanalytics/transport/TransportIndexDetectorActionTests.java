@@ -42,6 +42,7 @@ import org.opensearch.securityanalytics.model.Detector;
 import org.opensearch.securityanalytics.model.DetectorInput;
 import org.opensearch.securityanalytics.model.DetectorRule;
 import org.opensearch.securityanalytics.model.Rule;
+import org.opensearch.securityanalytics.model.RuleMetadata;
 import org.opensearch.securityanalytics.model.Value;
 import org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings;
 import org.opensearch.securityanalytics.util.DetectorIndices;
@@ -303,21 +304,21 @@ public class TransportIndexDetectorActionTests extends OpenSearchTestCase {
         return new Rule(
                 id,
                 1L,
-                "title",
                 "cat",
                 "logsource",
-                "desc",
                 Collections.<Value>emptyList(),
                 Collections.<Value>emptyList(),
                 "low",
                 Collections.<Value>emptyList(),
-                "author",
                 "stable",
                 Instant.now(),
                 Collections.<Value>emptyList(),
                 Collections.<Value>emptyList(),
                 blob,
-                Collections.<Value>emptyList());
+                Collections.<Value>emptyList(),
+                Collections.emptyMap(),
+                Collections.emptyMap(),
+                RuleMetadata.empty());
     }
 
     public void testFilterEnabledRules_dropsDisabled_keepsEnabledAndUnmarked() {

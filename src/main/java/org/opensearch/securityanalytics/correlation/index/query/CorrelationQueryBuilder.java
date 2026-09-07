@@ -1,17 +1,29 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.correlation.index.query;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.search.Query;
+import org.opensearch.core.ParseField;
 import org.opensearch.core.common.ParsingException;
 import org.opensearch.core.common.Strings;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.core.common.io.stream.StreamOutput;
-import org.opensearch.core.ParseField;
 import org.opensearch.core.xcontent.XContentBuilder;
 import org.opensearch.core.xcontent.XContentParser;
 import org.opensearch.index.mapper.MappedFieldType;
@@ -48,19 +60,24 @@ public class CorrelationQueryBuilder extends AbstractQueryBuilder<CorrelationQue
 
     public CorrelationQueryBuilder(String fieldName, float[] vector, int k, QueryBuilder filter) {
         if (Strings.isNullOrEmpty(fieldName)) {
-            throw new IllegalArgumentException(String.format(Locale.getDefault(), "[%s] requires fieldName", NAME));
+            throw new IllegalArgumentException(
+                    String.format(Locale.getDefault(), "[%s] requires fieldName", NAME));
         }
         if (vector == null) {
-            throw new IllegalArgumentException(String.format(Locale.getDefault(), "[%s] requires query vector", NAME));
+            throw new IllegalArgumentException(
+                    String.format(Locale.getDefault(), "[%s] requires query vector", NAME));
         }
         if (vector.length == 0) {
-            throw new IllegalArgumentException(String.format(Locale.getDefault(), "[%s] query vector is empty", NAME));
+            throw new IllegalArgumentException(
+                    String.format(Locale.getDefault(), "[%s] query vector is empty", NAME));
         }
         if (k <= 0) {
-            throw new IllegalArgumentException(String.format(Locale.getDefault(), "[%s] requires k > 0", NAME));
+            throw new IllegalArgumentException(
+                    String.format(Locale.getDefault(), "[%s] requires k > 0", NAME));
         }
         if (k > K_MAX) {
-            throw new IllegalArgumentException(String.format(Locale.getDefault(), "[%s] requires k <= ", K_MAX));
+            throw new IllegalArgumentException(
+                    String.format(Locale.getDefault(), "[%s] requires k <= ", K_MAX));
         }
 
         this.fieldName = fieldName;
@@ -103,7 +120,8 @@ public class CorrelationQueryBuilder extends AbstractQueryBuilder<CorrelationQue
             if (token == XContentParser.Token.FIELD_NAME) {
                 currentFieldName = parser.currentName();
             } else if (token == XContentParser.Token.START_OBJECT) {
-                throwParsingExceptionOnMultipleFields(NAME, parser.getTokenLocation(), fieldName, currentFieldName);
+                throwParsingExceptionOnMultipleFields(
+                        NAME, parser.getTokenLocation(), fieldName, currentFieldName);
                 fieldName = currentFieldName;
                 while ((token = parser.nextToken()) != XContentParser.Token.END_OBJECT) {
                     if (token == XContentParser.Token.FIELD_NAME) {
@@ -111,41 +129,44 @@ public class CorrelationQueryBuilder extends AbstractQueryBuilder<CorrelationQue
                     } else if (token.isValue() || token == XContentParser.Token.START_ARRAY) {
                         if (VECTOR_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
                             vector = parser.list();
-                        } else if (AbstractQueryBuilder.BOOST_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
+                        } else if (AbstractQueryBuilder.BOOST_FIELD.match(
+                                currentFieldName, parser.getDeprecationHandler())) {
                             boost = parser.floatValue();
                         } else if (K_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
                             k = (Integer) NumberFieldMapper.NumberType.INTEGER.parse(parser.objectBytes(), false);
-                        } else if (AbstractQueryBuilder.NAME_FIELD.match(currentFieldName, parser.getDeprecationHandler())) {
+                        } else if (AbstractQueryBuilder.NAME_FIELD.match(
+                                currentFieldName, parser.getDeprecationHandler())) {
                             queryName = parser.text();
                         } else {
                             throw new ParsingException(
                                     parser.getTokenLocation(),
-                                    "[" + NAME + "] query does not support [" + currentFieldName + "]"
-                            );
+                                    "[" + NAME + "] query does not support [" + currentFieldName + "]");
                         }
                     } else if (token == XContentParser.Token.START_OBJECT) {
                         String tokenName = parser.currentName();
                         if (FILTER_FIELD.getPreferredName().equals(tokenName)) {
                             filter = parseInnerQueryBuilder(parser);
-                        }  else {
-                            throw new ParsingException(parser.getTokenLocation(), "[" + NAME + "] unknown token [" + token + "]");
+                        } else {
+                            throw new ParsingException(
+                                    parser.getTokenLocation(), "[" + NAME + "] unknown token [" + token + "]");
                         }
                     } else {
                         throw new ParsingException(
                                 parser.getTokenLocation(),
-                                "[" + NAME + "] unknown token [" + token + "] after [" + currentFieldName + "]"
-                        );
+                                "[" + NAME + "] unknown token [" + token + "] after [" + currentFieldName + "]");
                     }
                 }
             } else {
-                throwParsingExceptionOnMultipleFields(NAME, parser.getTokenLocation(), fieldName, parser.currentName());
+                throwParsingExceptionOnMultipleFields(
+                        NAME, parser.getTokenLocation(), fieldName, parser.currentName());
                 fieldName = parser.currentName();
                 vector = parser.list();
             }
         }
 
         assert vector != null;
-        CorrelationQueryBuilder correlationQueryBuilder = new CorrelationQueryBuilder(fieldName, objectsToFloats(vector), k, filter);
+        CorrelationQueryBuilder correlationQueryBuilder =
+                new CorrelationQueryBuilder(fieldName, objectsToFloats(vector), k, filter);
         correlationQueryBuilder.queryName(queryName);
         correlationQueryBuilder.boost(boost);
         return correlationQueryBuilder;
@@ -195,33 +216,34 @@ public class CorrelationQueryBuilder extends AbstractQueryBuilder<CorrelationQue
         MappedFieldType mappedFieldType = context.fieldMapper(fieldName);
 
         if (!(mappedFieldType instanceof CorrelationVectorFieldMapper.CorrelationVectorFieldType)) {
-            throw new IllegalArgumentException(String.format(Locale.getDefault(), "Field '%s' is not knn_vector type.", this.fieldName));
+            throw new IllegalArgumentException(
+                    String.format(Locale.getDefault(), "Field '%s' is not knn_vector type.", this.fieldName));
         }
 
-        CorrelationVectorFieldMapper.CorrelationVectorFieldType correlationVectorFieldType = (CorrelationVectorFieldMapper.CorrelationVectorFieldType) mappedFieldType;
+        CorrelationVectorFieldMapper.CorrelationVectorFieldType correlationVectorFieldType =
+                (CorrelationVectorFieldMapper.CorrelationVectorFieldType) mappedFieldType;
         int fieldDimension = correlationVectorFieldType.getDimension();
 
         if (fieldDimension != vector.length) {
             throw new IllegalArgumentException(
-                    String.format(Locale.getDefault(), "Query vector has invalid dimension: %d. Dimension should be: %d", vector.length, fieldDimension)
-            );
+                    String.format(
+                            Locale.getDefault(),
+                            "Query vector has invalid dimension: %d. Dimension should be: %d",
+                            vector.length,
+                            fieldDimension));
         }
 
-        String indexName = context.index().getName();
-        CorrelationQueryFactory.CreateQueryRequest createQueryRequest = new CorrelationQueryFactory.CreateQueryRequest(
-                indexName,
-                this.fieldName,
-                this.vector,
-                this.k,
-                this.filter,
-                context
-        );
+        CorrelationQueryFactory.CreateQueryRequest createQueryRequest =
+                new CorrelationQueryFactory.CreateQueryRequest(
+                        this.fieldName, this.vector, this.k, this.filter, context);
         return CorrelationQueryFactory.create(createQueryRequest);
     }
 
     @Override
     protected boolean doEquals(CorrelationQueryBuilder other) {
-        return Objects.equals(fieldName, other.fieldName) && Arrays.equals(vector, other.vector) && Objects.equals(k, other.k);
+        return Objects.equals(fieldName, other.fieldName)
+                && Arrays.equals(vector, other.vector)
+                && Objects.equals(k, other.k);
     }
 
     @Override

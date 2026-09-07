@@ -1,17 +1,29 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.model;
 
-import java.io.IOException;
-import java.util.List;
-import org.junit.Assert;
+import org.opensearch.commons.authuser.User;
 import org.opensearch.core.common.bytes.BytesReference;
 import org.opensearch.core.xcontent.ToXContent;
-import org.opensearch.commons.authuser.User;
 import org.opensearch.test.OpenSearchTestCase;
+import org.junit.Assert;
 
+import java.io.IOException;
+import java.util.List;
 
 import static org.opensearch.securityanalytics.TestHelpers.builder;
 import static org.opensearch.securityanalytics.TestHelpers.parser;
@@ -34,69 +46,73 @@ public class XContentTests extends OpenSearchTestCase {
     }
 
     public void testDetectorParsingWithNoName() {
-        String detectorStringWithoutName = "{\n" +
-                "  \"type\": \"detector\",\n" +
-                "  \"detector_type\": \"WINDOWS\",\n" +
-                "  \"user\": {\n" +
-                "    \"name\": \"JPXeGWmlMP\",\n" +
-                "    \"backend_roles\": [\n" +
-                "      \"lVOjTakxQl\",\n" +
-                "      \"rWcHiErFQz\"\n" +
-                "    ],\n" +
-                "    \"roles\": [\n" +
-                "      \"zEMpObrYPM\",\n" +
-                "      \"all_access\"\n" +
-                "    ],\n" +
-                "    \"custom_attributes\": {\n" +
-                "      \"test_attr\":\"test\"\n" +
-                "    },\n" +
-                "    \"user_requested_tenant\": null\n" +
-                "  },\n" +
-                "  \"enabled\": false,\n" +
-                "  \"enabled_time\": null,\n" +
-                "  \"schedule\": {\n" +
-                "    \"period\": {\n" +
-                "      \"interval\": 5,\n" +
-                "      \"unit\": \"MINUTES\"\n" +
-                "    }\n" +
-                "  },\n" +
-                "  \"inputs\": [\n" +
-                "    {\n" +
-                "      \"detector_input\": {\n" +
-                "        \"description\": \"windows detector for security analytics\",\n" +
-                "        \"indices\": [\n" +
-                "          \"windows\"\n" +
-                "        ],\n" +
-                "        \"custom_rules\": [],\n" +
-                "        \"pre_packaged_rules\": []\n" +
-                "      }\n" +
-                "    }\n" +
-                "  ],\n" +
-                "  \"triggers\": [\n" +
-                "    {\n" +
-                "      \"id\": \"v70W_oMBDWZ4HMv2Cfay\",\n" +
-                "      \"name\": \"windows-trigger\",\n" +
-                "      \"severity\": \"1\",\n" +
-                "      \"types\": [\n" +
-                "        \"windows\"\n" +
-                "      ],\n" +
-                "      \"ids\": [\n" +
-                "        \"QuarksPwDump Clearing Access History\"\n" +
-                "      ],\n" +
-                "      \"sev_levels\": [\n" +
-                "        \"high\"\n" +
-                "      ],\n" +
-                "      \"tags\": [\n" +
-                "        \"T0008\"\n" +
-                "      ],\n" +
-                "      \"actions\": []\n" +
-                "    }\n" +
-                "  ]\n" +
-                "}";
+        String detectorStringWithoutName =
+                "{\n"
+                        + "  \"type\": \"detector\",\n"
+                        + "  \"detector_type\": \"WINDOWS\",\n"
+                        + "  \"user\": {\n"
+                        + "    \"name\": \"JPXeGWmlMP\",\n"
+                        + "    \"backend_roles\": [\n"
+                        + "      \"lVOjTakxQl\",\n"
+                        + "      \"rWcHiErFQz\"\n"
+                        + "    ],\n"
+                        + "    \"roles\": [\n"
+                        + "      \"zEMpObrYPM\",\n"
+                        + "      \"all_access\"\n"
+                        + "    ],\n"
+                        + "    \"custom_attributes\": {\n"
+                        + "      \"test_attr\":\"test\"\n"
+                        + "    },\n"
+                        + "    \"user_requested_tenant\": null\n"
+                        + "  },\n"
+                        + "  \"enabled\": false,\n"
+                        + "  \"enabled_time\": null,\n"
+                        + "  \"schedule\": {\n"
+                        + "    \"period\": {\n"
+                        + "      \"interval\": 5,\n"
+                        + "      \"unit\": \"MINUTES\"\n"
+                        + "    }\n"
+                        + "  },\n"
+                        + "  \"inputs\": [\n"
+                        + "    {\n"
+                        + "      \"detector_input\": {\n"
+                        + "        \"description\": \"windows detector for security analytics\",\n"
+                        + "        \"indices\": [\n"
+                        + "          \"windows\"\n"
+                        + "        ],\n"
+                        + "        \"custom_rules\": [],\n"
+                        + "        \"pre_packaged_rules\": []\n"
+                        + "      }\n"
+                        + "    }\n"
+                        + "  ],\n"
+                        + "  \"triggers\": [\n"
+                        + "    {\n"
+                        + "      \"id\": \"v70W_oMBDWZ4HMv2Cfay\",\n"
+                        + "      \"name\": \"windows-trigger\",\n"
+                        + "      \"severity\": \"1\",\n"
+                        + "      \"types\": [\n"
+                        + "        \"windows\"\n"
+                        + "      ],\n"
+                        + "      \"ids\": [\n"
+                        + "        \"QuarksPwDump Clearing Access History\"\n"
+                        + "      ],\n"
+                        + "      \"sev_levels\": [\n"
+                        + "        \"high\"\n"
+                        + "      ],\n"
+                        + "      \"tags\": [\n"
+                        + "        \"T0008\"\n"
+                        + "      ],\n"
+                        + "      \"actions\": []\n"
+                        + "    }\n"
+                        + "  ]\n"
+                        + "}";
 
-        Exception exception = assertThrows(NullPointerException.class, () -> {
-            Detector.parse(parser(detectorStringWithoutName), null, null);
-        });
+        Exception exception =
+                assertThrows(
+                        NullPointerException.class,
+                        () -> {
+                            Detector.parse(parser(detectorStringWithoutName), null, null);
+                        });
 
         String expectedMessage = "Detector name is null";
         String actualMessage = exception.getMessage();
@@ -105,64 +121,68 @@ public class XContentTests extends OpenSearchTestCase {
     }
 
     public void testDetectorParsingWithNoSchedule() {
-        String detectorStringWithoutSchedule = "{\n" +
-                "  \"type\": \"detector\",\n" +
-                "  \"name\": \"BCIocIalTX\",\n" +
-                "  \"detector_type\": \"WINDOWS\",\n" +
-                "  \"user\": {\n" +
-                "    \"name\": \"JPXeGWmlMP\",\n" +
-                "    \"backend_roles\": [\n" +
-                "      \"lVOjTakxQl\",\n" +
-                "      \"rWcHiErFQz\"\n" +
-                "    ],\n" +
-                "    \"roles\": [\n" +
-                "      \"zEMpObrYPM\",\n" +
-                "      \"all_access\"\n" +
-                "    ],\n" +
-                "    \"custom_attributes\": {\n" +
-                "      \"test_attr\":\"test\"\n" +
-                "    },\n" +
-                "    \"user_requested_tenant\": null\n" +
-                "  },\n" +
-                "  \"enabled\": false,\n" +
-                "  \"enabled_time\": null,\n" +
-                "  \"inputs\": [\n" +
-                "    {\n" +
-                "      \"detector_input\": {\n" +
-                "        \"description\": \"windows detector for security analytics\",\n" +
-                "        \"indices\": [\n" +
-                "          \"windows\"\n" +
-                "        ],\n" +
-                "        \"custom_rules\": [],\n" +
-                "        \"pre_packaged_rules\": []\n" +
-                "      }\n" +
-                "    }\n" +
-                "  ],\n" +
-                "  \"triggers\": [\n" +
-                "    {\n" +
-                "      \"id\": \"v70W_oMBDWZ4HMv2Cfay\",\n" +
-                "      \"name\": \"windows-trigger\",\n" +
-                "      \"severity\": \"1\",\n" +
-                "      \"types\": [\n" +
-                "        \"windows\"\n" +
-                "      ],\n" +
-                "      \"ids\": [\n" +
-                "        \"QuarksPwDump Clearing Access History\"\n" +
-                "      ],\n" +
-                "      \"sev_levels\": [\n" +
-                "        \"high\"\n" +
-                "      ],\n" +
-                "      \"tags\": [\n" +
-                "        \"T0008\"\n" +
-                "      ],\n" +
-                "      \"actions\": []\n" +
-                "    }\n" +
-                "  ]\n" +
-                "}";
+        String detectorStringWithoutSchedule =
+                "{\n"
+                        + "  \"type\": \"detector\",\n"
+                        + "  \"name\": \"BCIocIalTX\",\n"
+                        + "  \"detector_type\": \"WINDOWS\",\n"
+                        + "  \"user\": {\n"
+                        + "    \"name\": \"JPXeGWmlMP\",\n"
+                        + "    \"backend_roles\": [\n"
+                        + "      \"lVOjTakxQl\",\n"
+                        + "      \"rWcHiErFQz\"\n"
+                        + "    ],\n"
+                        + "    \"roles\": [\n"
+                        + "      \"zEMpObrYPM\",\n"
+                        + "      \"all_access\"\n"
+                        + "    ],\n"
+                        + "    \"custom_attributes\": {\n"
+                        + "      \"test_attr\":\"test\"\n"
+                        + "    },\n"
+                        + "    \"user_requested_tenant\": null\n"
+                        + "  },\n"
+                        + "  \"enabled\": false,\n"
+                        + "  \"enabled_time\": null,\n"
+                        + "  \"inputs\": [\n"
+                        + "    {\n"
+                        + "      \"detector_input\": {\n"
+                        + "        \"description\": \"windows detector for security analytics\",\n"
+                        + "        \"indices\": [\n"
+                        + "          \"windows\"\n"
+                        + "        ],\n"
+                        + "        \"custom_rules\": [],\n"
+                        + "        \"pre_packaged_rules\": []\n"
+                        + "      }\n"
+                        + "    }\n"
+                        + "  ],\n"
+                        + "  \"triggers\": [\n"
+                        + "    {\n"
+                        + "      \"id\": \"v70W_oMBDWZ4HMv2Cfay\",\n"
+                        + "      \"name\": \"windows-trigger\",\n"
+                        + "      \"severity\": \"1\",\n"
+                        + "      \"types\": [\n"
+                        + "        \"windows\"\n"
+                        + "      ],\n"
+                        + "      \"ids\": [\n"
+                        + "        \"QuarksPwDump Clearing Access History\"\n"
+                        + "      ],\n"
+                        + "      \"sev_levels\": [\n"
+                        + "        \"high\"\n"
+                        + "      ],\n"
+                        + "      \"tags\": [\n"
+                        + "        \"T0008\"\n"
+                        + "      ],\n"
+                        + "      \"actions\": []\n"
+                        + "    }\n"
+                        + "  ]\n"
+                        + "}";
 
-        Exception exception = assertThrows(NullPointerException.class, () -> {
-            Detector.parse(parser(detectorStringWithoutSchedule), null, null);
-        });
+        Exception exception =
+                assertThrows(
+                        NullPointerException.class,
+                        () -> {
+                            Detector.parse(parser(detectorStringWithoutSchedule), null, null);
+                        });
 
         String expectedMessage = "Detector schedule is null";
         String actualMessage = exception.getMessage();
@@ -172,7 +192,8 @@ public class XContentTests extends OpenSearchTestCase {
 
     public void testUserParsing() throws IOException {
         User user = randomUser();
-        String userString = BytesReference.bytes(user.toXContent(builder(), ToXContent.EMPTY_PARAMS)).utf8ToString();
+        String userString =
+                BytesReference.bytes(user.toXContent(builder(), ToXContent.EMPTY_PARAMS)).utf8ToString();
         User parsedUser = User.parse(parser(userString));
 
         Assert.assertEquals("Round tripping user doesn't work", user, parsedUser);
@@ -180,7 +201,8 @@ public class XContentTests extends OpenSearchTestCase {
 
     public void testEmptyUserParsing() throws IOException {
         User user = randomUserEmpty();
-        String userString = BytesReference.bytes(user.toXContent(builder(), ToXContent.EMPTY_PARAMS)).utf8ToString();
+        String userString =
+                BytesReference.bytes(user.toXContent(builder(), ToXContent.EMPTY_PARAMS)).utf8ToString();
         User parsedUser = User.parse(parser(userString));
 
         Assert.assertEquals("Round tripping user doesn't work", user, parsedUser);
@@ -200,7 +222,8 @@ public class XContentTests extends OpenSearchTestCase {
         ThreatIntelFeedData tifd = randomThreatIntelFeedData();
 
         String tifdString = toJsonString(tifd);
-        ThreatIntelFeedData parsedTifd = ThreatIntelFeedData.parse(parser(tifdString), null, null);
-        Assert.assertEquals("Round tripping Threat intel feed data model doesn't work", tifd, parsedTifd);
+        ThreatIntelFeedData parsedTifd = ThreatIntelFeedData.parse(parser(tifdString));
+        Assert.assertEquals(
+                "Round tripping Threat intel feed data model doesn't work", tifd, parsedTifd);
     }
 }

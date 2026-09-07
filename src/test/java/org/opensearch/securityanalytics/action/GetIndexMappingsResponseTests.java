@@ -1,15 +1,25 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-
 package org.opensearch.securityanalytics.action;
 
 import org.opensearch.cluster.metadata.MappingMetadata;
 import org.opensearch.common.io.stream.BytesStreamOutput;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.index.mapper.MapperService;
-import org.opensearch.securityanalytics.action.GetIndexMappingsResponse;
 import org.opensearch.test.OpenSearchTestCase;
 
 import java.io.IOException;
@@ -37,7 +47,8 @@ public class GetIndexMappingsResponseTests extends OpenSearchTestCase {
 
     private static MappingMetadata createMappingsForIndex() {
         int typeCount = rarely() ? 0 : 1;
-        MappingMetadata mmd = new MappingMetadata(MapperService.SINGLE_MAPPING_NAME, Collections.emptyMap());
+        MappingMetadata mmd =
+                new MappingMetadata(MapperService.SINGLE_MAPPING_NAME, Collections.emptyMap());
         for (int i = 0; i < typeCount; i++) {
             if (rarely() == false) { // rarely have no fields
                 Map<String, Object> mappings = new HashMap<>();
@@ -78,6 +89,7 @@ public class GetIndexMappingsResponseTests extends OpenSearchTestCase {
             props3.put("index", "false");
             prop2properties.put("subsubfield", props3);
             props2.put("properties", prop2properties);
+            properties.put("subobject", props2);
             mappings.put("properties", properties);
         } else {
             mappings.put("type", "keyword");

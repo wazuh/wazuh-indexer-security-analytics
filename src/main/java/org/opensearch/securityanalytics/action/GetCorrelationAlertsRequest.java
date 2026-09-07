@@ -1,6 +1,18 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.action;
 
@@ -12,7 +24,6 @@ import org.opensearch.core.common.io.stream.StreamOutput;
 
 import java.io.IOException;
 import java.time.Instant;
-import java.util.Locale;
 
 import static org.opensearch.action.ValidateActions.addValidationError;
 
@@ -36,8 +47,7 @@ public class GetCorrelationAlertsRequest extends ActionRequest {
             String severityLevel,
             String alertState,
             Instant startTime,
-            Instant endTime
-    ) {
+            Instant endTime) {
         super();
         this.correlationRuleId = correlationRuleId;
         this.correlationRuleName = correlationRuleName;
@@ -47,6 +57,7 @@ public class GetCorrelationAlertsRequest extends ActionRequest {
         this.startTime = startTime;
         this.endTime = endTime;
     }
+
     public GetCorrelationAlertsRequest(StreamInput sin) throws IOException {
         this(
                 sin.readOptionalString(),
@@ -55,17 +66,15 @@ public class GetCorrelationAlertsRequest extends ActionRequest {
                 sin.readString(),
                 sin.readString(),
                 sin.readOptionalInstant(),
-                sin.readOptionalInstant()
-        );
+                sin.readOptionalInstant());
     }
 
     @Override
     public ActionRequestValidationException validate() {
         ActionRequestValidationException validationException = null;
         if ((correlationRuleId != null && correlationRuleId.isEmpty())) {
-            validationException = addValidationError(String.format(Locale.getDefault(),
-                            "Correlation ruleId is empty or not valid", CORRELATION_RULE_ID),
-                    validationException);
+            validationException =
+                    addValidationError("Correlation ruleId is empty or not valid", validationException);
         }
         return validationException;
     }
@@ -109,4 +118,3 @@ public class GetCorrelationAlertsRequest extends ActionRequest {
         return endTime;
     }
 }
-

@@ -1,8 +1,19 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-
 package org.opensearch.securityanalytics.model;
 
 import org.apache.logging.log4j.LogManager;
@@ -21,9 +32,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * A data transfer object for the [STIX2IOC] data model.
- */
+/** A data transfer object for the [STIX2IOC] data model. */
 public class STIX2IOCDto implements Writeable, ToXContentObject {
     private static final Logger logger = LogManager.getLogger(STIX2IOCDto.class);
 
@@ -57,8 +66,7 @@ public class STIX2IOCDto implements Writeable, ToXContentObject {
             String specVersion,
             String feedId,
             String feedName,
-            long version
-    ) {
+            long version) {
         this.id = id;
         this.name = name;
         this.type = type;
@@ -88,8 +96,7 @@ public class STIX2IOCDto implements Writeable, ToXContentObject {
                 ioc.getSpecVersion(),
                 ioc.getFeedId(),
                 ioc.getFeedName(),
-                ioc.getVersion()
-        );
+                ioc.getVersion());
     }
 
     public STIX2IOCDto(StreamInput sin) throws IOException {
@@ -104,7 +111,7 @@ public class STIX2IOCDto implements Writeable, ToXContentObject {
     public void writeTo(StreamOutput out) throws IOException {
         out.writeString(id);
         out.writeString(name);
-        out.writeString(type.toString());
+        out.writeString(type);
         out.writeString(value);
         out.writeString(severity);
         out.writeInstant(created);
@@ -119,10 +126,11 @@ public class STIX2IOCDto implements Writeable, ToXContentObject {
 
     @Override
     public XContentBuilder toXContent(XContentBuilder builder, Params params) throws IOException {
-        return builder.startObject()
+        return builder
+                .startObject()
                 .field(STIX2IOC.ID_FIELD, id)
                 .field(STIX2IOC.NAME_FIELD, name)
-                .field(STIX2IOC.TYPE_FIELD, type.toString())
+                .field(STIX2IOC.TYPE_FIELD, type)
                 .field(STIX2IOC.VALUE_FIELD, value)
                 .field(STIX2IOC.SEVERITY_FIELD, severity)
                 .timeField(STIX2IOC.CREATED_FIELD, created)
@@ -157,7 +165,8 @@ public class STIX2IOCDto implements Writeable, ToXContentObject {
         String feedId = null;
         String feedName = null;
 
-        XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
+        XContentParserUtils.ensureExpectedToken(
+                XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
         while (xcp.nextToken() != XContentParser.Token.END_OBJECT) {
             String fieldName = xcp.currentName();
             xcp.nextToken();
@@ -215,7 +224,8 @@ public class STIX2IOCDto implements Writeable, ToXContentObject {
                     description = getString(xcp, description);
                     break;
                 case STIX2.LABELS_FIELD:
-                    XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_ARRAY, xcp.currentToken(), xcp);
+                    XContentParserUtils.ensureExpectedToken(
+                            XContentParser.Token.START_ARRAY, xcp.currentToken(), xcp);
                     while (xcp.nextToken() != XContentParser.Token.END_ARRAY) {
                         String entry = xcp.textOrNull();
                         if (entry != null) {
@@ -250,8 +260,7 @@ public class STIX2IOCDto implements Writeable, ToXContentObject {
                 specVersion,
                 feedId,
                 feedName,
-                version
-        );
+                version);
     }
 
     private static String getString(XContentParser xcp, final String currVal) throws IOException {

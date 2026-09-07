@@ -1,10 +1,24 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.rules.types;
 
 import org.opensearch.securityanalytics.rules.utils.Either;
+
+import java.util.Objects;
 
 public class SigmaNumber implements SigmaType {
 
@@ -23,7 +37,17 @@ public class SigmaNumber implements SigmaType {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         SigmaNumber that = (SigmaNumber) o;
-        return (numOpt.isLeft() && that.numOpt.isLeft()) || (numOpt.isRight() && that.numOpt.isRight());
+        if (numOpt.isLeft() != that.numOpt.isLeft()) {
+            return false;
+        }
+        return numOpt.isLeft()
+                ? Objects.equals(numOpt.getLeft(), that.numOpt.getLeft())
+                : Objects.equals(numOpt.get(), that.numOpt.get());
+    }
+
+    @Override
+    public int hashCode() {
+        return numOpt.isLeft() ? Objects.hashCode(numOpt.getLeft()) : Objects.hashCode(numOpt.get());
     }
 
     public Either<Integer, Float> getNumOpt() {
@@ -32,6 +56,6 @@ public class SigmaNumber implements SigmaType {
 
     @Override
     public String toString() {
-        return numOpt.isLeft() ? String.valueOf(numOpt.getLeft()): String.valueOf(numOpt.get());
+        return numOpt.isLeft() ? String.valueOf(numOpt.getLeft()) : String.valueOf(numOpt.get());
     }
 }

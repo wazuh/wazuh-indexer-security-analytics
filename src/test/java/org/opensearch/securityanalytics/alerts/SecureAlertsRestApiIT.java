@@ -1,18 +1,25 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-
 package org.opensearch.securityanalytics.alerts;
-
 
 import org.apache.hc.core5.http.HttpHost;
 import org.apache.hc.core5.http.HttpStatus;
 import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.apache.hc.core5.http.message.BasicHeader;
-import org.junit.After;
-import org.junit.Assert;
-import org.junit.Before;
 import org.opensearch.client.Request;
 import org.opensearch.client.Response;
 import org.opensearch.client.ResponseException;
@@ -28,6 +35,9 @@ import org.opensearch.securityanalytics.model.Detector;
 import org.opensearch.securityanalytics.model.DetectorInput;
 import org.opensearch.securityanalytics.model.DetectorRule;
 import org.opensearch.securityanalytics.model.DetectorTrigger;
+import org.junit.After;
+import org.junit.Assert;
+import org.junit.Before;
 
 import java.io.IOException;
 import java.util.*;
@@ -47,10 +57,14 @@ public class SecureAlertsRestApiIT extends SecurityAnalyticsRestTestCase {
 
     @Before
     public void create() throws IOException {
-        String[] backendRoles = { TEST_HR_BACKEND_ROLE };
-        createUserWithData(user, user, SECURITY_ANALYTICS_FULL_ACCESS_ROLE, backendRoles );
+        String[] backendRoles = {TEST_HR_BACKEND_ROLE};
+        createUserWithData(user, SECURITY_ANALYTICS_FULL_ACCESS_ROLE, backendRoles);
         if (userClient == null) {
-            userClient = new SecureRestClientBuilder(getClusterHosts().toArray(new HttpHost[]{}), isHttps(), user, password).setSocketTimeout(60000).build();
+            userClient =
+                    new SecureRestClientBuilder(
+                                    getClusterHosts().toArray(new HttpHost[] {}), isHttps(), user, password)
+                            .setSocketTimeout(60000)
+                            .build();
         }
     }
 
@@ -72,8 +86,14 @@ public class SecureAlertsRestApiIT extends SecurityAnalyticsRestTestCase {
 
             String rule = randomRule();
 
-            Response createResponse = makeRequest(userClient, "POST", SecurityAnalyticsPlugin.RULE_BASE_URI, Collections.singletonMap("category", randomDetectorType()),
-                new StringEntity(rule), new BasicHeader("Content-Type", "application/json"));
+            Response createResponse =
+                    makeRequest(
+                            userClient,
+                            "POST",
+                            SecurityAnalyticsPlugin.RULE_BASE_URI,
+                            Collections.singletonMap("category", randomDetectorType()),
+                            new StringEntity(rule),
+                            new BasicHeader("Content-Type", "application/json"));
             Assert.assertEquals("Create rule failed", RestStatus.CREATED, restStatus(createResponse));
 
             Map<String, Object> responseBody = asMap(createResponse);
@@ -84,11 +104,14 @@ public class SecureAlertsRestApiIT extends SecurityAnalyticsRestTestCase {
             Request createMappingRequest = new Request("POST", SecurityAnalyticsPlugin.MAPPER_BASE_URI);
             // both req params and req body are supported
             createMappingRequest.setJsonEntity(
-                "{ \"index_name\":\"" + index + "\"," +
-                    "  \"rule_topic\":\"" + randomDetectorType() + "\", " +
-                    "  \"partial\":true" +
-                    "}"
-            );
+                    "{ \"index_name\":\""
+                            + index
+                            + "\","
+                            + "  \"rule_topic\":\""
+                            + randomDetectorType()
+                            + "\", "
+                            + "  \"partial\":true"
+                            + "}");
 
             Response response = userClient.performRequest(createMappingRequest);
             assertEquals(HttpStatus.SC_OK, response.getStatusLine().getStatusCode());
@@ -96,49 +119,97 @@ public class SecureAlertsRestApiIT extends SecurityAnalyticsRestTestCase {
             createAlertingMonitorConfigIndex(null);
             Action triggerAction = randomAction(createDestination());
 
-            Detector detector = randomDetectorWithInputsAndTriggers(List.of(new DetectorInput("windows detector for security analytics", List.of("windows"), List.of(new DetectorRule(createdId)),
-                            getRandomPrePackagedRules().stream().map(DetectorRule::new).collect(Collectors.toList()))),
-                    List.of(new DetectorTrigger(null, "test-trigger", "1", List.of(), List.of(createdId), List.of(), List.of("attack.defense_evasion"), List.of(triggerAction), List.of(DetectorTrigger.RULES_DETECTION_TYPE, DetectorTrigger.THREAT_INTEL_DETECTION_TYPE))));
+            Detector detector =
+                    randomDetectorWithInputsAndTriggers(
+                            List.of(
+                                    new DetectorInput(
+                                            "windows detector for security analytics",
+                                            List.of("windows"),
+                                            List.of(new DetectorRule(createdId)),
+                                            getRandomPrePackagedRules().stream()
+                                                    .map(DetectorRule::new)
+                                                    .collect(Collectors.toList()))),
+                            List.of(
+                                    new DetectorTrigger(
+                                            null,
+                                            "test-trigger",
+                                            "1",
+                                            List.of(),
+                                            List.of(createdId),
+                                            List.of(),
+                                            List.of("attack.defense_evasion"),
+                                            List.of(triggerAction),
+                                            List.of(
+                                                    DetectorTrigger.RULES_DETECTION_TYPE,
+                                                    DetectorTrigger.THREAT_INTEL_DETECTION_TYPE))));
 
-            createResponse = makeRequest(userClient, "POST", SecurityAnalyticsPlugin.DETECTOR_BASE_URI, Collections.emptyMap(), toHttpEntity(detector));
+            createResponse =
+                    makeRequest(
+                            userClient,
+                            "POST",
+                            SecurityAnalyticsPlugin.DETECTOR_BASE_URI,
+                            Collections.emptyMap(),
+                            toHttpEntity(detector));
             Assert.assertEquals("Create detector failed", RestStatus.CREATED, restStatus(createResponse));
 
             responseBody = asMap(createResponse);
 
             createdId = responseBody.get("_id").toString();
 
-            String request = "{\n" +
-                "   \"query\" : {\n" +
-                "     \"match\":{\n" +
-                "        \"_id\": \"" + createdId + "\"\n" +
-                "     }\n" +
-                "   }\n" +
-                "}";
+            String request =
+                    "{\n"
+                            + "   \"query\" : {\n"
+                            + "     \"match\":{\n"
+                            + "        \"_id\": \""
+                            + createdId
+                            + "\"\n"
+                            + "     }\n"
+                            + "   }\n"
+                            + "}";
             List<SearchHit> hits = executeSearch(Detector.DETECTORS_INDEX, request);
             SearchHit hit = hits.get(0);
 
-            String monitorId = ((List<String>) ((Map<String, Object>) hit.getSourceAsMap().get("detector")).get("monitor_id")).get(0);
+            String monitorId =
+                    ((List<String>)
+                                    ((Map<String, Object>) hit.getSourceAsMap().get("detector")).get("monitor_id"))
+                            .get(0);
 
             indexDoc(index, "1", randomDoc());
 
             Response executeResponse = executeAlertingMonitor(monitorId, Collections.emptyMap());
             Map<String, Object> executeResults = entityAsMap(executeResponse);
 
-            int noOfSigmaRuleMatches = ((List<Map<String, Object>>) ((Map<String, Object>) executeResults.get("input_results")).get("results")).get(0).size();
+            int noOfSigmaRuleMatches =
+                    ((List<Map<String, Object>>)
+                                    ((Map<String, Object>) executeResults.get("input_results")).get("results"))
+                            .get(0)
+                            .size();
             Assert.assertEquals(6, noOfSigmaRuleMatches);
 
-            Assert.assertEquals(1, ((Map<String, Object>) executeResults.get("trigger_results")).values().size());
+            Assert.assertEquals(
+                    1, ((Map<String, Object>) executeResults.get("trigger_results")).values().size());
 
-            for (Map.Entry<String, Map<String, Object>> triggerResult: ((Map<String, Map<String, Object>>) executeResults.get("trigger_results")).entrySet()) {
-                Assert.assertEquals(1, ((Map<String, Object>) triggerResult.getValue().get("action_results")).values().size());
+            for (Map.Entry<String, Map<String, Object>> triggerResult :
+                    ((Map<String, Map<String, Object>>) executeResults.get("trigger_results")).entrySet()) {
+                Assert.assertEquals(
+                        1,
+                        ((Map<String, Object>) triggerResult.getValue().get("action_results")).values().size());
 
-                for (Map.Entry<String, Map<String, Object>> alertActionResult: ((Map<String, Map<String, Object>>) triggerResult.getValue().get("action_results")).entrySet()) {
+                for (Map.Entry<String, Map<String, Object>> alertActionResult :
+                        ((Map<String, Map<String, Object>>) triggerResult.getValue().get("action_results"))
+                                .entrySet()) {
                     Map<String, Object> actionResults = alertActionResult.getValue();
 
-                    for (Map.Entry<String, Object> actionResult: actionResults.entrySet()) {
-                        Map<String, String> actionOutput = ((Map<String, Map<String, String>>) actionResult.getValue()).get("output");
-                        String expectedMessage = triggerAction.getSubjectTemplate().getIdOrCode().replace("{{ctx.detector.name}}", detector.getName())
-                            .replace("{{ctx.trigger.name}}", "test-trigger").replace("{{ctx.trigger.severity}}", "1");
+                    for (Map.Entry<String, Object> actionResult : actionResults.entrySet()) {
+                        Map<String, String> actionOutput =
+                                ((Map<String, Map<String, String>>) actionResult.getValue()).get("output");
+                        String expectedMessage =
+                                triggerAction
+                                        .getSubjectTemplate()
+                                        .getIdOrCode()
+                                        .replace("{{ctx.detector.name}}", detector.getName())
+                                        .replace("{{ctx.trigger.name}}", "test-trigger")
+                                        .replace("{{ctx.trigger.severity}}", "1");
 
                         Assert.assertEquals(expectedMessage, actionOutput.get("subject"));
                         Assert.assertEquals(expectedMessage, actionOutput.get("message"));
@@ -146,12 +217,8 @@ public class SecureAlertsRestApiIT extends SecurityAnalyticsRestTestCase {
                 }
             }
 
-            request = "{\n" +
-                "   \"query\" : {\n" +
-                "     \"match_all\":{\n" +
-                "     }\n" +
-                "   }\n" +
-                "}";
+            request =
+                    "{\n" + "   \"query\" : {\n" + "     \"match_all\":{\n" + "     }\n" + "   }\n" + "}";
             hits = new ArrayList<>();
 
             while (hits.size() == 0) {
@@ -160,58 +227,73 @@ public class SecureAlertsRestApiIT extends SecurityAnalyticsRestTestCase {
 
             // try to do get finding as a user with read access
             String userRead = "userReadAlert";
-            String[] backendRoles = { TEST_IT_BACKEND_ROLE };
-            createUserWithData( userRead, userRead, SECURITY_ANALYTICS_READ_ACCESS_ROLE, backendRoles );
-            RestClient userReadOnlyClient = new SecureRestClientBuilder(getClusterHosts().toArray(new HttpHost[]{}), isHttps(), userRead, password).setSocketTimeout(60000).build();
+            String[] backendRoles = {TEST_IT_BACKEND_ROLE};
+            createUserWithData(userRead, SECURITY_ANALYTICS_READ_ACCESS_ROLE, backendRoles);
+            RestClient userReadOnlyClient =
+                    new SecureRestClientBuilder(
+                                    getClusterHosts().toArray(new HttpHost[] {}), isHttps(), userRead, password)
+                            .setSocketTimeout(60000)
+                            .build();
 
             // Call GetAlerts API
             Map<String, String> params = new HashMap<>();
             params.put("detector_id", createdId);
-            Response getAlertsResponse = makeRequest(userReadOnlyClient, "GET", SecurityAnalyticsPlugin.ALERTS_BASE_URI, params, null);
+            Response getAlertsResponse =
+                    makeRequest(
+                            userReadOnlyClient, "GET", SecurityAnalyticsPlugin.ALERTS_BASE_URI, params, null);
             Map<String, Object> getAlertsBody = asMap(getAlertsResponse);
             Assert.assertEquals(1, getAlertsBody.get("total_alerts"));
 
-            // Enable backend filtering and try to read finding as a user with no backend roles matching the user who created the detector
+            // Enable backend filtering and try to read finding as a user with no backend roles matching
+            // the user who created the detector
             enableOrDisableFilterBy("true");
             try {
-                getAlertsResponse = makeRequest(userReadOnlyClient, "GET", SecurityAnalyticsPlugin.ALERTS_BASE_URI, params, null);
-            } catch (ResponseException e)
-            {
+                getAlertsResponse =
+                        makeRequest(
+                                userReadOnlyClient, "GET", SecurityAnalyticsPlugin.ALERTS_BASE_URI, params, null);
+            } catch (ResponseException e) {
                 assertEquals("Get alert failed", RestStatus.FORBIDDEN, restStatus(e.getResponse()));
-            }
-            finally {
+            } finally {
                 userReadOnlyClient.close();
                 deleteUser(userRead);
             }
 
             // recreate user with matching backend roles and try again
-            String[] newBackendRoles = { TEST_HR_BACKEND_ROLE };
-            createUserWithData( userRead, userRead, SECURITY_ANALYTICS_READ_ACCESS_ROLE, newBackendRoles );
-            userReadOnlyClient = new SecureRestClientBuilder(getClusterHosts().toArray(new HttpHost[]{}), isHttps(), userRead, password).setSocketTimeout(60000).build();
-            getAlertsResponse = makeRequest(userReadOnlyClient, "GET", SecurityAnalyticsPlugin.ALERTS_BASE_URI, params, null);
+            String[] newBackendRoles = {TEST_HR_BACKEND_ROLE};
+            createUserWithData(userRead, SECURITY_ANALYTICS_READ_ACCESS_ROLE, newBackendRoles);
+            userReadOnlyClient =
+                    new SecureRestClientBuilder(
+                                    getClusterHosts().toArray(new HttpHost[] {}), isHttps(), userRead, password)
+                            .setSocketTimeout(60000)
+                            .build();
+            getAlertsResponse =
+                    makeRequest(
+                            userReadOnlyClient, "GET", SecurityAnalyticsPlugin.ALERTS_BASE_URI, params, null);
             getAlertsBody = asMap(getAlertsResponse);
             Assert.assertEquals(1, getAlertsBody.get("total_alerts"));
             userReadOnlyClient.close();
 
             // update user with no backend roles and try again
             createUser(userRead, EMPTY_ARRAY);
-            userReadOnlyClient = new SecureRestClientBuilder(getClusterHosts().toArray(new HttpHost[]{}), isHttps(), userRead, password).setSocketTimeout(60000).build();
+            userReadOnlyClient =
+                    new SecureRestClientBuilder(
+                                    getClusterHosts().toArray(new HttpHost[] {}), isHttps(), userRead, password)
+                            .setSocketTimeout(60000)
+                            .build();
             try {
-                getAlertsResponse = makeRequest(userReadOnlyClient, "GET", SecurityAnalyticsPlugin.ALERTS_BASE_URI, params, null);
-            } catch (ResponseException e)
-            {
+                getAlertsResponse =
+                        makeRequest(
+                                userReadOnlyClient, "GET", SecurityAnalyticsPlugin.ALERTS_BASE_URI, params, null);
+            } catch (ResponseException e) {
                 assertEquals("Get alert failed", RestStatus.FORBIDDEN, restStatus(e.getResponse()));
-            }
-            finally {
+            } finally {
                 userReadOnlyClient.close();
                 deleteUser(userRead);
             }
         } finally {
             tryDeletingRole(TEST_HR_ROLE);
         }
-
     }
-
 
     public void testGetAlerts_byDetectorType_success() throws IOException, InterruptedException {
         try {
@@ -226,35 +308,63 @@ public class SecureAlertsRestApiIT extends SecurityAnalyticsRestTestCase {
             Request createMappingRequest = new Request("POST", SecurityAnalyticsPlugin.MAPPER_BASE_URI);
             // both req params and req body are supported
             createMappingRequest.setJsonEntity(
-                "{ \"index_name\":\"" + index + "\"," +
-                    "  \"rule_topic\":\"" + randomDetectorType() + "\", " +
-                    "  \"partial\":true" +
-                    "}"
-            );
+                    "{ \"index_name\":\""
+                            + index
+                            + "\","
+                            + "  \"rule_topic\":\""
+                            + randomDetectorType()
+                            + "\", "
+                            + "  \"partial\":true"
+                            + "}");
 
             Response response = userClient.performRequest(createMappingRequest);
             assertEquals(HttpStatus.SC_OK, response.getStatusLine().getStatusCode());
 
-            Detector detector = randomDetectorWithTriggers(getRandomPrePackagedRules(), List.of(new DetectorTrigger(null, "test-trigger", "1", List.of(randomDetectorType()), List.of(), List.of(), List.of(), List.of(), List.of())));
+            Detector detector =
+                    randomDetectorWithTriggers(
+                            getRandomPrePackagedRules(),
+                            List.of(
+                                    new DetectorTrigger(
+                                            null,
+                                            "test-trigger",
+                                            "1",
+                                            List.of(randomDetectorType()),
+                                            List.of(),
+                                            List.of(),
+                                            List.of(),
+                                            List.of(),
+                                            List.of())));
 
-            Response createResponse = makeRequest(userClient, "POST", SecurityAnalyticsPlugin.DETECTOR_BASE_URI, Collections.emptyMap(), toHttpEntity(detector));
+            Response createResponse =
+                    makeRequest(
+                            userClient,
+                            "POST",
+                            SecurityAnalyticsPlugin.DETECTOR_BASE_URI,
+                            Collections.emptyMap(),
+                            toHttpEntity(detector));
             Assert.assertEquals("Create detector failed", RestStatus.CREATED, restStatus(createResponse));
 
             Map<String, Object> responseBody = asMap(createResponse);
 
             String createdId = responseBody.get("_id").toString();
 
-            String request = "{\n" +
-                "   \"query\" : {\n" +
-                "     \"match\":{\n" +
-                "        \"_id\": \"" + createdId + "\"\n" +
-                "     }\n" +
-                "   }\n" +
-                "}";
+            String request =
+                    "{\n"
+                            + "   \"query\" : {\n"
+                            + "     \"match\":{\n"
+                            + "        \"_id\": \""
+                            + createdId
+                            + "\"\n"
+                            + "     }\n"
+                            + "   }\n"
+                            + "}";
             List<SearchHit> hits = executeSearch(Detector.DETECTORS_INDEX, request);
             SearchHit hit = hits.get(0);
 
-            String monitorId = ((List<String>) ((Map<String, Object>) hit.getSourceAsMap().get("detector")).get("monitor_id")).get(0);
+            String monitorId =
+                    ((List<String>)
+                                    ((Map<String, Object>) hit.getSourceAsMap().get("detector")).get("monitor_id"))
+                            .get(0);
 
             indexDoc(index, "1", randomDoc());
 
@@ -262,15 +372,15 @@ public class SecureAlertsRestApiIT extends SecurityAnalyticsRestTestCase {
 
             Response executeResponse = executeAlertingMonitor(monitorId, Collections.emptyMap());
             Map<String, Object> executeResults = entityAsMap(executeResponse);
-            int noOfSigmaRuleMatches = ((List<Map<String, Object>>) ((Map<String, Object>) executeResults.get("input_results")).get("results")).get(0).size();
+            int noOfSigmaRuleMatches =
+                    ((List<Map<String, Object>>)
+                                    ((Map<String, Object>) executeResults.get("input_results")).get("results"))
+                            .get(0)
+                            .size();
             Assert.assertEquals(5, noOfSigmaRuleMatches);
 
-            request = "{\n" +
-                "   \"query\" : {\n" +
-                "     \"match_all\":{\n" +
-                "     }\n" +
-                "   }\n" +
-                "}";
+            request =
+                    "{\n" + "   \"query\" : {\n" + "     \"match_all\":{\n" + "     }\n" + "   }\n" + "}";
             hits = new ArrayList<>();
 
             while (hits.size() == 0) {
@@ -279,49 +389,66 @@ public class SecureAlertsRestApiIT extends SecurityAnalyticsRestTestCase {
 
             // try to do get finding as a user with read access
             String userRead = "userReadAlert";
-            String[] backendRoles = { TEST_IT_BACKEND_ROLE };
-            createUserWithData( userRead, userRead, SECURITY_ANALYTICS_READ_ACCESS_ROLE, backendRoles );
-            RestClient userReadOnlyClient = new SecureRestClientBuilder(getClusterHosts().toArray(new HttpHost[]{}), isHttps(), userRead, password).setSocketTimeout(60000).build();
+            String[] backendRoles = {TEST_IT_BACKEND_ROLE};
+            createUserWithData(userRead, SECURITY_ANALYTICS_READ_ACCESS_ROLE, backendRoles);
+            RestClient userReadOnlyClient =
+                    new SecureRestClientBuilder(
+                                    getClusterHosts().toArray(new HttpHost[] {}), isHttps(), userRead, password)
+                            .setSocketTimeout(60000)
+                            .build();
 
             // Call GetAlerts API
             Map<String, String> params = new HashMap<>();
             params.put("detectorType", randomDetectorType());
-            Response getAlertsResponse = makeRequest(userReadOnlyClient, "GET", SecurityAnalyticsPlugin.ALERTS_BASE_URI, params, null);
+            Response getAlertsResponse =
+                    makeRequest(
+                            userReadOnlyClient, "GET", SecurityAnalyticsPlugin.ALERTS_BASE_URI, params, null);
             Map<String, Object> getAlertsBody = asMap(getAlertsResponse);
             Assert.assertEquals(1, getAlertsBody.get("total_alerts"));
 
-            // Enable backend filtering and try to read finding as a user with no backend roles matching the user who created the detector
+            // Enable backend filtering and try to read finding as a user with no backend roles matching
+            // the user who created the detector
             enableOrDisableFilterBy("true");
             try {
-                getAlertsResponse = makeRequest(userReadOnlyClient, "GET", SecurityAnalyticsPlugin.ALERTS_BASE_URI, params, null);
-            } catch (ResponseException e)
-            {
+                getAlertsResponse =
+                        makeRequest(
+                                userReadOnlyClient, "GET", SecurityAnalyticsPlugin.ALERTS_BASE_URI, params, null);
+            } catch (ResponseException e) {
                 assertEquals("Get alert failed", RestStatus.NOT_FOUND, restStatus(e.getResponse()));
-            }
-            finally {
+            } finally {
                 userReadOnlyClient.close();
                 deleteUser(userRead);
             }
 
             // recreate user with matching backend roles and try again
-            String[] newBackendRoles = { TEST_HR_BACKEND_ROLE };
-            createUserWithData( userRead, userRead, SECURITY_ANALYTICS_READ_ACCESS_ROLE, newBackendRoles );
-            userReadOnlyClient = new SecureRestClientBuilder(getClusterHosts().toArray(new HttpHost[]{}), isHttps(), userRead, password).setSocketTimeout(60000).build();
-            getAlertsResponse = makeRequest(userReadOnlyClient, "GET", SecurityAnalyticsPlugin.ALERTS_BASE_URI, params, null);
+            String[] newBackendRoles = {TEST_HR_BACKEND_ROLE};
+            createUserWithData(userRead, SECURITY_ANALYTICS_READ_ACCESS_ROLE, newBackendRoles);
+            userReadOnlyClient =
+                    new SecureRestClientBuilder(
+                                    getClusterHosts().toArray(new HttpHost[] {}), isHttps(), userRead, password)
+                            .setSocketTimeout(60000)
+                            .build();
+            getAlertsResponse =
+                    makeRequest(
+                            userReadOnlyClient, "GET", SecurityAnalyticsPlugin.ALERTS_BASE_URI, params, null);
             getAlertsBody = asMap(getAlertsResponse);
             Assert.assertEquals(1, getAlertsBody.get("total_alerts"));
             userReadOnlyClient.close();
 
             // update user with no backend roles and try again
             createUser(userRead, EMPTY_ARRAY);
-            userReadOnlyClient = new SecureRestClientBuilder(getClusterHosts().toArray(new HttpHost[]{}), isHttps(), userRead, password).setSocketTimeout(60000).build();
+            userReadOnlyClient =
+                    new SecureRestClientBuilder(
+                                    getClusterHosts().toArray(new HttpHost[] {}), isHttps(), userRead, password)
+                            .setSocketTimeout(60000)
+                            .build();
             try {
-                getAlertsResponse = makeRequest(userReadOnlyClient, "GET", SecurityAnalyticsPlugin.ALERTS_BASE_URI, params, null);
-            } catch (ResponseException e)
-            {
+                getAlertsResponse =
+                        makeRequest(
+                                userReadOnlyClient, "GET", SecurityAnalyticsPlugin.ALERTS_BASE_URI, params, null);
+            } catch (ResponseException e) {
                 assertEquals("Get alert failed", RestStatus.FORBIDDEN, restStatus(e.getResponse()));
-            }
-            finally {
+            } finally {
                 userReadOnlyClient.close();
                 deleteUser(userRead);
             }
@@ -329,5 +456,4 @@ public class SecureAlertsRestApiIT extends SecurityAnalyticsRestTestCase {
             tryDeletingRole(TEST_HR_ROLE);
         }
     }
-
 }
