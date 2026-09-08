@@ -155,10 +155,16 @@ public class WazuhExtensionsTests extends OpenSearchTestCase {
         Assert.assertEquals(List.of("Defense Evasion", "Reconnaissance"), tacticMap.get("name"));
         @SuppressWarnings("unchecked")
         Map<String, Object> techniqueMap = (Map<String, Object>) mitreMap.get("technique");
-        Assert.assertEquals(List.of("T1222", "T1222.002"), techniqueMap.get("id"));
+        Assert.assertEquals(List.of("T1222"), techniqueMap.get("id"));
+        Assert.assertEquals(
+                List.of("File and Directory Permissions Modification"), techniqueMap.get("name"));
         @SuppressWarnings("unchecked")
         Map<String, Object> subtechniqueMap = (Map<String, Object>) mitreMap.get("subtechnique");
         Assert.assertEquals(List.of("T1222.002"), subtechniqueMap.get("id"));
+        Assert.assertEquals(
+                List.of(
+                        "File and Directory Permissions Modification: Linux and Mac File and Directory Permissions Modification"),
+                subtechniqueMap.get("name"));
 
         // Compliance
         SigmaCompliance compliance = rule.getCompliance();
@@ -393,6 +399,81 @@ public class WazuhExtensionsTests extends OpenSearchTestCase {
         Assert.assertFalse(mitreMap.containsKey("subtechnique"));
     }
 
+    /**
+     * Sub-techniques must stay in {@code subtechnique} and must not also appear in {@code technique}.
+     * The merged form leaked sub-technique IDs into {@code wazuh.rule.mitre.technique.id} of every
+     * promoted finding.
+     */
+    public void testMitreSubtechniquesAreNotMergedIntoTechnique() {
+        String yaml =
+                ruleWithMitreBlock(
+                        "mitre:\n"
+                                + "    tactic:\n"
+                                + "        id:\n"
+                                + "            - TA0005\n"
+                                + "        name:\n"
+                                + "            - Defense Evasion\n"
+                                + "    technique:\n"
+                                + "        id:\n"
+                                + "            - T1562\n"
+                                + "            - T1070\n"
+                                + "        name:\n"
+                                + "            - Impair Defenses\n"
+                                + "            - Indicator Removal\n"
+                                + "    subtechnique:\n"
+                                + "        id:\n"
+                                + "            - T1562.001\n"
+                                + "            - T1070.004\n"
+                                + "        name:\n"
+                                + "            - Disable or Modify Tools\n"
+                                + "            - File Deletion\n");
+
+        SigmaRule rule = SigmaRule.fromYaml(yaml, true);
+        Assert.assertTrue(rule.getErrors().getErrors().isEmpty());
+
+        Map<String, Object> mitreMap = rule.getMitre().toMitreMap();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> techniqueMap = (Map<String, Object>) mitreMap.get("technique");
+        Assert.assertEquals(List.of("T1562", "T1070"), techniqueMap.get("id"));
+        Assert.assertEquals(List.of("Impair Defenses", "Indicator Removal"), techniqueMap.get("name"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> subtechniqueMap = (Map<String, Object>) mitreMap.get("subtechnique");
+        Assert.assertEquals(List.of("T1562.001", "T1070.004"), subtechniqueMap.get("id"));
+        Assert.assertEquals(
+                List.of("Disable or Modify Tools", "File Deletion"), subtechniqueMap.get("name"));
+    }
+
+    /**
+     * The {@code id} and {@code name} arrays are positional, so a category that carries names must
+     * not be lengthened by a category that does not. Merging an unnamed sub-technique into a named
+     * technique used to leave the arrays different lengths, mislabeling every entry after the seam.
+     */
+    public void testMitreTechniqueArraysStayAlignedWhenSubtechniqueHasNoName() {
+        String yaml =
+                ruleWithMitreBlock(
+                        "mitre:\n"
+                                + "    technique:\n"
+                                + "        id:\n"
+                                + "            - T1190\n"
+                                + "        name:\n"
+                                + "            - Exploit Public-Facing Application\n"
+                                + "    subtechnique:\n"
+                                + "        - T1190.001\n");
+
+        SigmaRule rule = SigmaRule.fromYaml(yaml, true);
+        Assert.assertTrue(rule.getErrors().getErrors().isEmpty());
+
+        Map<String, Object> mitreMap = rule.getMitre().toMitreMap();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> techniqueMap = (Map<String, Object>) mitreMap.get("technique");
+        Assert.assertEquals(List.of("T1190"), techniqueMap.get("id"));
+        Assert.assertEquals(List.of("Exploit Public-Facing Application"), techniqueMap.get("name"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> subtechniqueMap = (Map<String, Object>) mitreMap.get("subtechnique");
+        Assert.assertEquals(List.of("T1190.001"), subtechniqueMap.get("id"));
+        Assert.assertFalse(subtechniqueMap.containsKey("name"));
+    }
+
     /** Builds a minimal valid rule with the supplied {@code mitre} block appended. */
     private static String ruleWithMitreBlock(String mitreBlock) {
         return "title: Mitre Shape\n"
@@ -614,9 +695,12 @@ public class WazuhExtensionsTests extends OpenSearchTestCase {
         Assert.assertEquals(List.of("Credential Access"), tacticMap.get("name"));
         @SuppressWarnings("unchecked")
         Map<String, Object> techniqueMap = (Map<String, Object>) mitreMap.get("technique");
-        Assert.assertEquals(List.of("T1555", "T1555.005"), techniqueMap.get("id"));
-        Assert.assertEquals(
-                List.of("Credentials from Password Stores", "Password Managers"), techniqueMap.get("name"));
+        Assert.assertEquals(List.of("T1555"), techniqueMap.get("id"));
+        Assert.assertEquals(List.of("Credentials from Password Stores"), techniqueMap.get("name"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> subtechniqueMap = (Map<String, Object>) mitreMap.get("subtechnique");
+        Assert.assertEquals(List.of("T1555.005"), subtechniqueMap.get("id"));
+        Assert.assertEquals(List.of("Password Managers"), subtechniqueMap.get("name"));
     }
 
     /** Several entries in one category must preserve their order across the id and name arrays. */
