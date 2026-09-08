@@ -127,8 +127,23 @@ public abstract class QueryBackend {
         if (conditionType.getEqualsValueExpression().getValue() instanceof SigmaExists) {
             return baseString;
         }
+        // A wildcard-only value is itself an existence test, so `not <field>: '*'` already means
+        // "the field is absent". Guarding it with "and the field exists" makes it unsatisfiable and
+        // the rule can never match (wazuh/wazuh-indexer-plugins#1518).
+        if (isWildcardOnly(conditionType.getEqualsValueExpression().getValue())) {
+            return baseString;
+        }
         String addExists = this.convertExistsField(conditionType.getEqualsValueExpression()).toString();
         return String.format(Locale.getDefault(), ("%s" + "%s"), baseString, addExists);
+    }
+
+    /** Whether a detection value is made up of wildcards only, e.g. {@code field: '*'}. */
+    private static boolean isWildcardOnly(SigmaType value) {
+        if (!(value instanceof SigmaString)) {
+            return false;
+        }
+        String original = ((SigmaString) value).getOriginal();
+        return original != null && !original.isEmpty() && original.chars().allMatch(c -> c == '*');
     }
 
     public boolean decideConvertConditionAsInExpression(Either<ConditionAND, ConditionOR> condition) {

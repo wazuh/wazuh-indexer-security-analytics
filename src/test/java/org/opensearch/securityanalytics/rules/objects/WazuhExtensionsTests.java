@@ -155,10 +155,16 @@ public class WazuhExtensionsTests extends OpenSearchTestCase {
         Assert.assertEquals(List.of("Defense Evasion", "Reconnaissance"), tacticMap.get("name"));
         @SuppressWarnings("unchecked")
         Map<String, Object> techniqueMap = (Map<String, Object>) mitreMap.get("technique");
-        Assert.assertEquals(List.of("T1222", "T1222.002"), techniqueMap.get("id"));
+        Assert.assertEquals(List.of("T1222"), techniqueMap.get("id"));
+        Assert.assertEquals(
+                List.of("File and Directory Permissions Modification"), techniqueMap.get("name"));
         @SuppressWarnings("unchecked")
         Map<String, Object> subtechniqueMap = (Map<String, Object>) mitreMap.get("subtechnique");
         Assert.assertEquals(List.of("T1222.002"), subtechniqueMap.get("id"));
+        Assert.assertEquals(
+                List.of(
+                        "File and Directory Permissions Modification: Linux and Mac File and Directory Permissions Modification"),
+                subtechniqueMap.get("name"));
 
         // Compliance
         SigmaCompliance compliance = rule.getCompliance();
@@ -393,6 +399,81 @@ public class WazuhExtensionsTests extends OpenSearchTestCase {
         Assert.assertFalse(mitreMap.containsKey("subtechnique"));
     }
 
+    /**
+     * Sub-techniques must stay in {@code subtechnique} and must not also appear in {@code technique}.
+     * The merged form leaked sub-technique IDs into {@code wazuh.rule.mitre.technique.id} of every
+     * promoted finding.
+     */
+    public void testMitreSubtechniquesAreNotMergedIntoTechnique() {
+        String yaml =
+                ruleWithMitreBlock(
+                        "mitre:\n"
+                                + "    tactic:\n"
+                                + "        id:\n"
+                                + "            - TA0005\n"
+                                + "        name:\n"
+                                + "            - Defense Evasion\n"
+                                + "    technique:\n"
+                                + "        id:\n"
+                                + "            - T1562\n"
+                                + "            - T1070\n"
+                                + "        name:\n"
+                                + "            - Impair Defenses\n"
+                                + "            - Indicator Removal\n"
+                                + "    subtechnique:\n"
+                                + "        id:\n"
+                                + "            - T1562.001\n"
+                                + "            - T1070.004\n"
+                                + "        name:\n"
+                                + "            - Disable or Modify Tools\n"
+                                + "            - File Deletion\n");
+
+        SigmaRule rule = SigmaRule.fromYaml(yaml, true);
+        Assert.assertTrue(rule.getErrors().getErrors().isEmpty());
+
+        Map<String, Object> mitreMap = rule.getMitre().toMitreMap();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> techniqueMap = (Map<String, Object>) mitreMap.get("technique");
+        Assert.assertEquals(List.of("T1562", "T1070"), techniqueMap.get("id"));
+        Assert.assertEquals(List.of("Impair Defenses", "Indicator Removal"), techniqueMap.get("name"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> subtechniqueMap = (Map<String, Object>) mitreMap.get("subtechnique");
+        Assert.assertEquals(List.of("T1562.001", "T1070.004"), subtechniqueMap.get("id"));
+        Assert.assertEquals(
+                List.of("Disable or Modify Tools", "File Deletion"), subtechniqueMap.get("name"));
+    }
+
+    /**
+     * The {@code id} and {@code name} arrays are positional, so a category that carries names must
+     * not be lengthened by a category that does not. Merging an unnamed sub-technique into a named
+     * technique used to leave the arrays different lengths, mislabeling every entry after the seam.
+     */
+    public void testMitreTechniqueArraysStayAlignedWhenSubtechniqueHasNoName() {
+        String yaml =
+                ruleWithMitreBlock(
+                        "mitre:\n"
+                                + "    technique:\n"
+                                + "        id:\n"
+                                + "            - T1190\n"
+                                + "        name:\n"
+                                + "            - Exploit Public-Facing Application\n"
+                                + "    subtechnique:\n"
+                                + "        - T1190.001\n");
+
+        SigmaRule rule = SigmaRule.fromYaml(yaml, true);
+        Assert.assertTrue(rule.getErrors().getErrors().isEmpty());
+
+        Map<String, Object> mitreMap = rule.getMitre().toMitreMap();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> techniqueMap = (Map<String, Object>) mitreMap.get("technique");
+        Assert.assertEquals(List.of("T1190"), techniqueMap.get("id"));
+        Assert.assertEquals(List.of("Exploit Public-Facing Application"), techniqueMap.get("name"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> subtechniqueMap = (Map<String, Object>) mitreMap.get("subtechnique");
+        Assert.assertEquals(List.of("T1190.001"), subtechniqueMap.get("id"));
+        Assert.assertFalse(subtechniqueMap.containsKey("name"));
+    }
+
     /** Builds a minimal valid rule with the supplied {@code mitre} block appended. */
     private static String ruleWithMitreBlock(String mitreBlock) {
         return "title: Mitre Shape\n"
@@ -614,9 +695,12 @@ public class WazuhExtensionsTests extends OpenSearchTestCase {
         Assert.assertEquals(List.of("Credential Access"), tacticMap.get("name"));
         @SuppressWarnings("unchecked")
         Map<String, Object> techniqueMap = (Map<String, Object>) mitreMap.get("technique");
-        Assert.assertEquals(List.of("T1555", "T1555.005"), techniqueMap.get("id"));
-        Assert.assertEquals(
-                List.of("Credentials from Password Stores", "Password Managers"), techniqueMap.get("name"));
+        Assert.assertEquals(List.of("T1555"), techniqueMap.get("id"));
+        Assert.assertEquals(List.of("Credentials from Password Stores"), techniqueMap.get("name"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> subtechniqueMap = (Map<String, Object>) mitreMap.get("subtechnique");
+        Assert.assertEquals(List.of("T1555.005"), subtechniqueMap.get("id"));
+        Assert.assertEquals(List.of("Password Managers"), subtechniqueMap.get("name"));
     }
 
     /** Several entries in one category must preserve their order across the id and name arrays. */
@@ -746,5 +830,76 @@ public class WazuhExtensionsTests extends OpenSearchTestCase {
         for (String value : values) {
             Assert.assertFalse("value was stringified from a structure: " + value, value.contains("id="));
         }
+    }
+
+    // ── sigma_id (upstream Sigma identifier) ────────────────────────────────
+
+    private static String ruleWithSigmaIdLine(String sigmaIdLine) {
+        return "id: ed85157d-711b-4edb-8390-492ec63c92ac\n"
+                + sigmaIdLine
+                + "status: stable\n"
+                + "level: medium\n"
+                + "logsource:\n"
+                + "    product: windows\n"
+                + "detection:\n"
+                + "    selection:\n"
+                + "        event.id: 16\n"
+                + "    condition: selection\n"
+                + "metadata:\n"
+                + "    title: Sigma id rule\n"
+                + "    author: Wazuh, Inc.\n"
+                + "    date: '2026-09-04'\n";
+    }
+
+    /**
+     * {@code sigma_id} is the original upstream Sigma identifier and must be parsed independently of
+     * the rule's own required {@code id}. The two are different UUIDs.
+     */
+    public void testSigmaIdIsParsedIndependentlyOfId() {
+        SigmaRule rule =
+                SigmaRule.fromYaml(
+                        ruleWithSigmaIdLine("sigma_id: 12345678-90ab-cdef-1234-567890abcdef\n"), true);
+
+        Assert.assertEquals("ed85157d-711b-4edb-8390-492ec63c92ac", String.valueOf(rule.getId()));
+        Assert.assertEquals("12345678-90ab-cdef-1234-567890abcdef", rule.getSigmaId());
+    }
+
+    /** {@code sigma_id} is optional, so a rule without one parses cleanly and reports null. */
+    public void testSigmaIdIsNullWhenAbsent() {
+        SigmaRule rule = SigmaRule.fromYaml(ruleWithSigmaIdLine(""), true);
+
+        Assert.assertNull(rule.getSigmaId());
+        Assert.assertTrue(rule.getErrors().getErrors().isEmpty());
+    }
+
+    /** A blank {@code sigma_id} is normalized to null rather than propagated as an empty string. */
+    public void testBlankSigmaIdIsNormalizedToNull() {
+        SigmaRule rule = SigmaRule.fromYaml(ruleWithSigmaIdLine("sigma_id: '   '\n"), true);
+
+        Assert.assertNull(rule.getSigmaId());
+    }
+
+    /** An absent {@code id} is still an error even when {@code sigma_id} is present. */
+    public void testSigmaIdDoesNotSubstituteForMissingId() {
+        String yaml =
+                "sigma_id: 12345678-90ab-cdef-1234-567890abcdef\n"
+                        + "status: stable\n"
+                        + "level: medium\n"
+                        + "logsource:\n"
+                        + "    product: windows\n"
+                        + "detection:\n"
+                        + "    selection:\n"
+                        + "        event.id: 16\n"
+                        + "    condition: selection\n"
+                        + "metadata:\n"
+                        + "    title: No id rule\n"
+                        + "    author: Wazuh, Inc.\n"
+                        + "    date: '2026-09-04'\n";
+
+        SigmaRule rule = SigmaRule.fromYaml(yaml, true);
+
+        Assert.assertNull(rule.getId());
+        Assert.assertEquals("12345678-90ab-cdef-1234-567890abcdef", rule.getSigmaId());
+        Assert.assertFalse(rule.getErrors().getErrors().isEmpty());
     }
 }
