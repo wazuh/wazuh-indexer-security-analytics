@@ -1637,8 +1637,7 @@ public class QueryBackendTests extends OpenSearchTestCase {
 
         // `not fieldB: '*'` means "fieldB is absent", so it must not be guarded with
         // "and fieldB exists" -- that pairing can never match.
-        Assert.assertEquals(
-                "(fieldA: \"valueA\") AND ((NOT mappedB: *))", queries.get(0).toString());
+        Assert.assertEquals("(fieldA: \"valueA\") AND ((NOT mappedB: *))", queries.get(0).toString());
     }
 
     private OSQueryBackend testBackend() throws IOException {

@@ -19,10 +19,14 @@ package org.opensearch.securityanalytics.rules.engine;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import org.opensearch.OpenSearchStatusException;
 import org.opensearch.action.DocWriteRequest;
+import org.opensearch.action.bulk.BulkItemResponse;
 import org.opensearch.action.bulk.BulkRequest;
+import org.opensearch.action.bulk.BulkResponse;
 import org.opensearch.action.index.IndexRequest;
 import org.opensearch.core.action.ActionListener;
+import org.opensearch.core.rest.RestStatus;
 import org.opensearch.securityanalytics.rules.objects.SigmaRule;
 import org.opensearch.test.OpenSearchTestCase;
 import org.opensearch.transport.client.Client;
@@ -298,5 +302,67 @@ public class PercolateRuleEvaluatorTests extends OpenSearchTestCase {
 
     private String storedDocId(SigmaRule rule) {
         return captureStoredQueries(List.of(rule)).requests().get(0).id();
+    }
+
+    /** Builds a bulk response whose single item failed with the given status. */
+    private BulkResponse failedBulk(String docId, RestStatus status, String message) {
+        BulkItemResponse.Failure failure =
+                new BulkItemResponse.Failure("idx", docId, new OpenSearchStatusException(message, status));
+        return new BulkResponse(
+                new BulkItemResponse[] {new BulkItemResponse(0, DocWriteRequest.OpType.CREATE, failure)},
+                1L);
+    }
+
+    /** Runs one rule through the evaluator against a client whose bulk write fails as given. */
+    private JsonNode skipReasonFor(RestStatus status, String message) throws Exception {
+        Client client = mock(Client.class);
+        doAnswer(
+                        invocation -> {
+                            BulkRequest request = invocation.getArgument(0);
+                            ActionListener<BulkResponse> listener = invocation.getArgument(1);
+                            String id = request.requests().get(0).id();
+                            listener.onResponse(failedBulk(id, status, message));
+                            return null;
+                        })
+                .when(client)
+                .bulk(any(), any());
+        AtomicReference<String> result = new AtomicReference<>();
+        new PercolateRuleEvaluator(client, readyQueryIndex())
+                .evaluate(
+                        EVENT,
+                        List.of(
+                                rule(
+                                        "Any",
+                                        "    selection:\n        process.name: cmd.exe\n    condition: selection")),
+                        new ArrayList<>(),
+                        INTEGRATION_ID,
+                        "test",
+                        List.of("wazuh-events-v5-test"),
+                        ActionListener.wrap(result::set, e -> fail(e.getMessage())));
+        assertNotNull("the evaluator should have answered", result.get());
+        return MAPPER.readTree(result.get()).get("skipped").get(0);
+    }
+
+    public void testAQueryThePercolatorRefusedBlamesTheRule() throws Exception {
+        // BAD_REQUEST means the percolator read the query and rejected it, so a detector — which
+        // parses the same query the same way — cannot match the rule either.
+        JsonNode skipped =
+                skipReasonFor(RestStatus.BAD_REQUEST, "failed to parse: No field mapping can be found");
+        String reason = skipped.get("reason").asText();
+
+        assertTrue(reason, reason.contains("a deployed detector cannot match it either"));
+    }
+
+    public void testAnUnusableIndexDoesNotBlameTheRule() throws Exception {
+        // A write block, a closed index or a node failure means the query never reached the
+        // percolator. Claiming the rule is at fault would be wrong: the detector's query index is a
+        // different index and may well match.
+        JsonNode skipped =
+                skipReasonFor(RestStatus.FORBIDDEN, "blocked by: [FORBIDDEN/8/index write (api)]");
+        String reason = skipped.get("reason").asText();
+
+        assertFalse(reason, reason.contains("a deployed detector cannot match it either"));
+        assertTrue(reason, reason.contains("limitation of logtest"));
+        assertTrue(reason, reason.contains("may still match it"));
     }
 }

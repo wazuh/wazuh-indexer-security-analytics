@@ -85,12 +85,20 @@ public class LogtestQueryIndex {
     public static final String RULE_ID_FIELD = "rule_id";
 
     /**
+     * When the query document was written, in epoch milliseconds.
+     *
+     * <p>Only used to age out superseded documents safely: a document younger than the cleanup grace
+     * period may belong to a request still in flight, so it is never eligible for deletion.
+     */
+    public static final String STORED_AT_FIELD = "stored_at";
+
+    /**
      * The fields this index needs for itself. A source index that maps a field of the same name would
      * have it silently replaced by the control mapping, and every rule referencing that field would
      * then be rejected — reported as though the source mapping were at fault.
      */
     private static final Set<String> CONTROL_FIELDS =
-            Set.of(QUERY_FIELD, INTEGRATION_ID_FIELD, RULE_ID_FIELD);
+            Set.of(QUERY_FIELD, INTEGRATION_ID_FIELD, RULE_ID_FIELD, STORED_AT_FIELD);
 
     private static final String PROPERTIES = "properties";
     private static final String TYPE = "type";
@@ -254,6 +262,7 @@ public class LogtestQueryIndex {
         mappingProperties.put(QUERY_FIELD, Map.of(TYPE, PERCOLATOR_TYPE));
         mappingProperties.put(INTEGRATION_ID_FIELD, Map.of(TYPE, "keyword"));
         mappingProperties.put(RULE_ID_FIELD, Map.of(TYPE, "keyword"));
+        mappingProperties.put(STORED_AT_FIELD, Map.of(TYPE, "date", "format", "epoch_millis"));
 
         if (clusterService.state().metadata().hasIndex(indexName)) {
             updateMappings(indexName, mappingProperties, listener);

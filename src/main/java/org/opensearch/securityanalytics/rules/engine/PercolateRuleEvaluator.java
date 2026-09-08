@@ -34,7 +34,10 @@ import org.opensearch.common.xcontent.XContentType;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.rest.RestStatus;
 import org.opensearch.core.xcontent.XContentBuilder;
+import org.opensearch.index.query.BoolQueryBuilder;
 import org.opensearch.index.query.QueryBuilders;
+import org.opensearch.index.reindex.DeleteByQueryAction;
+import org.opensearch.index.reindex.DeleteByQueryRequestBuilder;
 import org.opensearch.search.SearchHit;
 import org.opensearch.search.builder.SearchSourceBuilder;
 import org.opensearch.securityanalytics.rules.backend.OSQueryBackend;
@@ -48,6 +51,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -80,6 +84,14 @@ public class PercolateRuleEvaluator {
 
     /** Digest used to derive a percolator document id from its content. */
     private static final String DOC_ID_DIGEST = "SHA-256";
+
+    /**
+     * How long a superseded query document is left alone before it can be pruned. A logtest request
+     * is bounded by its own thread pool and a 1 MiB body cap and completes in well under a second, so
+     * a minute is a wide margin: cleanup can never delete a document a concurrent call is still
+     * percolating against, and superseded documents do not outlive an editing session by long.
+     */
+    private static final long SUPERSEDED_GRACE_MILLIS = 60_000L;
 
     private final Client client;
     private final LogtestQueryIndex queryIndex;
@@ -177,10 +189,10 @@ public class PercolateRuleEvaluator {
      *
      * <p>{@code convertRule} returns one query per parsed {@code detection.condition}, but a detector
      * is built from {@code rule.getQueries().get(0)} alone ({@code
-     * TransportIndexDetectorAction#createDocLevelMonitorFromQueries}), so only the first is stored
-     * here. Percolating the others would make logtest report matches production cannot produce — the
-     * very divergence this class exists to remove. That a detector ignores the remaining conditions
-     * is a separate defect; it is logged, not hidden, and tracked on its own.
+     * TransportIndexDetectorAction#createDocLevelMonitorRequest}), so only the first is stored here.
+     * Percolating the others would make logtest report matches production cannot produce — the very
+     * divergence this class exists to remove. That a detector ignores the remaining conditions is a
+     * separate defect; it is logged, not hidden, and tracked on its own.
      *
      * @param rules the parsed rules.
      * @param integrationId the integration owning the rules; part of the document identity.
@@ -246,9 +258,10 @@ public class PercolateRuleEvaluator {
     /**
      * Upserts the compiled queries into the percolator index, then percolates.
      *
-     * <p>Doc ids are derived from the rule, so re-running logtest overwrites rather than accumulates,
-     * and the index holds at most one document per rule condition. The refresh is immediate because
-     * the percolate search runs right after.
+     * <p>Doc ids are content-addressed, so re-running logtest on an unchanged rule is a no-op, while
+     * an edited rule stores a new document and leaves the previous one behind. Those superseded
+     * documents are removed after the search — see {@link #deleteSupersededQueries}. The refresh is
+     * immediate because the percolate search runs right after.
      *
      * @param indexName the percolator index.
      * @param integrationId scopes the stored queries.
@@ -285,7 +298,9 @@ public class PercolateRuleEvaluator {
                                             LogtestQueryIndex.INTEGRATION_ID_FIELD,
                                             integrationId,
                                             LogtestQueryIndex.RULE_ID_FIELD,
-                                            entry.getValue().ruleId())));
+                                            entry.getValue().ruleId(),
+                                            LogtestQueryIndex.STORED_AT_FIELD,
+                                            System.currentTimeMillis())));
         }
 
         client.bulk(
@@ -356,26 +371,38 @@ public class PercolateRuleEvaluator {
                 continue;
             }
             String cause = rejectionCause(itemResponse);
+            RestStatus status =
+                    itemResponse.getFailure() == null ? null : itemResponse.getFailure().getStatus();
             log.debug("Rule '{}' could not be stored as a percolator query: {}", query.ruleId(), cause);
             skipped.add(
-                    new SkippedRule(query.rule(), query.ruleId(), rejectionReason(cause, mappingFailure)));
+                    new SkippedRule(
+                            query.rule(), query.ruleId(), rejectionReason(cause, mappingFailure, status)));
         }
     }
 
     /**
      * Explains a percolator rejection without over-claiming.
      *
-     * <p>The usual cause is a rule naming a field the source index has not materialized, and then a
-     * deployed detector cannot match the rule either — that is the useful thing to say. But the same
-     * rejection follows from this index's own mappings being stale or in conflict, in which case
-     * blaming the rule would be wrong: the detector's query index has its own mapping and may well
-     * match. Only claim the former when the mappings are known to be current.
+     * <p>Saying "a detector cannot match this either" is only honest when the percolator actually
+     * read the query and refused it, which it reports as {@link RestStatus#BAD_REQUEST}. Anything
+     * else — a write block, a closed index, a node-level failure — means the query never got that
+     * far, and the fault is logtest's own: the detector's query index is a different index with its
+     * own mappings and may well match the rule. A stale mapping on this index says the same thing.
      *
      * @param cause the percolator's failure message.
      * @param mappingFailure why this index's mappings are not current, or {@code null}.
+     * @param status the status the bulk item failed with, or {@code null} when unknown.
      * @return a reason fit to show to whoever called logtest.
      */
-    private String rejectionReason(String cause, String mappingFailure) {
+    private String rejectionReason(String cause, String mappingFailure, RestStatus status) {
+        if (status != RestStatus.BAD_REQUEST) {
+            return String.format(
+                    Locale.ROOT,
+                    "the compiled query could not be stored, so the rule was not evaluated: %s. The "
+                            + "logtest query index was not usable, which is a limitation of logtest rather "
+                            + "than of the rule; a deployed detector may still match it.",
+                    cause);
+        }
         if (mappingFailure != null) {
             return String.format(
                     Locale.ROOT,
@@ -495,8 +522,69 @@ public class PercolateRuleEvaluator {
                             }
                             listener.onResponse(
                                     buildResult(rulesEvaluated, matches, matchedQueriesByRule, skipped));
+                            deleteSupersededQueries(indexName, integrationId, compiled.values(), storedDocIds);
                         },
                         listener::onFailure));
+    }
+
+    /**
+     * Removes the documents this integration's rules left behind on earlier calls.
+     *
+     * <p>Document ids are content-addressed, which is what keeps concurrent callers from overwriting
+     * each other, but it also means an edited rule stores a new document rather than replacing the
+     * old one. Without this the edit-and-test loop leaves one document per revision, forever.
+     *
+     * <p>Scoped to the rules this call evaluated, so it cannot touch another integration, and limited
+     * to documents older than {@link #SUPERSEDED_GRACE_MILLIS}, so a document a concurrent request
+     * has just written is never eligible — that request's own percolate search is scoped to its ids,
+     * and by the time those ids age out it has long finished. Best effort: a failure only means the
+     * superseded documents stay a little longer, so it is logged rather than surfaced.
+     *
+     * @param indexName the percolator index.
+     * @param integrationId the integration whose documents to prune.
+     * @param compiled the queries this call stored, naming the rules in scope.
+     * @param storedDocIds the documents this call wants to keep.
+     */
+    private void deleteSupersededQueries(
+            String indexName,
+            String integrationId,
+            Collection<CompiledQuery> compiled,
+            Set<String> storedDocIds) {
+        Set<String> ruleIds =
+                compiled.stream()
+                        .map(CompiledQuery::ruleId)
+                        .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (ruleIds.isEmpty()) {
+            return;
+        }
+        BoolQueryBuilder superseded =
+                QueryBuilders.boolQuery()
+                        .must(QueryBuilders.termQuery(LogtestQueryIndex.INTEGRATION_ID_FIELD, integrationId))
+                        .must(QueryBuilders.termsQuery(LogtestQueryIndex.RULE_ID_FIELD, ruleIds))
+                        .must(
+                                QueryBuilders.rangeQuery(LogtestQueryIndex.STORED_AT_FIELD)
+                                        .lt(System.currentTimeMillis() - SUPERSEDED_GRACE_MILLIS))
+                        .mustNot(QueryBuilders.idsQuery().addIds(storedDocIds.toArray(new String[0])));
+
+        new DeleteByQueryRequestBuilder(client, DeleteByQueryAction.INSTANCE)
+                .source(indexName)
+                .filter(superseded)
+                .abortOnVersionConflict(false)
+                .execute(
+                        ActionListener.wrap(
+                                response -> {
+                                    if (response.getDeleted() > 0) {
+                                        log.debug(
+                                                "Removed {} superseded logtest query document(s) from [{}]",
+                                                response.getDeleted(),
+                                                indexName);
+                                    }
+                                },
+                                e ->
+                                        log.debug(
+                                                "Could not remove superseded logtest query documents from [{}]: {}",
+                                                indexName,
+                                                e.getMessage())));
     }
 
     /**
