@@ -42,7 +42,19 @@ import org.opensearch.search.SearchHit;
 import org.opensearch.search.builder.SearchSourceBuilder;
 import org.opensearch.securityanalytics.rules.backend.OSQueryBackend;
 import org.opensearch.securityanalytics.rules.backend.QueryBackend;
+import org.opensearch.securityanalytics.rules.condition.ConditionFieldEqualsValueExpression;
+import org.opensearch.securityanalytics.rules.condition.ConditionItem;
+import org.opensearch.securityanalytics.rules.condition.ConditionNOT;
+import org.opensearch.securityanalytics.rules.condition.ConditionValueExpression;
+import org.opensearch.securityanalytics.rules.objects.SigmaCondition;
 import org.opensearch.securityanalytics.rules.objects.SigmaRule;
+import org.opensearch.securityanalytics.rules.types.SigmaCIDRExpression;
+import org.opensearch.securityanalytics.rules.types.SigmaCompareExpression;
+import org.opensearch.securityanalytics.rules.types.SigmaExpansion;
+import org.opensearch.securityanalytics.rules.types.SigmaRegularExpression;
+import org.opensearch.securityanalytics.rules.types.SigmaType;
+import org.opensearch.securityanalytics.rules.utils.AnyOneOf;
+import org.opensearch.securityanalytics.rules.utils.Either;
 import org.opensearch.securityanalytics.util.SecurityAnalyticsException;
 import org.opensearch.transport.client.Client;
 
@@ -106,20 +118,22 @@ public class PercolateRuleEvaluator {
     }
 
     /**
-     * A rule that could not be evaluated, and why.
+     * A parsed rule together with the YAML it came from.
      *
-     * @param rule the rule, or {@code null} when it could not even be parsed.
-     * @param ruleId the rule id, for an unparseable rule the position in the request.
-     * @param reason a message fit to show to whoever called logtest.
+     * <p>The body is kept because describing a matched rule's conditions needs a second parse: {@code
+     * SigmaCondition#parsed} drives a one-shot ANTLR parser, and compiling the rule consumes the one
+     * belonging to the instance being percolated.
+     *
+     * @param rule the parsed rule.
+     * @param body the YAML it was parsed from.
      */
-    public record SkippedRule(SigmaRule rule, String ruleId, String reason) {}
+    public record ParsedRule(SigmaRule rule, String body) {}
 
     /**
      * Compiles the rules, stores them as percolator queries and percolates the event against them.
      *
      * @param eventJson the normalized event as a JSON object string.
-     * @param rules the parsed rules to evaluate.
-     * @param alreadySkipped rules the caller could not parse, carried into the result.
+     * @param rules the parsed rules to evaluate, each with the YAML it came from.
      * @param integrationId the integration owning the rules; scopes the stored queries.
      * @param logType the integration's log type, naming the percolator index.
      * @param sourceIndices source indices whose mappings the compiled queries resolve against.
@@ -127,15 +141,13 @@ public class PercolateRuleEvaluator {
      */
     public void evaluate(
             String eventJson,
-            List<SigmaRule> rules,
-            List<SkippedRule> alreadySkipped,
+            List<ParsedRule> rules,
             String integrationId,
             String logType,
             List<String> sourceIndices,
             ActionListener<String> listener) {
 
-        List<SkippedRule> skipped = new ArrayList<>(alreadySkipped);
-        int rulesEvaluated = rules.size() + alreadySkipped.size();
+        int rulesEvaluated = rules.size();
 
         // percolate_ext only accepts an object as its document, and it is not parsed until the search
         // is rewritten — by which point every compiled query has already been written to the index.
@@ -152,11 +164,10 @@ public class PercolateRuleEvaluator {
         // Doc id -> the rule and compiled query it holds, so a percolate hit needs no _source.
         Map<String, CompiledQuery> compiled = new LinkedHashMap<>();
         Set<String> requiredFields = new LinkedHashSet<>();
-        compile(rules, integrationId, compiled, skipped, requiredFields);
+        compile(rules, integrationId, compiled, requiredFields);
 
         if (compiled.isEmpty()) {
-            listener.onResponse(
-                    buildResult(rulesEvaluated, Collections.emptyList(), Collections.emptyMap(), skipped));
+            listener.onResponse(buildResult(rulesEvaluated, Collections.emptyList()));
             return;
         }
 
@@ -167,13 +178,7 @@ public class PercolateRuleEvaluator {
                 ActionListener.wrap(
                         preparedIndex ->
                                 storeQueries(
-                                        preparedIndex,
-                                        integrationId,
-                                        compiled,
-                                        skipped,
-                                        rulesEvaluated,
-                                        eventJson,
-                                        listener),
+                                        preparedIndex, integrationId, compiled, rulesEvaluated, eventJson, listener),
                         e -> {
                             // The percolator index could not be prepared, so nothing was evaluated. Report
                             // it as such instead of returning "no matches", which would read as "the rules
@@ -197,18 +202,17 @@ public class PercolateRuleEvaluator {
      * @param rules the parsed rules.
      * @param integrationId the integration owning the rules; part of the document identity.
      * @param compiled receives doc id to compiled query.
-     * @param skipped receives the rules that cannot be evaluated.
      * @param requiredFields receives every field the compiled queries name, so the query index can
      *     make sure they are mapped before the queries are stored.
      */
     private void compile(
-            List<SigmaRule> rules,
+            List<ParsedRule> rules,
             String integrationId,
             Map<String, CompiledQuery> compiled,
-            List<SkippedRule> skipped,
             Set<String> requiredFields) {
         for (int position = 0; position < rules.size(); position++) {
-            SigmaRule rule = rules.get(position);
+            SigmaRule rule = rules.get(position).rule();
+            String body = rules.get(position).body();
             String ruleId = ruleId(rule, position);
             try {
                 // Constructed exactly as WTransportIndexRuleAction:225 does when a rule is uploaded —
@@ -218,16 +222,16 @@ public class PercolateRuleEvaluator {
                 List<Object> queries = backend.convertRule(rule);
 
                 if (queries.isEmpty()) {
-                    skipped.add(
-                            new SkippedRule(rule, ruleId, "the rule has no detection condition to match"));
+                    log.warn("Rule '{}' has no detection condition to match", ruleId);
                     continue;
                 }
                 if (queries.stream().anyMatch(query -> !(query instanceof String))) {
                     // Aggregation rules become bucket-level monitors, which count documents over a
                     // window. A single event cannot satisfy one, and percolation cannot express it.
-                    skipped.add(
-                            new SkippedRule(
-                                    rule, ruleId, "aggregation rules cannot be evaluated against a single event"));
+                    log.warn(
+                            "Rule '{}' aggregates over several events, which a percolator cannot evaluate "
+                                    + "against a single document",
+                            ruleId);
                     continue;
                 }
 
@@ -245,12 +249,10 @@ public class PercolateRuleEvaluator {
                 // has to be told which fields to make sure of. This is the same field set rule upload
                 // records as the rule's query_field_names.
                 requiredFields.addAll(backend.getQueryFields().keySet());
-                compiled.put(docId(integrationId, ruleId, query), new CompiledQuery(rule, ruleId, query));
+                compiled.put(
+                        docId(integrationId, ruleId, query), new CompiledQuery(rule, ruleId, query, body));
             } catch (Exception e) {
-                log.warn("Failed to compile rule '{}': {}", ruleId, e.getMessage());
-                skipped.add(
-                        new SkippedRule(
-                                rule, ruleId, String.format(Locale.ROOT, "the rule could not be compiled: %s", e)));
+                log.warn("Rule '{}' could not be compiled: {}", ruleId, e.getMessage());
             }
         }
     }
@@ -266,7 +268,6 @@ public class PercolateRuleEvaluator {
      * @param indexName the percolator index.
      * @param integrationId scopes the stored queries.
      * @param compiled doc id to compiled query.
-     * @param skipped receives rules whose query the percolator rejected.
      * @param rulesEvaluated number of rules the request covered.
      * @param eventJson the event to percolate.
      * @param listener notified with the result JSON.
@@ -275,7 +276,6 @@ public class PercolateRuleEvaluator {
             LogtestQueryIndex.PreparedIndex preparedIndex,
             String integrationId,
             Map<String, CompiledQuery> compiled,
-            List<SkippedRule> skipped,
             int rulesEvaluated,
             String eventJson,
             ActionListener<String> listener) {
@@ -309,12 +309,10 @@ public class PercolateRuleEvaluator {
                         bulkResponse -> {
                             Set<String> storedDocIds = new LinkedHashSet<>(compiled.keySet());
                             collectRejectedQueries(
-                                    bulkResponse, compiled, skipped, storedDocIds, preparedIndex.mappingFailure());
+                                    bulkResponse, compiled, storedDocIds, preparedIndex.mappingFailure());
 
                             if (storedDocIds.isEmpty()) {
-                                listener.onResponse(
-                                        buildResult(
-                                                rulesEvaluated, Collections.emptyList(), Collections.emptyMap(), skipped));
+                                listener.onResponse(buildResult(rulesEvaluated, Collections.emptyList()));
                                 return;
                             }
                             percolate(
@@ -323,7 +321,6 @@ public class PercolateRuleEvaluator {
                                     eventJson,
                                     compiled,
                                     storedDocIds,
-                                    skipped,
                                     rulesEvaluated,
                                     listener);
                         },
@@ -340,20 +337,15 @@ public class PercolateRuleEvaluator {
      *
      * @param bulkResponse the bulk result.
      * @param compiled doc id to compiled query.
-     * @param skipped receives one entry per rejected rule.
      * @param storedDocIds the doc ids that made it in; rejected ones are removed.
      * @param mappingFailure why the index's mappings are not current, or {@code null}.
      */
     private void collectRejectedQueries(
             BulkResponse bulkResponse,
             Map<String, CompiledQuery> compiled,
-            List<SkippedRule> skipped,
             Set<String> storedDocIds,
             String mappingFailure) {
-        Set<String> reportedRuleIds =
-                skipped.stream()
-                        .map(SkippedRule::ruleId)
-                        .collect(Collectors.toCollection(LinkedHashSet::new));
+        Set<String> reportedRuleIds = new LinkedHashSet<>();
 
         for (BulkItemResponse itemResponse : bulkResponse) {
             if (!itemResponse.isFailed()) {
@@ -373,10 +365,10 @@ public class PercolateRuleEvaluator {
             String cause = rejectionCause(itemResponse);
             RestStatus status =
                     itemResponse.getFailure() == null ? null : itemResponse.getFailure().getStatus();
-            log.debug("Rule '{}' could not be stored as a percolator query: {}", query.ruleId(), cause);
-            skipped.add(
-                    new SkippedRule(
-                            query.rule(), query.ruleId(), rejectionReason(cause, mappingFailure, status)));
+            log.warn(
+                    "Rule '{}' was not evaluated: {}",
+                    query.ruleId(),
+                    rejectionReason(cause, mappingFailure, status));
         }
     }
 
@@ -456,7 +448,6 @@ public class PercolateRuleEvaluator {
      * @param eventJson the event to percolate.
      * @param compiled doc id to compiled query, used to resolve hits without fetching sources.
      * @param storedDocIds the doc ids actually stored, sizing the search.
-     * @param skipped rules that were not evaluated.
      * @param rulesEvaluated number of rules the request covered.
      * @param listener notified with the result JSON.
      */
@@ -466,7 +457,6 @@ public class PercolateRuleEvaluator {
             String eventJson,
             Map<String, CompiledQuery> compiled,
             Set<String> storedDocIds,
-            List<SkippedRule> skipped,
             int rulesEvaluated,
             ActionListener<String> listener) {
 
@@ -506,22 +496,17 @@ public class PercolateRuleEvaluator {
                 ActionListener.wrap(
                         searchResponse -> {
                             List<CompiledQuery> matches = new ArrayList<>();
-                            Map<String, List<String>> matchedQueriesByRule = new LinkedHashMap<>();
+                            Set<String> reportedRules = new LinkedHashSet<>();
                             for (SearchHit hit : searchResponse.getHits()) {
                                 CompiledQuery query = compiled.get(hit.getId());
                                 if (query == null) {
                                     continue;
                                 }
-                                if (matchedQueriesByRule.putIfAbsent(
-                                                query.ruleId(), new ArrayList<>(List.of(query.query())))
-                                        == null) {
+                                if (reportedRules.add(query.ruleId())) {
                                     matches.add(query);
-                                } else {
-                                    matchedQueriesByRule.get(query.ruleId()).add(query.query());
                                 }
                             }
-                            listener.onResponse(
-                                    buildResult(rulesEvaluated, matches, matchedQueriesByRule, skipped));
+                            listener.onResponse(buildResult(rulesEvaluated, matches));
                             deleteSupersededQueries(indexName, integrationId, compiled.values(), storedDocIds);
                         },
                         listener::onFailure));
@@ -614,38 +599,23 @@ public class PercolateRuleEvaluator {
     /**
      * Renders the evaluation result.
      *
-     * <p>{@code matched_conditions} carries the compiled queries that matched. Percolation is
-     * all-or-nothing per query, so there is no per-condition explanation to give; the query that
-     * matched is both the closest equivalent and the exact expression a detector runs.
+     * <p>{@code matched_conditions} describes the matched rule's detection conditions, one entry per
+     * condition, as the response contract requires. Percolation is all-or-nothing per query, so there
+     * is no per-condition explanation to give; the query that matched is both the closest equivalent
+     * and the exact expression a detector runs.
      *
      * @param rulesEvaluated number of rules the request covered.
      * @param matches the matched rules, one entry per rule.
-     * @param matchedQueriesByRule rule id to the queries that matched for it.
-     * @param skipped rules that were not evaluated, and why.
      * @return the result as a JSON string.
      */
-    private String buildResult(
-            int rulesEvaluated,
-            List<CompiledQuery> matches,
-            Map<String, List<String>> matchedQueriesByRule,
-            List<SkippedRule> skipped) {
+    private String buildResult(int rulesEvaluated, List<CompiledQuery> matches) {
 
         List<Map<String, Object>> matchEntries = new ArrayList<>();
         for (CompiledQuery match : matches) {
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put("rule", ruleInfo(match.rule(), match.ruleId()));
-            entry.put(
-                    "matched_conditions",
-                    matchedQueriesByRule.getOrDefault(match.ruleId(), List.of(match.query())));
+            entry.put("matched_conditions", describeConditions(match));
             matchEntries.add(entry);
-        }
-
-        List<Map<String, Object>> skippedEntries = new ArrayList<>();
-        for (SkippedRule skippedRule : skipped) {
-            Map<String, Object> entry = new LinkedHashMap<>();
-            entry.put("rule", ruleInfo(skippedRule.rule(), skippedRule.ruleId()));
-            entry.put("reason", skippedRule.reason());
-            skippedEntries.add(entry);
         }
 
         Map<String, Object> result = new LinkedHashMap<>();
@@ -653,8 +623,6 @@ public class PercolateRuleEvaluator {
         result.put("rules_evaluated", rulesEvaluated);
         result.put("rules_matched", matchEntries.size());
         result.put("matches", matchEntries);
-        result.put("rules_skipped", skippedEntries.size());
-        result.put("skipped", skippedEntries);
 
         try {
             return MAPPER.writeValueAsString(result);
@@ -665,6 +633,123 @@ public class PercolateRuleEvaluator {
                     "{\"status\":\"error\",\"rules_evaluated\":%d,\"rules_matched\":0,\"matches\":[]}",
                     rulesEvaluated);
         }
+    }
+
+    /**
+     * Describes the detection conditions of a rule that matched.
+     *
+     * <p>One entry per condition of the rule's first detection condition — the one a deployed
+     * detector runs — rendered as {@code <field> matched '<value>'}, which is the shape the logtest
+     * response contract defines.
+     *
+     * <p>Read from the parsed rule rather than from the match: percolation is all-or-nothing per
+     * query, so it reports that the rule matched, not which leaf did. For a rule whose conditions are
+     * combined with AND — the common case — every listed condition necessarily held. Where a
+     * condition offers alternatives, the alternatives are listed; which one matched is not
+     * recoverable from a percolate hit, and re-deriving it in the JVM is precisely the second
+     * evaluator this class exists to avoid.
+     *
+     * @param match the matched rule and the body it was parsed from.
+     * @return the condition descriptions, empty when they cannot be derived.
+     */
+    private List<String> describeConditions(CompiledQuery match) {
+        List<String> conditions = new ArrayList<>();
+        if (match.body() == null) {
+            return conditions;
+        }
+        try {
+            SigmaRule described = SigmaRule.fromYaml(match.body(), true);
+            List<SigmaCondition> parsed = described.getDetection().getParsedCondition();
+            if (parsed != null && !parsed.isEmpty()) {
+                describeCondition(parsed.get(0).parsed().getLeft(), conditions, false);
+            }
+        } catch (Exception e) {
+            log.debug(
+                    "Could not describe the conditions of rule '{}': {}", match.ruleId(), e.getMessage());
+        }
+        return conditions;
+    }
+
+    /**
+     * Walks a condition tree, appending one description per leaf.
+     *
+     * @param item the condition node.
+     * @param conditions the accumulator.
+     * @param negated whether this node sits under a {@code not}.
+     */
+    private void describeCondition(ConditionItem item, List<String> conditions, boolean negated) {
+        if (item == null || negated) {
+            // The rule matched, so a negated branch is one that did *not* hold; listing it as a
+            // matched condition would be wrong.
+            return;
+        }
+        if (item instanceof ConditionFieldEqualsValueExpression fieldExpr) {
+            conditions.add(
+                    fieldExpr.getField() + " matched '" + formatSigmaValue(fieldExpr.getValue()) + "'");
+            return;
+        }
+        if (item instanceof ConditionValueExpression valueExpr) {
+            conditions.add("keywords contains '" + valueExpr.getValue() + "'");
+            return;
+        }
+        if (item.getArgs() == null) {
+            return;
+        }
+        for (Either<
+                        AnyOneOf<ConditionItem, ConditionFieldEqualsValueExpression, ConditionValueExpression>,
+                        String>
+                arg : item.getArgs()) {
+            if (arg.isLeft()) {
+                describeCondition(
+                        resolveConditionItem(arg.getLeft()), conditions, item instanceof ConditionNOT);
+            }
+        }
+    }
+
+    /**
+     * Unwraps the three-way union the condition tree stores its children in.
+     *
+     * @param anyOneOf the child.
+     * @return the condition item, or {@code null} when the union is empty.
+     */
+    private ConditionItem resolveConditionItem(
+            AnyOneOf<ConditionItem, ConditionFieldEqualsValueExpression, ConditionValueExpression>
+                    anyOneOf) {
+        if (anyOneOf.isLeft()) {
+            return anyOneOf.getLeft();
+        }
+        if (anyOneOf.isMiddle()) {
+            return anyOneOf.getMiddle();
+        }
+        if (anyOneOf.isRight()) {
+            return anyOneOf.get();
+        }
+        return null;
+    }
+
+    /**
+     * Renders a Sigma value the way the response contract shows it.
+     *
+     * @param value the parsed Sigma value.
+     * @return its description.
+     */
+    private String formatSigmaValue(SigmaType value) {
+        if (value instanceof SigmaCompareExpression cmp) {
+            return cmp.getOp() + " " + cmp.getNumber();
+        }
+        if (value instanceof SigmaCIDRExpression cidr) {
+            return "cidr:" + cidr.getCidr();
+        }
+        if (value instanceof SigmaRegularExpression re) {
+            return "re:" + re.getRegexp();
+        }
+        if (value instanceof SigmaExpansion exp) {
+            return "expansion(" + exp.getValues().size() + " alternatives)";
+        }
+        // SigmaString renders a space as the `_ws_` placeholder the compiled query carries. That is an
+        // internal detail of the query pipeline and has no business in a description shown to a rule
+        // author.
+        return value.toString().replace("_ws_", " ");
     }
 
     /**
@@ -778,5 +863,5 @@ public class PercolateRuleEvaluator {
      * @param ruleId the rule id.
      * @param query the compiled {@code query_string} query.
      */
-    private record CompiledQuery(SigmaRule rule, String ruleId, String query) {}
+    private record CompiledQuery(SigmaRule rule, String ruleId, String query, String body) {}
 }

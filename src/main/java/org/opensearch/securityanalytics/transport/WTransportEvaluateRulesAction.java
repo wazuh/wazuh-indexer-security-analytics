@@ -25,7 +25,6 @@ import org.opensearch.common.inject.Inject;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.securityanalytics.rules.engine.LogtestQueryIndex;
 import org.opensearch.securityanalytics.rules.engine.PercolateRuleEvaluator;
-import org.opensearch.securityanalytics.rules.engine.PercolateRuleEvaluator.SkippedRule;
 import org.opensearch.securityanalytics.rules.objects.SigmaRule;
 import org.opensearch.securityanalytics.util.RuleTopicIndices;
 import org.opensearch.tasks.Task;
@@ -35,7 +34,6 @@ import org.opensearch.transport.client.Client;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.stream.Collectors;
 
 import com.wazuh.securityanalytics.action.WEvaluateRulesAction;
@@ -89,8 +87,7 @@ public class WTransportEvaluateRulesAction
     protected void doExecute(
             Task task, WEvaluateRulesRequest request, ActionListener<WEvaluateRulesResponse> listener) {
         try {
-            List<SigmaRule> parsedRules = new ArrayList<>();
-            List<SkippedRule> skipped = new ArrayList<>();
+            List<PercolateRuleEvaluator.ParsedRule> parsedRules = new ArrayList<>();
 
             List<String> ruleBodies = request.getRulesBodies();
             for (int position = 0; position < ruleBodies.size(); position++) {
@@ -102,26 +99,18 @@ public class WTransportEvaluateRulesAction
                     // it as evaluated here would be the same false confidence this endpoint exists to
                     // remove.
                     if (parsedRule.getErrors() != null && !parsedRule.getErrors().getErrors().isEmpty()) {
-                        skipped.add(
-                                new SkippedRule(
-                                        parsedRule,
-                                        PercolateRuleEvaluator.ruleId(parsedRule, position),
-                                        String.format(
-                                                Locale.ROOT,
-                                                "the rule is not valid Sigma and would be refused on upload: %s",
-                                                parsedRule.getErrors().getErrors().stream()
-                                                        .map(Throwable::getMessage)
-                                                        .collect(Collectors.joining("; ")))));
+                        log.warn(
+                                "Rule '{}' is not valid Sigma and would be refused on upload: {}",
+                                PercolateRuleEvaluator.ruleId(parsedRule, position),
+                                parsedRule.getErrors().getErrors().stream()
+                                        .map(Throwable::getMessage)
+                                        .collect(Collectors.joining("; ")));
                         continue;
                     }
-                    parsedRules.add(parsedRule);
+                    parsedRules.add(
+                            new PercolateRuleEvaluator.ParsedRule(parsedRule, ruleBodies.get(position)));
                 } catch (Exception e) {
-                    log.warn("Failed to parse Sigma rule YAML: {}", e.getMessage());
-                    skipped.add(
-                            new SkippedRule(
-                                    null,
-                                    "rule_" + position,
-                                    String.format(Locale.ROOT, "the rule could not be parsed: %s", e.getMessage())));
+                    log.warn("Rule at position {} could not be parsed: {}", position, e.getMessage());
                 }
             }
 
@@ -131,7 +120,6 @@ public class WTransportEvaluateRulesAction
             evaluator.evaluate(
                     request.getEventJson(),
                     parsedRules,
-                    skipped,
                     request.getIntegrationId(),
                     request.getLogType(),
                     request.getSourceIndices(),

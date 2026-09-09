@@ -19,14 +19,18 @@ package org.opensearch.securityanalytics.rules.engine;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import org.opensearch.OpenSearchStatusException;
+import org.apache.lucene.search.TotalHits;
 import org.opensearch.action.DocWriteRequest;
 import org.opensearch.action.bulk.BulkItemResponse;
 import org.opensearch.action.bulk.BulkRequest;
 import org.opensearch.action.bulk.BulkResponse;
 import org.opensearch.action.index.IndexRequest;
+import org.opensearch.action.search.SearchResponse;
+import org.opensearch.action.search.ShardSearchFailure;
 import org.opensearch.core.action.ActionListener;
-import org.opensearch.core.rest.RestStatus;
+import org.opensearch.search.SearchHit;
+import org.opensearch.search.SearchHits;
+import org.opensearch.search.internal.InternalSearchResponse;
 import org.opensearch.securityanalytics.rules.objects.SigmaRule;
 import org.opensearch.test.OpenSearchTestCase;
 import org.opensearch.transport.client.Client;
@@ -60,18 +64,37 @@ public class PercolateRuleEvaluatorTests extends OpenSearchTestCase {
     }
 
     private static SigmaRule ruleWithId(String id, String title, String detection) throws Exception {
-        return SigmaRule.fromYaml(
-                String.join(
-                        "\n",
-                        "title: " + title,
-                        "id: " + id,
-                        "status: test",
-                        "logsource:",
-                        "    category: test",
-                        "detection:",
-                        detection,
-                        "level: high"),
-                true);
+        return SigmaRule.fromYaml(yamlWithId(id, title, detection), true);
+    }
+
+    private static String yaml(String title, String detection) {
+        return yamlWithId("11111111-1111-1111-1111-111111111111", title, detection);
+    }
+
+    private static String yamlWithId(String id, String title, String detection) {
+        return String.join(
+                "\n",
+                "title: " + title,
+                "id: " + id,
+                "status: test",
+                "logsource:",
+                "    category: test",
+                "detection:",
+                detection,
+                "level: high");
+    }
+
+    /** Pairs a rule with the YAML it came from, as the evaluator now expects. */
+    private static PercolateRuleEvaluator.ParsedRule parsed(String title, String detection)
+            throws Exception {
+        return new PercolateRuleEvaluator.ParsedRule(rule(title, detection), yaml(title, detection));
+    }
+
+    /** Pairs a rule carrying an explicit id with its YAML. */
+    private static PercolateRuleEvaluator.ParsedRule parsedWithId(
+            String id, String title, String detection) throws Exception {
+        return new PercolateRuleEvaluator.ParsedRule(
+                ruleWithId(id, title, detection), yamlWithId(id, title, detection));
     }
 
     /** A query index that reports itself ready, so the evaluator proceeds to store queries. */
@@ -89,7 +112,7 @@ public class PercolateRuleEvaluatorTests extends OpenSearchTestCase {
     }
 
     /** Captures the bulk request the evaluator builds, without completing the call. */
-    private BulkRequest captureStoredQueries(List<SigmaRule> rules) {
+    private BulkRequest captureStoredQueries(List<PercolateRuleEvaluator.ParsedRule> rules) {
         Client client = mock(Client.class);
         ArgumentCaptor<BulkRequest> captor = ArgumentCaptor.forClass(BulkRequest.class);
         doAnswer(invocation -> null).when(client).bulk(captor.capture(), any());
@@ -98,7 +121,6 @@ public class PercolateRuleEvaluatorTests extends OpenSearchTestCase {
                 .evaluate(
                         EVENT,
                         rules,
-                        new ArrayList<>(),
                         INTEGRATION_ID,
                         "test",
                         List.of("wazuh-events-v5-test"),
@@ -122,8 +144,8 @@ public class PercolateRuleEvaluatorTests extends OpenSearchTestCase {
     public void testOnlyTheFirstDetectionConditionIsStored() throws Exception {
         // A detector is built from rule.getQueries().get(0) alone, so percolating the other
         // conditions would report matches production cannot produce.
-        SigmaRule twoConditions =
-                rule(
+        PercolateRuleEvaluator.ParsedRule twoConditions =
+                parsed(
                         "Two Conditions",
                         String.join(
                                 "\n",
@@ -152,10 +174,10 @@ public class PercolateRuleEvaluatorTests extends OpenSearchTestCase {
         // to the same query. Keying the document only on that query collapses them into one document
         // and only one of them is ever reported as matching.
         String detection = "    selection:\n        process.name: cmd.exe\n    condition: selection";
-        List<SigmaRule> twins =
+        List<PercolateRuleEvaluator.ParsedRule> twins =
                 List.of(
-                        ruleWithId("aaaaaaaa-0000-0000-0000-000000000001", "Twin A", detection),
-                        ruleWithId("aaaaaaaa-0000-0000-0000-000000000002", "Twin B", detection));
+                        parsedWithId("aaaaaaaa-0000-0000-0000-000000000001", "Twin A", detection),
+                        parsedWithId("aaaaaaaa-0000-0000-0000-000000000002", "Twin B", detection));
 
         BulkRequest stored = captureStoredQueries(twins);
 
@@ -170,10 +192,10 @@ public class PercolateRuleEvaluatorTests extends OpenSearchTestCase {
         // Same rule id, different rule body: two logtest calls must not collide on one document.
         String idA =
                 storedDocId(
-                        rule("A", "    selection:\n        process.name: cmd.exe\n    condition: selection"));
+                        parsed("A", "    selection:\n        process.name: cmd.exe\n    condition: selection"));
         String idB =
                 storedDocId(
-                        rule(
+                        parsed(
                                 "B",
                                 "    selection:\n        process.name: powershell.exe\n    condition: selection"));
 
@@ -182,7 +204,8 @@ public class PercolateRuleEvaluatorTests extends OpenSearchTestCase {
                 "the id must be stable for the same content",
                 idA,
                 storedDocId(
-                        rule("A", "    selection:\n        process.name: cmd.exe\n    condition: selection")));
+                        parsed(
+                                "A", "    selection:\n        process.name: cmd.exe\n    condition: selection")));
     }
 
     public void testStoredDocumentsAreCreatedNotOverwritten() throws Exception {
@@ -191,7 +214,7 @@ public class PercolateRuleEvaluatorTests extends OpenSearchTestCase {
         BulkRequest stored =
                 captureStoredQueries(
                         List.of(
-                                rule(
+                                parsed(
                                         "Any",
                                         "    selection:\n        process.name: cmd.exe\n    condition: selection")));
 
@@ -202,7 +225,7 @@ public class PercolateRuleEvaluatorTests extends OpenSearchTestCase {
         BulkRequest stored =
                 captureStoredQueries(
                         List.of(
-                                rule(
+                                parsed(
                                         "Any",
                                         "    selection:\n        process.name: cmd.exe\n    condition: selection")));
 
@@ -224,10 +247,9 @@ public class PercolateRuleEvaluatorTests extends OpenSearchTestCase {
                 .evaluate(
                         "\"just a string\"",
                         List.of(
-                                rule(
+                                parsed(
                                         "Any",
                                         "    selection:\n        process.name: cmd.exe\n    condition: selection")),
-                        new ArrayList<>(),
                         INTEGRATION_ID,
                         "test",
                         List.of("wazuh-events-v5-test"),
@@ -238,25 +260,42 @@ public class PercolateRuleEvaluatorTests extends OpenSearchTestCase {
         verifyNoInteractions(queryIndex);
     }
 
-    public void testAnAggregationRuleIsReportedAsSkipped() throws Exception {
-        // A percolator sees one document; a bucket-level condition counts documents over a window.
-        SigmaRule aggregation =
-                rule(
-                        "Aggregation",
-                        "    selection:\n        process.name: cmd.exe\n    condition: selection | count() > 5");
+    public void testTheResponseCarriesOnlyTheContractFields() throws Exception {
+        // The logtest response contract is status / rules_evaluated / rules_matched / matches.
+        // Anything else — a skip count, a per-rule skip list — is outside it.
+        JsonNode result =
+                evaluateWithoutCluster(
+                        List.of(
+                                parsed(
+                                        "Aggregation",
+                                        "    selection:\n        process.name: cmd.exe\n"
+                                                + "    condition: selection | count() > 5")));
 
-        JsonNode result = evaluateWithoutCluster(List.of(aggregation));
+        List<String> fields = new ArrayList<>();
+        result.fieldNames().forEachRemaining(fields::add);
+        assertEquals(List.of("status", "rules_evaluated", "rules_matched", "matches"), fields);
+    }
+
+    public void testARuleThatCannotBeEvaluatedIsSimplyNotAMatch() throws Exception {
+        // A bucket-level condition counts documents over a window, and a percolator sees one
+        // document, so the rule cannot be evaluated. It is left out of the matches rather than
+        // reported, and the reason goes to the log.
+        JsonNode result =
+                evaluateWithoutCluster(
+                        List.of(
+                                parsed(
+                                        "Aggregation",
+                                        "    selection:\n        process.name: cmd.exe\n"
+                                                + "    condition: selection | count() > 5")));
 
         assertEquals(1, result.get("rules_evaluated").asInt());
         assertEquals(0, result.get("rules_matched").asInt());
-        assertEquals(1, result.get("rules_skipped").asInt());
-        assertTrue(result.get("skipped").get(0).get("reason").asText().contains("aggregation"));
+        assertTrue(result.get("matches").isEmpty());
     }
 
-    public void testRulesTheCallerCouldNotParseAreCarriedIntoTheResult() throws Exception {
-        List<PercolateRuleEvaluator.SkippedRule> alreadySkipped =
-                List.of(
-                        new PercolateRuleEvaluator.SkippedRule(null, "rule_0", "the rule could not be parsed"));
+    public void testRulesTheCallerCouldNotParseAreNotCounted() throws Exception {
+        // The caller logs and drops a rule it could not parse, so it never reaches the evaluator's
+        // rule list and is not one of the rules the response reports as evaluated.
         Client client = mock(Client.class);
         AtomicReference<String> resultJson = new AtomicReference<>();
 
@@ -264,24 +303,21 @@ public class PercolateRuleEvaluatorTests extends OpenSearchTestCase {
                 .evaluate(
                         EVENT,
                         List.of(),
-                        new ArrayList<>(alreadySkipped),
                         INTEGRATION_ID,
                         "test",
                         List.of("wazuh-events-v5-test"),
                         ActionListener.wrap(resultJson::set, e -> fail(e.getMessage())));
 
         JsonNode result = MAPPER.readTree(resultJson.get());
-        assertEquals(
-                "an unparseable rule was still a rule the request covered",
-                1,
-                result.get("rules_evaluated").asInt());
-        assertEquals(1, result.get("rules_skipped").asInt());
-        assertEquals("rule_0", result.get("skipped").get(0).get("rule").get("id").asText());
+        assertEquals(0, result.get("rules_evaluated").asInt());
+        assertEquals(0, result.get("rules_matched").asInt());
+        assertTrue(result.get("matches").isEmpty());
         verifyNoInteractions(client);
     }
 
     /** Runs an evaluation that never reaches the cluster, and returns the parsed result. */
-    private JsonNode evaluateWithoutCluster(List<SigmaRule> rules) throws Exception {
+    private JsonNode evaluateWithoutCluster(List<PercolateRuleEvaluator.ParsedRule> rules)
+            throws Exception {
         Client client = mock(Client.class);
         AtomicReference<String> resultJson = new AtomicReference<>();
 
@@ -289,7 +325,6 @@ public class PercolateRuleEvaluatorTests extends OpenSearchTestCase {
                 .evaluate(
                         EVENT,
                         rules,
-                        new ArrayList<>(),
                         INTEGRATION_ID,
                         "test",
                         List.of("wazuh-events-v5-test"),
@@ -300,69 +335,86 @@ public class PercolateRuleEvaluatorTests extends OpenSearchTestCase {
         return MAPPER.readTree(resultJson.get());
     }
 
-    private String storedDocId(SigmaRule rule) {
+    private String storedDocId(PercolateRuleEvaluator.ParsedRule rule) {
         return captureStoredQueries(List.of(rule)).requests().get(0).id();
     }
 
-    /** Builds a bulk response whose single item failed with the given status. */
-    private BulkResponse failedBulk(String docId, RestStatus status, String message) {
-        BulkItemResponse.Failure failure =
-                new BulkItemResponse.Failure("idx", docId, new OpenSearchStatusException(message, status));
-        return new BulkResponse(
-                new BulkItemResponse[] {new BulkItemResponse(0, DocWriteRequest.OpType.CREATE, failure)},
-                1L);
+    public void testMatchedConditionsAreListedPerCondition() throws Exception {
+        // The contract is one readable entry per condition, not a single compiled query. A rule with
+        // two conditions therefore reports two entries, and none of them is a composed expression.
+        PercolateRuleEvaluator.ParsedRule twoFields =
+                parsed(
+                        "Two Fields",
+                        "    selection:\n        http.request.method: GET\n"
+                                + "        url.original: /admin\n    condition: selection");
+
+        List<String> described = describeMatch(twoFields);
+
+        assertEquals(2, described.size());
+        assertTrue(described.toString(), described.contains("http.request.method matched 'GET'"));
+        assertTrue(described.toString(), described.contains("url.original matched '/admin'"));
+        for (String condition : described) {
+            assertFalse(
+                    "a condition must not be a composed expression: " + condition,
+                    condition.contains(" AND "));
+        }
     }
 
-    /** Runs one rule through the evaluator against a client whose bulk write fails as given. */
-    private JsonNode skipReasonFor(RestStatus status, String message) throws Exception {
+    /**
+     * Percolates one rule against a client that reports it as matching, and returns its conditions.
+     */
+    private List<String> describeMatch(PercolateRuleEvaluator.ParsedRule matching) throws Exception {
         Client client = mock(Client.class);
+        AtomicReference<String> stored = new AtomicReference<>();
         doAnswer(
                         invocation -> {
                             BulkRequest request = invocation.getArgument(0);
+                            stored.set(request.requests().get(0).id());
                             ActionListener<BulkResponse> listener = invocation.getArgument(1);
-                            String id = request.requests().get(0).id();
-                            listener.onResponse(failedBulk(id, status, message));
+                            listener.onResponse(new BulkResponse(new BulkItemResponse[0], 1L));
                             return null;
                         })
                 .when(client)
                 .bulk(any(), any());
+        doAnswer(
+                        invocation -> {
+                            ActionListener<SearchResponse> listener = invocation.getArgument(1);
+                            listener.onResponse(searchHitting(stored.get()));
+                            return null;
+                        })
+                .when(client)
+                .search(any(), any());
+
         AtomicReference<String> result = new AtomicReference<>();
         new PercolateRuleEvaluator(client, readyQueryIndex())
                 .evaluate(
                         EVENT,
-                        List.of(
-                                rule(
-                                        "Any",
-                                        "    selection:\n        process.name: cmd.exe\n    condition: selection")),
-                        new ArrayList<>(),
+                        List.of(matching),
                         INTEGRATION_ID,
                         "test",
                         List.of("wazuh-events-v5-test"),
                         ActionListener.wrap(result::set, e -> fail(e.getMessage())));
-        assertNotNull("the evaluator should have answered", result.get());
-        return MAPPER.readTree(result.get()).get("skipped").get(0);
+
+        JsonNode conditions =
+                MAPPER.readTree(result.get()).get("matches").get(0).get("matched_conditions");
+        List<String> out = new ArrayList<>();
+        conditions.forEach(node -> out.add(node.asText()));
+        return out;
     }
 
-    public void testAQueryThePercolatorRefusedBlamesTheRule() throws Exception {
-        // BAD_REQUEST means the percolator read the query and rejected it, so a detector — which
-        // parses the same query the same way — cannot match the rule either.
-        JsonNode skipped =
-                skipReasonFor(RestStatus.BAD_REQUEST, "failed to parse: No field mapping can be found");
-        String reason = skipped.get("reason").asText();
-
-        assertTrue(reason, reason.contains("a deployed detector cannot match it either"));
-    }
-
-    public void testAnUnusableIndexDoesNotBlameTheRule() throws Exception {
-        // A write block, a closed index or a node failure means the query never reached the
-        // percolator. Claiming the rule is at fault would be wrong: the detector's query index is a
-        // different index and may well match.
-        JsonNode skipped =
-                skipReasonFor(RestStatus.FORBIDDEN, "blocked by: [FORBIDDEN/8/index write (api)]");
-        String reason = skipped.get("reason").asText();
-
-        assertFalse(reason, reason.contains("a deployed detector cannot match it either"));
-        assertTrue(reason, reason.contains("limitation of logtest"));
-        assertTrue(reason, reason.contains("may still match it"));
+    /** A search response with one hit, as the percolator returns for a matching stored query. */
+    private SearchResponse searchHitting(String docId) {
+        SearchHit hit = new SearchHit(0, docId, null, null);
+        SearchHits hits =
+                new SearchHits(new SearchHit[] {hit}, new TotalHits(1, TotalHits.Relation.EQUAL_TO), 1.0f);
+        return new SearchResponse(
+                new InternalSearchResponse(hits, null, null, null, false, null, 1),
+                null,
+                1,
+                1,
+                0,
+                1L,
+                new ShardSearchFailure[0],
+                SearchResponse.Clusters.EMPTY);
     }
 }
