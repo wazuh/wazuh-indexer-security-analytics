@@ -1,6 +1,18 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.resthandler;
 
@@ -9,10 +21,11 @@ import org.apache.logging.log4j.Logger;
 import org.opensearch.action.search.SearchRequest;
 import org.opensearch.action.search.SearchResponse;
 import org.opensearch.cluster.routing.Preference;
-import org.opensearch.core.common.bytes.BytesReference;
 import org.opensearch.common.xcontent.LoggingDeprecationHandler;
 import org.opensearch.common.xcontent.XContentFactory;
 import org.opensearch.common.xcontent.XContentType;
+import org.opensearch.core.common.bytes.BytesReference;
+import org.opensearch.core.rest.RestStatus;
 import org.opensearch.core.xcontent.XContentBuilder;
 import org.opensearch.core.xcontent.XContentParser;
 import org.opensearch.index.query.QueryBuilder;
@@ -22,7 +35,6 @@ import org.opensearch.rest.BytesRestResponse;
 import org.opensearch.rest.RestChannel;
 import org.opensearch.rest.RestRequest;
 import org.opensearch.rest.RestResponse;
-import org.opensearch.core.rest.RestStatus;
 import org.opensearch.rest.action.RestResponseListener;
 import org.opensearch.search.SearchHit;
 import org.opensearch.search.builder.SearchSourceBuilder;
@@ -50,13 +62,18 @@ public class RestSearchRuleAction extends BaseRestHandler {
     @Override
     public List<Route> routes() {
         return List.of(
-                new Route(RestRequest.Method.POST, SecurityAnalyticsPlugin.RULE_BASE_URI + "/_search")
-        );
+                new Route(RestRequest.Method.POST, SecurityAnalyticsPlugin.RULE_BASE_URI + "/_search"));
     }
 
     @Override
-    protected RestChannelConsumer prepareRequest(RestRequest request, NodeClient client) throws IOException {
-        log.debug(String.format(Locale.getDefault(), "%s %s/_search", request.method(), SecurityAnalyticsPlugin.RULE_BASE_URI));
+    protected RestChannelConsumer prepareRequest(RestRequest request, NodeClient client)
+            throws IOException {
+        log.debug(
+                String.format(
+                        Locale.getDefault(),
+                        "%s %s/_search",
+                        request.method(),
+                        SecurityAnalyticsPlugin.RULE_BASE_URI));
 
         boolean isPrepackaged = request.paramAsBoolean("pre_packaged", true);
         SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
@@ -64,16 +81,16 @@ public class RestSearchRuleAction extends BaseRestHandler {
 
         QueryBuilder queryBuilder = QueryBuilders.boolQuery().must(searchSourceBuilder.query());
 
-        searchSourceBuilder.query(queryBuilder)
-                .seqNoAndPrimaryTerm(true)
-                .version(true);
-        SearchRequest searchRequest = new SearchRequest()
-                .source(searchSourceBuilder)
-                .indices(isPrepackaged ? Rule.PRE_PACKAGED_RULES_INDEX: Rule.CUSTOM_RULES_INDEX)
-                .preference(Preference.PRIMARY_FIRST.type());
+        searchSourceBuilder.query(queryBuilder).seqNoAndPrimaryTerm(true).version(true);
+        SearchRequest searchRequest =
+                new SearchRequest()
+                        .source(searchSourceBuilder)
+                        .indices(isPrepackaged ? Rule.PRE_PACKAGED_RULES_INDEX : Rule.CUSTOM_RULES_INDEX)
+                        .preference(Preference.PRIMARY_FIRST.type());
 
         SearchRuleRequest searchRuleRequest = new SearchRuleRequest(isPrepackaged, searchRequest);
-        return channel -> client.execute(SearchRuleAction.INSTANCE, searchRuleRequest, searchRuleResponse(channel));
+        return channel ->
+                client.execute(SearchRuleAction.INSTANCE, searchRuleRequest, searchRuleResponse(channel));
     }
 
     private RestResponseListener<SearchResponse> searchRuleResponse(RestChannel channel) {
@@ -85,11 +102,14 @@ public class RestSearchRuleAction extends BaseRestHandler {
                 }
 
                 try {
-                    for (SearchHit hit: response.getHits()) {
-                        XContentParser xcp = XContentType.JSON.xContent().createParser(
-                                channel.request().getXContentRegistry(),
-                                LoggingDeprecationHandler.INSTANCE, hit.getSourceAsString()
-                        );
+                    for (SearchHit hit : response.getHits()) {
+                        XContentParser xcp =
+                                XContentType.JSON
+                                        .xContent()
+                                        .createParser(
+                                                channel.request().getXContentRegistry(),
+                                                LoggingDeprecationHandler.INSTANCE,
+                                                hit.getSourceAsString());
 
                         Rule rule = Rule.docParse(xcp, hit.getId(), hit.getVersion());
                         XContentBuilder xcb = rule.toXContent(XContentFactory.jsonBuilder(), EMPTY_PARAMS);
@@ -98,7 +118,8 @@ public class RestSearchRuleAction extends BaseRestHandler {
                 } catch (Exception ex) {
                     log.info("The rule parsing failed. Will return response as is.");
                 }
-                return new BytesRestResponse(RestStatus.OK, response.toXContent(channel.newBuilder(), EMPTY_PARAMS));
+                return new BytesRestResponse(
+                        RestStatus.OK, response.toXContent(channel.newBuilder(), EMPTY_PARAMS));
             }
         };
     }

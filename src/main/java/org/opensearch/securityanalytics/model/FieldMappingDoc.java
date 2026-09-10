@@ -1,8 +1,33 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.model;
+
+import org.opensearch.common.xcontent.LoggingDeprecationHandler;
+import org.opensearch.common.xcontent.XContentHelper;
+import org.opensearch.common.xcontent.XContentType;
+import org.opensearch.core.common.io.stream.StreamInput;
+import org.opensearch.core.common.io.stream.StreamOutput;
+import org.opensearch.core.common.io.stream.Writeable;
+import org.opensearch.core.xcontent.NamedXContentRegistry;
+import org.opensearch.core.xcontent.ToXContent;
+import org.opensearch.core.xcontent.XContentBuilder;
+import org.opensearch.core.xcontent.XContentParser;
+import org.opensearch.core.xcontent.XContentParserUtils;
+import org.opensearch.search.SearchHit;
 
 import java.io.IOException;
 import java.util.Collections;
@@ -11,18 +36,6 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import org.opensearch.core.common.io.stream.StreamInput;
-import org.opensearch.core.common.io.stream.StreamOutput;
-import org.opensearch.core.common.io.stream.Writeable;
-import org.opensearch.common.xcontent.LoggingDeprecationHandler;
-import org.opensearch.common.xcontent.XContentHelper;
-import org.opensearch.core.xcontent.XContentParserUtils;
-import org.opensearch.common.xcontent.XContentType;
-import org.opensearch.core.xcontent.NamedXContentRegistry;
-import org.opensearch.core.xcontent.ToXContent;
-import org.opensearch.core.xcontent.XContentBuilder;
-import org.opensearch.core.xcontent.XContentParser;
-import org.opensearch.search.SearchHit;
 
 public class FieldMappingDoc implements ToXContent, Writeable {
 
@@ -38,7 +51,8 @@ public class FieldMappingDoc implements ToXContent, Writeable {
 
     private boolean isDirty;
 
-    public FieldMappingDoc(String id, String rawField, Map<String, String> schemaFields, Set<String> logTypes) {
+    public FieldMappingDoc(
+            String id, String rawField, Map<String, String> schemaFields, Set<String> logTypes) {
         this(rawField, schemaFields, logTypes);
         this.id = id;
     }
@@ -76,13 +90,14 @@ public class FieldMappingDoc implements ToXContent, Writeable {
         return builder.endObject();
     }
 
-    public static FieldMappingDoc parse(SearchHit hit, NamedXContentRegistry xContentRegistry) throws IOException {
-        XContentParser xcp = XContentHelper.createParser(
-                xContentRegistry,
-                LoggingDeprecationHandler.INSTANCE,
-                hit.getSourceRef(),
-                XContentType.JSON
-        );
+    public static FieldMappingDoc parse(SearchHit hit, NamedXContentRegistry xContentRegistry)
+            throws IOException {
+        XContentParser xcp =
+                XContentHelper.createParser(
+                        xContentRegistry,
+                        LoggingDeprecationHandler.INSTANCE,
+                        hit.getSourceRef(),
+                        XContentType.JSON);
         return parse(xcp, hit.getId());
     }
 
@@ -93,7 +108,8 @@ public class FieldMappingDoc implements ToXContent, Writeable {
         if (xcp.currentToken() == null) {
             xcp.nextToken();
         }
-        XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
+        XContentParserUtils.ensureExpectedToken(
+                XContentParser.Token.START_OBJECT, xcp.currentToken(), xcp);
         while (xcp.nextToken() != XContentParser.Token.END_OBJECT) {
             String fieldName = xcp.currentName();
             xcp.nextToken();
@@ -103,7 +119,8 @@ public class FieldMappingDoc implements ToXContent, Writeable {
                     rawField = xcp.text();
                     break;
                 case LOG_TYPES:
-                    XContentParserUtils.ensureExpectedToken(XContentParser.Token.START_ARRAY, xcp.currentToken(), xcp);
+                    XContentParserUtils.ensureExpectedToken(
+                            XContentParser.Token.START_ARRAY, xcp.currentToken(), xcp);
                     while (xcp.nextToken() != XContentParser.Token.END_ARRAY) {
                         logTypes.add(xcp.text());
                     }
@@ -116,7 +133,6 @@ public class FieldMappingDoc implements ToXContent, Writeable {
         }
         return new FieldMappingDoc(id, rawField, schemaFields, logTypes);
     }
-
 
     public String getRawField() {
         return rawField;

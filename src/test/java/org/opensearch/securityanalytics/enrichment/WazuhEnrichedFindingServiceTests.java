@@ -103,8 +103,7 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
                         findingTimestamp,
                         "high");
 
-        Map<String, Object> doc =
-                invokeBuildAndIndex(finding, "detection", eventSource, "doc-1", null);
+        Map<String, Object> doc = invokeBuildAndIndex(finding, "detection", eventSource, "doc-1", null);
 
         assertEquals(
                 "Finding @timestamp must match the original event's @timestamp",
@@ -133,8 +132,7 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
                         Instant.now(),
                         "high");
 
-        Map<String, Object> doc =
-                invokeBuildAndIndex(finding, "detection", eventSource, "doc-2", null);
+        Map<String, Object> doc = invokeBuildAndIndex(finding, "detection", eventSource, "doc-2", null);
 
         Map<String, Object> eventObj = (Map<String, Object>) doc.get("event");
         assertNotNull("event object must exist", eventObj);
@@ -164,8 +162,7 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
                         Instant.now(),
                         "high");
 
-        Map<String, Object> doc =
-                invokeBuildAndIndex(finding, "detection", eventSource, "doc-3", null);
+        Map<String, Object> doc = invokeBuildAndIndex(finding, "detection", eventSource, "doc-3", null);
 
         Map<String, Object> eventObj = (Map<String, Object>) doc.get("event");
         assertNotNull("event object must exist", eventObj);
@@ -199,8 +196,7 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
                         Instant.now(),
                         "high");
 
-        Map<String, Object> doc =
-                invokeBuildAndIndex(finding, "detection", eventSource, "doc-4", null);
+        Map<String, Object> doc = invokeBuildAndIndex(finding, "detection", eventSource, "doc-4", null);
 
         Map<String, Object> eventObj = (Map<String, Object>) doc.get("event");
         assertNotNull("event object must exist", eventObj);
