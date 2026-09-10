@@ -1,31 +1,40 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.transport;
-
-import java.io.IOException;
-import java.util.List;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.lucene.search.join.ScoreMode;
 import org.opensearch.OpenSearchStatusException;
-import org.opensearch.cluster.routing.Preference;
-import org.opensearch.core.action.ActionListener;
 import org.opensearch.action.search.SearchRequest;
 import org.opensearch.action.search.SearchResponse;
 import org.opensearch.action.support.ActionFilters;
 import org.opensearch.action.support.HandledTransportAction;
+import org.opensearch.cluster.routing.Preference;
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.inject.Inject;
 import org.opensearch.common.settings.Settings;
 import org.opensearch.commons.authuser.User;
+import org.opensearch.core.action.ActionListener;
+import org.opensearch.core.rest.RestStatus;
 import org.opensearch.core.xcontent.NamedXContentRegistry;
 import org.opensearch.index.query.MatchAllQueryBuilder;
 import org.opensearch.index.query.NestedQueryBuilder;
 import org.opensearch.index.query.QueryBuilders;
-import org.opensearch.core.rest.RestStatus;
 import org.opensearch.search.builder.SearchSourceBuilder;
 import org.opensearch.securityanalytics.action.GetFindingsAction;
 import org.opensearch.securityanalytics.action.GetFindingsRequest;
@@ -42,12 +51,18 @@ import org.opensearch.tasks.Task;
 import org.opensearch.threadpool.ThreadPool;
 import org.opensearch.transport.TransportService;
 import org.opensearch.transport.client.Client;
+
+import java.io.IOException;
+import java.util.List;
+
 import static org.opensearch.securityanalytics.util.DetectorUtils.DETECTOR_TYPE_PATH;
 import static org.opensearch.securityanalytics.util.DetectorUtils.MAX_DETECTORS_SEARCH_SIZE;
 import static org.opensearch.securityanalytics.util.DetectorUtils.NO_DETECTORS_FOUND;
 import static org.opensearch.securityanalytics.util.DetectorUtils.NO_DETECTORS_FOUND_FOR_PROVIDED_TYPE;
 
-public class TransportGetFindingsAction extends HandledTransportAction<GetFindingsRequest, GetFindingsResponse> implements SecureTransportAction {
+public class TransportGetFindingsAction
+        extends HandledTransportAction<GetFindingsRequest, GetFindingsResponse>
+        implements SecureTransportAction {
     private final TransportSearchDetectorAction transportSearchDetectorAction;
 
     private final NamedXContentRegistry xContentRegistry;
@@ -68,7 +83,6 @@ public class TransportGetFindingsAction extends HandledTransportAction<GetFindin
 
     private static final Logger log = LogManager.getLogger(TransportGetFindingsAction.class);
 
-
     @Inject
     public TransportGetFindingsAction(
             TransportService transportService,
@@ -79,8 +93,7 @@ public class TransportGetFindingsAction extends HandledTransportAction<GetFindin
             TransportSearchDetectorAction transportSearchDetectorAction,
             NamedXContentRegistry xContentRegistry,
             Client client,
-            LogTypeService logTypeService
-    ) {
+            LogTypeService logTypeService) {
         super(GetFindingsAction.NAME, transportService, actionFilters, GetFindingsRequest::new);
         this.xContentRegistry = xContentRegistry;
         this.transportSearchDetectorAction = transportSearchDetectorAction;
@@ -91,17 +104,23 @@ public class TransportGetFindingsAction extends HandledTransportAction<GetFindin
         this.settings = settings;
         this.findingsService = new FindingsService(client);
         this.filterByEnabled = SecurityAnalyticsSettings.FILTER_BY_BACKEND_ROLES.get(this.settings);
-        this.clusterService.getClusterSettings().addSettingsUpdateConsumer(SecurityAnalyticsSettings.FILTER_BY_BACKEND_ROLES, this::setFilterByEnabled);
+        this.clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        SecurityAnalyticsSettings.FILTER_BY_BACKEND_ROLES, this::setFilterByEnabled);
     }
 
     @Override
-    protected void doExecute(Task task, GetFindingsRequest request, ActionListener<GetFindingsResponse> actionListener) {
+    protected void doExecute(
+            Task task, GetFindingsRequest request, ActionListener<GetFindingsResponse> actionListener) {
 
         User user = readUserFromThreadContext(this.threadPool);
 
         String validateBackendRoleMessage = validateUserBackendRoles(user, this.filterByEnabled);
         if (!validateBackendRoleMessage.isEmpty()) {
-            actionListener.onFailure(new OpenSearchStatusException("Do not have permissions to resource", RestStatus.FORBIDDEN));
+            actionListener.onFailure(
+                    new OpenSearchStatusException(
+                            "Do not have permissions to resource", RestStatus.FORBIDDEN));
             return;
         }
         if (request.getDetectorId() != null) {
@@ -114,8 +133,7 @@ public class TransportGetFindingsAction extends HandledTransportAction<GetFindin
                     request.getFindingIds(),
                     request.getStartTime(),
                     request.getEndTime(),
-                    actionListener
-                    );
+                    actionListener);
         } else {
             // Get the Findings when logType is not null
             SearchRequest searchRequest = getSearchDetectorsRequest(request);
@@ -123,60 +141,61 @@ public class TransportGetFindingsAction extends HandledTransportAction<GetFindin
         }
     }
 
-    private void getFindingsFromDetectors(GetFindingsRequest findingsRequest, ActionListener<GetFindingsResponse> findingsResponseActionListener, SearchRequest searchRequest) {
-        transportSearchDetectorAction.execute(new SearchDetectorRequest(searchRequest), new ActionListener<>() {
-            @Override
-            public void onResponse(SearchResponse searchResponse) {
-                try {
-                    List<Detector> detectors = DetectorUtils.getDetectors(searchResponse, xContentRegistry);
-                    if (detectors.size() == 0) {
-                        findingsResponseActionListener.onFailure(
-                                SecurityAnalyticsException.wrap(
-                                        new OpenSearchStatusException(
-                                                findingsRequest.getLogType() == null ? NO_DETECTORS_FOUND : NO_DETECTORS_FOUND_FOR_PROVIDED_TYPE, RestStatus.NOT_FOUND
-                                        )
-                                )
-                        );
-                        return;
+    private void getFindingsFromDetectors(
+            GetFindingsRequest findingsRequest,
+            ActionListener<GetFindingsResponse> findingsResponseActionListener,
+            SearchRequest searchRequest) {
+        transportSearchDetectorAction.execute(
+                new SearchDetectorRequest(searchRequest),
+                new ActionListener<>() {
+                    @Override
+                    public void onResponse(SearchResponse searchResponse) {
+                        try {
+                            List<Detector> detectors =
+                                    DetectorUtils.getDetectors(searchResponse, xContentRegistry);
+                            if (detectors.size() == 0) {
+                                findingsResponseActionListener.onFailure(
+                                        SecurityAnalyticsException.wrap(
+                                                new OpenSearchStatusException(
+                                                        findingsRequest.getLogType() == null
+                                                                ? NO_DETECTORS_FOUND
+                                                                : NO_DETECTORS_FOUND_FOR_PROVIDED_TYPE,
+                                                        RestStatus.NOT_FOUND)));
+                                return;
+                            }
+                            findingsService.getFindings(
+                                    detectors,
+                                    findingsRequest.getLogType() == null ? "*" : findingsRequest.getLogType(),
+                                    findingsRequest.getTable(),
+                                    findingsRequest.getSeverity(),
+                                    findingsRequest.getDetectionType(),
+                                    findingsRequest.getFindingIds(),
+                                    findingsRequest.getStartTime(),
+                                    findingsRequest.getEndTime(),
+                                    findingsResponseActionListener);
+                        } catch (IOException e) {
+                            findingsResponseActionListener.onFailure(e);
+                        }
                     }
-                    findingsService.getFindings(
-                            detectors,
-                            findingsRequest.getLogType() == null ? "*" : findingsRequest.getLogType(),
-                            findingsRequest.getTable(),
-                            findingsRequest.getSeverity(),
-                            findingsRequest.getDetectionType(),
-                            findingsRequest.getFindingIds(),
-                            findingsRequest.getStartTime(),
-                            findingsRequest.getEndTime(),
-                            findingsResponseActionListener
-                    );
-                } catch (IOException e) {
-                    findingsResponseActionListener.onFailure(e);
-                }
-            }
-            @Override
-            public void onFailure(Exception e) {
-                findingsResponseActionListener.onFailure(e);
-            }
-        });
+
+                    @Override
+                    public void onFailure(Exception e) {
+                        findingsResponseActionListener.onFailure(e);
+                    }
+                });
     }
 
     private static SearchRequest getSearchDetectorsRequest(GetFindingsRequest findingsRequest) {
         SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
         if (findingsRequest.getLogType() != null) {
-            NestedQueryBuilder queryBuilder = QueryBuilders.nestedQuery(
-                    "detector",
-                    QueryBuilders.boolQuery().must(
-                            QueryBuilders.matchQuery(
-                                    DETECTOR_TYPE_PATH,
-                                    findingsRequest.getLogType()
-                            )
-                    ),
-                    ScoreMode.None
-            );
+            NestedQueryBuilder queryBuilder =
+                    QueryBuilders.nestedQuery(
+                            "detector",
+                            QueryBuilders.boolQuery()
+                                    .must(QueryBuilders.matchQuery(DETECTOR_TYPE_PATH, findingsRequest.getLogType())),
+                            ScoreMode.None);
             searchSourceBuilder.query(queryBuilder);
-        }
-        else {
+        } else {
             MatchAllQueryBuilder queryBuilder = QueryBuilders.matchAllQuery();
             searchSourceBuilder.query(queryBuilder);
         }
@@ -192,5 +211,4 @@ public class TransportGetFindingsAction extends HandledTransportAction<GetFindin
     private void setFilterByEnabled(boolean filterByEnabled) {
         this.filterByEnabled = filterByEnabled;
     }
-
 }

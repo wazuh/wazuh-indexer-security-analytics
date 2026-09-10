@@ -38,6 +38,30 @@ public class DetectorMonitorConfig {
                 UUID.randomUUID());
     }
 
+    /**
+     * Percolator index backing logtest rule evaluation for a log type.
+     *
+     * <p>Deliberately inside the {@code .opensearch-sap-*-detectors-queries*} pattern of {@link
+     * #OPENSEARCH_SAP_RULE_INDEX_TEMPLATE}, so it inherits the very analysis settings a detector's
+     * query index uses. That inheritance is what makes logtest and a deployed detector agree: same
+     * compiler, same analyzers, same percolator — and it keeps agreeing when those settings change,
+     * because there is no second copy to update.
+     *
+     * <p>Sharing the template pattern is safe in the other direction too: a detector's fan-out
+     * searches the concrete query index names resolved from its monitor metadata, never a wildcard
+     * ({@code TransportDocLevelMonitorFanOutAction#runPercolateQueryOnTransformedDocs}), so it can
+     * never percolate against this index. Do not turn that into a wildcard.
+     *
+     * @param logType the integration's log type, already sanitized for use in an index name.
+     * @return the logtest percolator index name.
+     */
+    public static String getLogtestRuleIndex(String logType) {
+        return String.format(
+                Locale.ROOT,
+                ".opensearch-sap-%s-detectors-queries-logtest",
+                logType.toLowerCase(Locale.ROOT));
+    }
+
     public static String getAlertsIndex(String logType) {
         return String.format(Locale.getDefault(), ".opensearch-sap-%s-alerts", logType);
     }
@@ -79,6 +103,19 @@ public class DetectorMonitorConfig {
         return String.format(Locale.getDefault(), "wazuh-findings-v5-%s-*", logType);
     }
 
+    /**
+     * Analysis overrides applied to the query index copy of every source field, keyed by the source
+     * field's type. Both chains are defined in {@code mappings/detector-settings.json}: {@code text}
+     * fields get the {@code rule_analyzer}, {@code keyword} fields the {@code rule_ws_normalizer},
+     * and since WCS string fields are {@code keyword}, the normalizer is the chain that applies to
+     * almost every real rule.
+     *
+     * <p>These overrides decide how a compiled Sigma query is compared against a document, so
+     * whatever they contain applies identically to a deployed detector and to logtest, which copies
+     * them onto its own percolator index.
+     *
+     * @return field properties to merge into the query index mapping, keyed by source field type.
+     */
     public static Map<String, Map<String, String>> getRuleIndexMappingsByType() {
         HashMap<String, String> properties = new HashMap<>();
         properties.put("analyzer", "rule_analyzer");

@@ -1,23 +1,21 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.logtype;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.net.URISyntaxException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.function.Function;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.common.lifecycle.AbstractLifecycleComponent;
@@ -27,6 +25,20 @@ import org.opensearch.common.xcontent.json.JsonXContent;
 import org.opensearch.securityanalytics.model.CustomLogType;
 import org.opensearch.securityanalytics.model.LogType;
 import org.opensearch.securityanalytics.util.FileUtils;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class BuiltinLogTypeLoader extends AbstractLifecycleComponent {
 
@@ -60,8 +72,8 @@ public class BuiltinLogTypeLoader extends AbstractLifecycleComponent {
                 return;
             }
             logTypes = loadBuiltinLogTypes();
-            logTypeMap = logTypes.stream()
-                    .collect(Collectors.toMap(LogType::getName, Function.identity()));
+            logTypeMap =
+                    logTypes.stream().collect(Collectors.toMap(LogType::getName, Function.identity()));
         } catch (Exception e) {
             logger.error("Failed loading builtin log types from disk!", e);
         }
@@ -70,7 +82,10 @@ public class BuiltinLogTypeLoader extends AbstractLifecycleComponent {
     private List<LogType> loadBuiltinLogTypes() throws URISyntaxException, IOException {
         List<LogType> logTypes = new ArrayList<>();
 
-        final String url = Objects.requireNonNull(BuiltinLogTypeLoader.class.getClassLoader().getResource(BASE_PATH)).toURI().toString();
+        final String url =
+                Objects.requireNonNull(BuiltinLogTypeLoader.class.getClassLoader().getResource(BASE_PATH))
+                        .toURI()
+                        .toString();
         Path dirPath = null;
         if (url.contains("!")) {
             final String[] paths = url.split("!");
@@ -81,17 +96,21 @@ public class BuiltinLogTypeLoader extends AbstractLifecycleComponent {
 
         Stream<Path> folder = Files.list(dirPath);
         List<Path> logTypePaths = new ArrayList<>();
-        // Disabled pre-packaged log types loading for production builds, enabled only on test environments.
+        // Disabled pre-packaged log types loading for production builds, enabled only on test
+        // environments.
         // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
         String enabledPrepackaged = System.getProperty("default_rules.enabled");
-        if (enabledPrepackaged != null &&  enabledPrepackaged.equals("true")) {
-            logTypePaths = folder.filter(e -> e.toString().endsWith(LOG_TYPE_FILE_SUFFIX)).collect(Collectors.toList());
+        if (enabledPrepackaged != null && enabledPrepackaged.equals("true")) {
+            logTypePaths =
+                    folder
+                            .filter(e -> e.toString().endsWith(LOG_TYPE_FILE_SUFFIX))
+                            .collect(Collectors.toList());
         }
         for (Path logTypePath : logTypePaths) {
-            try (
-                    InputStream is = BuiltinLogTypeLoader.class.getResourceAsStream(logTypePath.toString())
-            ) {
-                String logTypeFilePayload = new String(Objects.requireNonNull(is).readAllBytes(), StandardCharsets.UTF_8);
+            try (InputStream is =
+                    BuiltinLogTypeLoader.class.getResourceAsStream(logTypePath.toString())) {
+                String logTypeFilePayload =
+                        new String(Objects.requireNonNull(is).readAllBytes(), StandardCharsets.UTF_8);
 
                 Map<String, Object> logTypeFileAsMap =
                         XContentHelper.convertToMap(JsonXContent.jsonXContent, logTypeFilePayload, false);
@@ -108,11 +127,16 @@ public class BuiltinLogTypeLoader extends AbstractLifecycleComponent {
     }
 
     @SuppressWarnings("unchecked")
-    protected List<CustomLogType> loadBuiltinLogTypesMetadata() throws URISyntaxException, IOException {
+    protected List<CustomLogType> loadBuiltinLogTypesMetadata()
+            throws URISyntaxException, IOException {
         List<CustomLogType> customLogTypes = new ArrayList<>();
 
-        final String url = Objects.requireNonNull(BuiltinLogTypeLoader.class.getClassLoader().getResource(BASE_PATH),
-                "Built-in log type metadata file not found").toURI().toString();
+        final String url =
+                Objects.requireNonNull(
+                                BuiltinLogTypeLoader.class.getClassLoader().getResource(BASE_PATH),
+                                "Built-in log type metadata file not found")
+                        .toURI()
+                        .toString();
         Path dirPath = null;
         if (url.contains("!")) {
             final String[] paths = url.split("!");
@@ -122,16 +146,19 @@ public class BuiltinLogTypeLoader extends AbstractLifecycleComponent {
         }
 
         Stream<Path> folder = Files.list(dirPath);
-        Path logTypePath = folder.filter(e -> e.toString().endsWith("logtypes.json")).collect(Collectors.toList()).get(0);
-        try (
-                InputStream is = BuiltinLogTypeLoader.class.getResourceAsStream(logTypePath.toString())
-        ) {
-            String logTypeFilePayload = new String(Objects.requireNonNull(is).readAllBytes(), StandardCharsets.UTF_8);
+        Path logTypePath =
+                folder
+                        .filter(e -> e.toString().endsWith("logtypes.json"))
+                        .collect(Collectors.toList())
+                        .get(0);
+        try (InputStream is = BuiltinLogTypeLoader.class.getResourceAsStream(logTypePath.toString())) {
+            String logTypeFilePayload =
+                    new String(Objects.requireNonNull(is).readAllBytes(), StandardCharsets.UTF_8);
 
             Map<String, Object> logTypeFileAsMap =
                     XContentHelper.convertToMap(JsonXContent.jsonXContent, logTypeFilePayload, false);
 
-            for (Map.Entry<String, Object> logType: logTypeFileAsMap.entrySet()) {
+            for (Map.Entry<String, Object> logType : logTypeFileAsMap.entrySet()) {
                 customLogTypes.add(new CustomLogType((Map<String, Object>) logType.getValue()));
             }
         } catch (Exception e) {
@@ -146,12 +173,8 @@ public class BuiltinLogTypeLoader extends AbstractLifecycleComponent {
     }
 
     @Override
-    protected void doStop() {
-
-    }
+    protected void doStop() {}
 
     @Override
-    protected void doClose() throws IOException {
-
-    }
+    protected void doClose() throws IOException {}
 }

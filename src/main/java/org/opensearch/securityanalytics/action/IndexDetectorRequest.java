@@ -27,9 +27,9 @@ import org.opensearch.securityanalytics.model.Detector;
 import java.io.IOException;
 
 /**
- * Transport request to create or update a detector. The detector arrives either already parsed, from
- * internal callers that build it themselves, or as the raw request body from the REST layer, for
- * {@code TransportIndexDetectorAction} to parse once privileges have been evaluated.
+ * Transport request to create or update a detector. The detector arrives either already parsed,
+ * from internal callers that build it themselves, or as the raw request body from the REST layer,
+ * for {@code TransportIndexDetectorAction} to parse once privileges have been evaluated.
  */
 public class IndexDetectorRequest extends ActionRequest {
 
@@ -134,7 +134,9 @@ public class IndexDetectorRequest extends ActionRequest {
         return this.method;
     }
 
-    /** @return the detector, or null while the raw body has not been parsed yet */
+    /**
+     * @return the detector, or null while the raw body has not been parsed yet
+     */
     public Detector getDetector() {
         return this.detector;
     }
