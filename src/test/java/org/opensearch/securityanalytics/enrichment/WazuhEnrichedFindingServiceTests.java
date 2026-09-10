@@ -16,6 +16,10 @@
  */
 package org.opensearch.securityanalytics.enrichment;
 
+import org.opensearch.action.DocWriteRequest;
+import org.opensearch.action.bulk.BulkItemResponse;
+import org.opensearch.action.bulk.BulkResponse;
+import org.opensearch.action.index.IndexRequest;
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.settings.ClusterSettings;
 import org.opensearch.common.settings.Setting;
@@ -24,6 +28,7 @@ import org.opensearch.common.unit.TimeValue;
 import org.opensearch.common.util.concurrent.ThreadContext;
 import org.opensearch.commons.alerting.model.DocLevelQuery;
 import org.opensearch.commons.alerting.model.Finding;
+import org.opensearch.core.rest.RestStatus;
 import org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings;
 import org.opensearch.test.OpenSearchTestCase;
 import org.opensearch.threadpool.Scheduler;
@@ -39,6 +44,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -359,7 +365,173 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
                 rule.containsKey("sigma_id"));
     }
 
+    // ── Deterministic document id ───────────────────────────────────────────
+
+    /**
+     * Reprocessing the same event against the same rule — what a detector does when its checkpoint
+     * fails to advance and it replays a window — must target the same document id, so the write is
+     * rejected rather than appended as an indistinguishable copy.
+     */
+    public void testBuildAndIndex_sameMatchKeysToSameId() throws Exception {
+        Map<String, Object> eventSource = new HashMap<>();
+        eventSource.put("@timestamp", "2026-05-20T10:00:00.000Z");
+        eventSource.put("wazuh", Map.of("integration", Map.of("category", "detection")));
+
+        DocLevelQuery query =
+                new DocLevelQuery(
+                        "rule-1",
+                        "Rootkit detected",
+                        Collections.emptyList(),
+                        "event.code: \"1\"",
+                        List.of("high"));
+        Finding finding = finding("finding-1", "doc-1", ".ds-wazuh-events-v5-security-000001");
+
+        List<IndexRequest> first =
+                invokeBuildAndCaptureRequests(finding, "detection", eventSource, "doc-1", List.of(query));
+        assertEquals(1, first.size());
+        String id = first.get(0).id();
+        assertNotNull("The enriched finding must carry an explicit document id", id);
+
+        pendingRequests().clear();
+
+        // Same event, same rule, rebuilt from scratch: a replay.
+        List<IndexRequest> replay =
+                invokeBuildAndCaptureRequests(
+                        finding("finding-2", "doc-1", ".ds-wazuh-events-v5-security-000001"),
+                        "detection",
+                        eventSource,
+                        "doc-1",
+                        List.of(query));
+        assertEquals(1, replay.size());
+        assertEquals("A replayed match must key to the same document id", id, replay.get(0).id());
+        assertEquals(
+                "The id must be derived from the match, not from the finding",
+                WazuhEnrichedFindingService.dedupId(
+                        ".ds-wazuh-events-v5-security-000001", "doc-1", "rule-1"),
+                id);
+    }
+
+    /** One event matching two rules is two distinct findings, so the ids must differ. */
+    public void testBuildAndIndex_idVariesPerRule() throws Exception {
+        Map<String, Object> eventSource = new HashMap<>();
+        eventSource.put("@timestamp", "2026-05-20T10:00:00.000Z");
+        eventSource.put("wazuh", Map.of("integration", Map.of("category", "detection")));
+
+        DocLevelQuery first =
+                new DocLevelQuery(
+                        "rule-1", "First rule", Collections.emptyList(), "event.code: \"1\"", List.of("high"));
+        DocLevelQuery second =
+                new DocLevelQuery(
+                        "rule-2", "Second rule", Collections.emptyList(), "event.code: \"1\"", List.of("low"));
+
+        List<IndexRequest> requests =
+                invokeBuildAndCaptureRequests(
+                        finding("finding-1", "doc-1", "source-index"),
+                        "detection",
+                        eventSource,
+                        "doc-1",
+                        List.of(first, second));
+
+        assertEquals(2, requests.size());
+        assertNotEquals(
+                "Two rules matching one event must produce two documents",
+                requests.get(0).id(),
+                requests.get(1).id());
+    }
+
+    /** A finding carrying no rule fields is still keyed deterministically, on the event alone. */
+    public void testBuildAndIndex_idWithoutRules() throws Exception {
+        Map<String, Object> eventSource = new HashMap<>();
+        eventSource.put("@timestamp", "2026-05-20T10:00:00.000Z");
+        eventSource.put("wazuh", Map.of("integration", Map.of("category", "detection")));
+
+        List<IndexRequest> requests =
+                invokeBuildAndCaptureRequests(
+                        finding("finding-1", "doc-1", "source-index"),
+                        "detection",
+                        eventSource,
+                        "doc-1",
+                        List.of());
+
+        assertEquals(1, requests.size());
+        assertEquals(
+                WazuhEnrichedFindingService.dedupId("source-index", "doc-1", null), requests.get(0).id());
+    }
+
+    /**
+     * The key is stable, changes with every component, and cannot be forged by shifting characters
+     * between components — the property the length prefixes buy.
+     */
+    public void testDedupId_stableAndCollisionResistant() {
+        assertEquals(
+                WazuhEnrichedFindingService.dedupId("index", "doc", "rule"),
+                WazuhEnrichedFindingService.dedupId("index", "doc", "rule"));
+
+        assertNotEquals(
+                WazuhEnrichedFindingService.dedupId("index", "doc", "rule"),
+                WazuhEnrichedFindingService.dedupId("other", "doc", "rule"));
+        assertNotEquals(
+                WazuhEnrichedFindingService.dedupId("index", "doc", "rule"),
+                WazuhEnrichedFindingService.dedupId("index", "other", "rule"));
+        assertNotEquals(
+                WazuhEnrichedFindingService.dedupId("index", "doc", "rule"),
+                WazuhEnrichedFindingService.dedupId("index", "doc", "other"));
+
+        assertNotEquals(
+                "Shifting a character between components must not collide",
+                WazuhEnrichedFindingService.dedupId("ab", "c", "d"),
+                WazuhEnrichedFindingService.dedupId("a", "bc", "d"));
+
+        assertNotEquals(
+                "A missing rule id must not collide with an empty one",
+                WazuhEnrichedFindingService.dedupId("index", "doc", null),
+                WazuhEnrichedFindingService.dedupId("index", "docrule", null));
+    }
+
+    // ── Bulk response handling ──────────────────────────────────────────────
+
+    /**
+     * A 409 on a {@code create} is the deterministic id rejecting a replay, which is the intended
+     * behaviour: it must be counted as a deduplication, and must not hide the failures that do need
+     * attention.
+     */
+    public void testHandleBulkResponse_conflictsCountedAsDeduplicated() throws Exception {
+        assertEquals(0L, service.getDedupedCount());
+
+        BulkResponse response =
+                new BulkResponse(
+                        new BulkItemResponse[] {
+                            failedItem(0, "dup-1", RestStatus.CONFLICT),
+                            failedItem(1, "dup-2", RestStatus.CONFLICT),
+                            failedItem(2, "bad-1", RestStatus.BAD_REQUEST),
+                        },
+                        1L);
+        invokeHandleBulkResponse(response);
+
+        assertEquals("Only the conflicts count as deduplicated replays", 2L, service.getDedupedCount());
+    }
+
+    /** A batch with nothing to report leaves the counter untouched. */
+    public void testHandleBulkResponse_noFailuresLeavesCounterUntouched() throws Exception {
+        invokeHandleBulkResponse(new BulkResponse(new BulkItemResponse[0], 1L));
+        assertEquals(0L, service.getDedupedCount());
+    }
+
     // ── Helper ──────────────────────────────────────────────────────────────
+
+    /** A finding over a single source document, with the queries supplied separately. */
+    private static Finding finding(String id, String docId, String index) {
+        return new Finding(
+                id,
+                List.of(docId),
+                List.of(docId),
+                "monitor-1",
+                "monitor-name",
+                index,
+                Collections.emptyList(),
+                Instant.now(),
+                "high");
+    }
 
     /**
      * Invokes the private buildDocAndIndex method and captures the document that would be indexed. We
@@ -407,14 +579,63 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
         method.invoke(service, finding, category, eventSource, docId, queries);
 
         // The last pending request contains the indexed document
-        var pendingField = WazuhEnrichedFindingService.class.getDeclaredField("pendingRequests");
-        pendingField.setAccessible(true);
-        var queue =
-                (java.util.concurrent.ConcurrentLinkedQueue<org.opensearch.action.index.IndexRequest>)
-                        pendingField.get(service);
-        var lastRequest = queue.stream().reduce((first, second) -> second).orElse(null);
+        var lastRequest = pendingRequests().stream().reduce((first, second) -> second).orElse(null);
         assertNotNull("An index request must have been queued", lastRequest);
         return lastRequest.sourceAsMap();
+    }
+
+    /**
+     * Invokes the private buildDocAndIndex method with an arbitrary query list and returns the index
+     * requests it queued, in order. Unlike {@link #invokeBuildAndIndex} this exposes the requests
+     * themselves, so a test can assert on the document id and not only on the source. Rule metadata
+     * is seeded as unavailable for every query, which the id does not depend on.
+     */
+    @SuppressWarnings("unchecked")
+    private List<IndexRequest> invokeBuildAndCaptureRequests(
+            Finding finding,
+            String category,
+            Map<String, Object> eventSource,
+            String docId,
+            List<DocLevelQuery> queries)
+            throws Exception {
+
+        var cacheField = WazuhEnrichedFindingService.class.getDeclaredField("ruleMetadataCache");
+        cacheField.setAccessible(true);
+        var cache = (Map<String, Map<String, Object>>) cacheField.get(service);
+        for (DocLevelQuery query : queries) {
+            cache.put(query.getId(), Map.of());
+        }
+
+        Method method =
+                WazuhEnrichedFindingService.class.getDeclaredMethod(
+                        "buildDocAndIndex", Finding.class, String.class, Map.class, String.class, List.class);
+        method.setAccessible(true);
+        method.invoke(service, finding, category, eventSource, docId, queries);
+
+        return List.copyOf(pendingRequests());
+    }
+
+    @SuppressWarnings("unchecked")
+    private ConcurrentLinkedQueue<IndexRequest> pendingRequests() throws Exception {
+        var pendingField = WazuhEnrichedFindingService.class.getDeclaredField("pendingRequests");
+        pendingField.setAccessible(true);
+        return (ConcurrentLinkedQueue<IndexRequest>) pendingField.get(service);
+    }
+
+    private void invokeHandleBulkResponse(BulkResponse response) throws Exception {
+        Method method =
+                WazuhEnrichedFindingService.class.getDeclaredMethod(
+                        "handleBulkResponse", BulkResponse.class);
+        method.setAccessible(true);
+        method.invoke(service, response);
+    }
+
+    private static BulkItemResponse failedItem(int itemId, String id, RestStatus status) {
+        return new BulkItemResponse(
+                itemId,
+                DocWriteRequest.OpType.CREATE,
+                new BulkItemResponse.Failure(
+                        "wazuh-findings-v5-detection", id, new IllegalStateException("failed"), status));
     }
 
     public void testSetBulkBatchSize_updatesField() throws Exception {

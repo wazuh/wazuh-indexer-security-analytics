@@ -61,7 +61,11 @@
 - Fix detectors never creating findings for Sigma rules with space-containing values [(#285)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/285)
 - [BUG] Enriched findings use doc-level query id as `sigma_id` [(#304)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/304)
 - Code quality improvements [(#313)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/313)
+<<<<<<< Updated upstream
 - Fix `not <field>: '*'` filters never matching, so a rule cannot detect a missing field [(#1518)](https://github.com/wazuh/wazuh-indexer-plugins/issues/1518)
+=======
+- Recovering from an indexer write outage writes the same finding eleven times, with nothing to deduplicate it [(#1885)](https://github.com/wazuh/wazuh-indexer/issues/1885)
+>>>>>>> Stashed changes
 
 ## Prior versions
 - []()
