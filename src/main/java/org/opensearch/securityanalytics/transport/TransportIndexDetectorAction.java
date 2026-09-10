@@ -1923,6 +1923,12 @@ public class TransportIndexDetectorAction
         private final Task task;
         private final User user;
 
+        /**
+         * The {@code enabled} state the detector had before this update, or {@code null} when the
+         * request is not an update of an existing detector. Used to log state transitions.
+         */
+        private Boolean previousEnabled;
+
         AsyncIndexDetectorsAction(
                 User user,
                 Task task,
@@ -2165,6 +2171,7 @@ public class TransportIndexDetectorAction
                                                             RestStatus.FORBIDDEN)));
                                     return;
                                 }
+                                AsyncIndexDetectorsAction.this.previousEnabled = detector.getEnabled();
                                 AsyncIndexDetectorsAction.this.onGetResponse(detector, detector.getUser());
                             } catch (Exception e) {
                                 AsyncIndexDetectorsAction.this.onFailures(e);
@@ -2702,6 +2709,7 @@ public class TransportIndexDetectorAction
                             log.debug("detector indexed success.");
                             Detector responseDetector = AsyncIndexDetectorsAction.this.request.getDetector();
                             responseDetector.setId(response.getId());
+                            AsyncIndexDetectorsAction.this.logEnabledStateChange(responseDetector);
                             AsyncIndexDetectorsAction.this.onOperation(response, responseDetector);
                         }
 
@@ -2737,6 +2745,35 @@ public class TransportIndexDetectorAction
                                     });
                         }
                     });
+        }
+
+        /**
+         * Records at INFO that a detector was switched on or off, once the change is persisted.
+         *
+         * <p>Turning a detector off stops detection for its integration silently: no finding is
+         * produced while it is off, and the events of that window are never re-evaluated once it is
+         * switched back on. The transition is therefore logged with the account that requested it, so
+         * an operator can explain a gap in the findings after the fact.
+         *
+         * @param detector the detector as persisted.
+         */
+        private void logEnabledStateChange(Detector detector) {
+            Boolean newEnabled = detector.getEnabled();
+            if (this.previousEnabled == null
+                    || newEnabled == null
+                    || this.previousEnabled.equals(newEnabled)) {
+                return;
+            }
+            log.info(
+                    "Detector [{}] ({}, {}) was {} by [{}]. {}",
+                    detector.getId(),
+                    detector.getName(),
+                    detector.isStandardDetector() ? "standard" : "custom",
+                    newEnabled ? "enabled" : "disabled",
+                    this.user != null ? this.user.getName() : "internal",
+                    newEnabled
+                            ? "Events indexed while it was disabled are not re-evaluated."
+                            : "No findings will be generated for its integration until it is enabled again.");
         }
 
         private void onOperation(IndexResponse response, Detector detector) {
