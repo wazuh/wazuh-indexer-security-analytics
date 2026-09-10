@@ -36,8 +36,12 @@ import org.opensearch.test.OpenSearchTestCase;
 import org.opensearch.transport.client.Client;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Predicate;
 
 import org.mockito.ArgumentCaptor;
 
@@ -348,7 +352,7 @@ public class PercolateRuleEvaluatorTests extends OpenSearchTestCase {
                         "    selection:\n        http.request.method: GET\n"
                                 + "        url.original: /admin\n    condition: selection");
 
-        List<String> described = describeMatch(twoFields);
+        List<String> described = describeMatch(twoFields, query -> true);
 
         assertEquals(2, described.size());
         assertTrue(described.toString(), described.contains("http.request.method matched 'GET'"));
@@ -360,18 +364,89 @@ public class PercolateRuleEvaluatorTests extends OpenSearchTestCase {
         }
     }
 
-    /**
-     * Percolates one rule against a client that reports it as matching, and returns its conditions.
-     */
-    private List<String> describeMatch(PercolateRuleEvaluator.ParsedRule matching) throws Exception {
+    public void testOnlyTheConditionsTheEventSatisfiesAreListed() throws Exception {
+        // A value list is an OR: the rule matches on one alternative, so listing all of them
+        // describes the rule instead of the event. Two different events caught by the same rule
+        // would otherwise read identically.
+        PercolateRuleEvaluator.ParsedRule alternatives =
+                parsed(
+                        "SQL injection strings",
+                        "    selection:\n        http.request.method: GET\n"
+                                + "        url.original|contains:\n            - 'UNION SELECT'\n"
+                                + "            - 'order by '\n            - 'sleep('\n    condition: selection");
+
+        List<String> described =
+                describeMatch(alternatives, query -> !query.contains("order") && !query.contains("sleep"));
+
+        assertEquals(described.toString(), 2, described.size());
+        assertTrue(described.toString(), described.contains("http.request.method matched 'GET'"));
+        assertTrue(described.toString(), described.contains("url.original matched '*UNION SELECT*'"));
+        assertFalse(described.toString(), described.contains("url.original matched '*order by *'"));
+        assertFalse(described.toString(), described.contains("url.original matched '*sleep(*'"));
+    }
+
+    public void testEachConditionIsCheckedByItsOwnCompiledQuery() throws Exception {
+        // The conditions are not described from the rule, they are percolated. Each one is stored as
+        // the fragment the rule's own query embeds, so it is checked exactly as the rule checks it.
+        PercolateRuleEvaluator.ParsedRule rule =
+                parsed(
+                        "Two Fields",
+                        "    selection:\n        http.request.method: GET\n"
+                                + "        url.original|contains: 'UNION SELECT'\n    condition: selection");
+
+        List<String> conditionQueries = new ArrayList<>(storedConditionQueries(rule).values());
+
+        assertEquals(conditionQueries.toString(), 2, conditionQueries.size());
+        assertTrue(
+                conditionQueries.toString(), conditionQueries.contains("http.request.method: \"GET\""));
+        assertTrue(
+                conditionQueries.toString(), conditionQueries.contains("url.original: *UNION\\ SELECT*"));
+        for (String query : conditionQueries) {
+            assertFalse("a condition query must not be composed: " + query, query.contains(" AND "));
+        }
+    }
+
+    public void testANegatedConditionIsNeverChecked() throws Exception {
+        // The rule matched, so a negated branch is one that did not hold. It is not a matched
+        // condition and must not even be percolated.
+        PercolateRuleEvaluator.ParsedRule negated =
+                parsed(
+                        "Negated",
+                        "    selection:\n        http.request.method: GET\n"
+                                + "    filter:\n        http.response.status_code: 404\n"
+                                + "    condition: selection and not filter");
+
+        Map<String, String> conditionQueries = storedConditionQueries(negated);
+
+        assertEquals(conditionQueries.toString(), 1, conditionQueries.size());
+        assertTrue(
+                conditionQueries.toString(),
+                conditionQueries.values().iterator().next().startsWith("http.request.method"));
+    }
+
+    public void testAMatchIsStillReportedWhenItsConditionsCannotBeChecked() throws Exception {
+        // Which conditions held is the detail; that the rule matched is the answer. Losing the
+        // detail must not lose the answer, and the rule's own conditions must not be listed in its
+        // place — that is the claim this indirection exists to avoid.
+        PercolateRuleEvaluator.ParsedRule rule =
+                parsed(
+                        "Two Fields",
+                        "    selection:\n        http.request.method: GET\n"
+                                + "        url.original: /admin\n    condition: selection");
+
         Client client = mock(Client.class);
-        AtomicReference<String> stored = new AtomicReference<>();
+        AtomicReference<String> ruleDocId = new AtomicReference<>();
+        AtomicInteger bulks = new AtomicInteger();
         doAnswer(
                         invocation -> {
                             BulkRequest request = invocation.getArgument(0);
-                            stored.set(request.requests().get(0).id());
                             ActionListener<BulkResponse> listener = invocation.getArgument(1);
-                            listener.onResponse(new BulkResponse(new BulkItemResponse[0], 1L));
+                            if (bulks.getAndIncrement() == 0) {
+                                ruleDocId.set(request.requests().get(0).id());
+                                listener.onResponse(new BulkResponse(new BulkItemResponse[0], 1L));
+                            } else {
+                                listener.onFailure(new IllegalStateException("the condition bulk failed"));
+                            }
                             return null;
                         })
                 .when(client)
@@ -379,7 +454,62 @@ public class PercolateRuleEvaluatorTests extends OpenSearchTestCase {
         doAnswer(
                         invocation -> {
                             ActionListener<SearchResponse> listener = invocation.getArgument(1);
-                            listener.onResponse(searchHitting(stored.get()));
+                            listener.onResponse(searchHitting(List.of(ruleDocId.get())));
+                            return null;
+                        })
+                .when(client)
+                .search(any(), any());
+
+        AtomicReference<String> result = new AtomicReference<>();
+        new PercolateRuleEvaluator(client, readyQueryIndex())
+                .evaluate(
+                        EVENT,
+                        List.of(rule),
+                        INTEGRATION_ID,
+                        "test",
+                        List.of("wazuh-events-v5-test"),
+                        ActionListener.wrap(result::set, e -> fail(e.getMessage())));
+
+        JsonNode response = MAPPER.readTree(result.get());
+        assertEquals(1, response.get("rules_matched").asInt());
+        assertTrue(
+                "the conditions could not be checked, so none may be claimed",
+                response.get("matches").get(0).get("matched_conditions").isEmpty());
+    }
+
+    /**
+     * Percolates one rule against a client that reports it as matching, and returns the conditions
+     * the response lists. {@code satisfied} decides which condition queries the event satisfies.
+     */
+    private List<String> describeMatch(
+            PercolateRuleEvaluator.ParsedRule matching, Predicate<String> satisfied) throws Exception {
+        Client client = mock(Client.class);
+        List<Map<String, String>> bulks = new ArrayList<>();
+        doAnswer(
+                        invocation -> {
+                            bulks.add(storedQueries(invocation.getArgument(0)));
+                            ActionListener<BulkResponse> listener = invocation.getArgument(1);
+                            listener.onResponse(new BulkResponse(new BulkItemResponse[0], 1L));
+                            return null;
+                        })
+                .when(client)
+                .bulk(any(), any());
+        AtomicInteger searches = new AtomicInteger();
+        doAnswer(
+                        invocation -> {
+                            ActionListener<SearchResponse> listener = invocation.getArgument(1);
+                            // The first search asks which rules matched, the second which of their
+                            // conditions the event satisfies.
+                            boolean rulePass = searches.getAndIncrement() == 0;
+                            Map<String, String> scope = bulks.get(rulePass ? 0 : bulks.size() - 1);
+                            List<String> hits = new ArrayList<>();
+                            scope.forEach(
+                                    (id, query) -> {
+                                        if (rulePass || satisfied.test(query)) {
+                                            hits.add(id);
+                                        }
+                                    });
+                            listener.onResponse(searchHitting(hits));
                             return null;
                         })
                 .when(client)
@@ -402,11 +532,64 @@ public class PercolateRuleEvaluatorTests extends OpenSearchTestCase {
         return out;
     }
 
-    /** A search response with one hit, as the percolator returns for a matching stored query. */
-    private SearchResponse searchHitting(String docId) {
-        SearchHit hit = new SearchHit(0, docId, null, null);
+    /** Runs a match and returns the per-condition queries stored to check it, by document id. */
+    private Map<String, String> storedConditionQueries(PercolateRuleEvaluator.ParsedRule rule)
+            throws Exception {
+        Client client = mock(Client.class);
+        List<Map<String, String>> bulks = new ArrayList<>();
+        doAnswer(
+                        invocation -> {
+                            bulks.add(storedQueries(invocation.getArgument(0)));
+                            ActionListener<BulkResponse> listener = invocation.getArgument(1);
+                            listener.onResponse(new BulkResponse(new BulkItemResponse[0], 1L));
+                            return null;
+                        })
+                .when(client)
+                .bulk(any(), any());
+        doAnswer(
+                        invocation -> {
+                            ActionListener<SearchResponse> listener = invocation.getArgument(1);
+                            listener.onResponse(searchHitting(new ArrayList<>(bulks.get(0).keySet())));
+                            return null;
+                        })
+                .when(client)
+                .search(any(), any());
+
+        new PercolateRuleEvaluator(client, readyQueryIndex())
+                .evaluate(
+                        EVENT,
+                        List.of(rule),
+                        INTEGRATION_ID,
+                        "test",
+                        List.of("wazuh-events-v5-test"),
+                        ActionListener.wrap(result -> {}, e -> fail(e.getMessage())));
+
+        assertEquals("the conditions are stored in a bulk of their own", 2, bulks.size());
+        return bulks.get(1);
+    }
+
+    /** Reads back the compiled queries a bulk request writes, by document id. */
+    private Map<String, String> storedQueries(BulkRequest request) {
+        Map<String, String> byId = new LinkedHashMap<>();
+        for (DocWriteRequest<?> write : request.requests()) {
+            Map<String, Object> source = ((IndexRequest) write).sourceAsMap();
+            @SuppressWarnings("unchecked")
+            Map<String, Object> query = (Map<String, Object>) source.get("query");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> queryString = (Map<String, Object>) query.get("query_string");
+            byId.put(write.id(), String.valueOf(queryString.get("query")));
+        }
+        return byId;
+    }
+
+    /** A search response hitting the given documents, as the percolator returns for matches. */
+    private SearchResponse searchHitting(List<String> docIds) {
+        SearchHit[] hitArray = new SearchHit[docIds.size()];
+        for (int position = 0; position < docIds.size(); position++) {
+            hitArray[position] = new SearchHit(position, docIds.get(position), null, null);
+        }
         SearchHits hits =
-                new SearchHits(new SearchHit[] {hit}, new TotalHits(1, TotalHits.Relation.EQUAL_TO), 1.0f);
+                new SearchHits(hitArray, new TotalHits(docIds.size(), TotalHits.Relation.EQUAL_TO), 1.0f);
         return new SearchResponse(
                 new InternalSearchResponse(hits, null, null, null, false, null, 1),
                 null,

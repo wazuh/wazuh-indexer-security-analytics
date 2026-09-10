@@ -45,6 +45,7 @@ import org.opensearch.securityanalytics.rules.backend.QueryBackend;
 import org.opensearch.securityanalytics.rules.condition.ConditionFieldEqualsValueExpression;
 import org.opensearch.securityanalytics.rules.condition.ConditionItem;
 import org.opensearch.securityanalytics.rules.condition.ConditionNOT;
+import org.opensearch.securityanalytics.rules.condition.ConditionType;
 import org.opensearch.securityanalytics.rules.condition.ConditionValueExpression;
 import org.opensearch.securityanalytics.rules.objects.SigmaCondition;
 import org.opensearch.securityanalytics.rules.objects.SigmaRule;
@@ -59,12 +60,14 @@ import org.opensearch.securityanalytics.util.SecurityAnalyticsException;
 import org.opensearch.transport.client.Client;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -167,7 +170,7 @@ public class PercolateRuleEvaluator {
         compile(rules, integrationId, compiled, requiredFields);
 
         if (compiled.isEmpty()) {
-            listener.onResponse(buildResult(rulesEvaluated, Collections.emptyList()));
+            listener.onResponse(buildResult(rulesEvaluated, Collections.emptyList(), Map.of()));
             return;
         }
 
@@ -285,22 +288,12 @@ public class PercolateRuleEvaluator {
                 new BulkRequest().setRefreshPolicy(WriteRequest.RefreshPolicy.IMMEDIATE);
         for (Map.Entry<String, CompiledQuery> entry : compiled.entrySet()) {
             bulkRequest.add(
-                    new IndexRequest(indexName)
-                            .id(entry.getKey())
-                            // Doc ids are content-addressed, so an existing document is byte-identical
-                            // and re-indexing it would re-parse the query and re-extract its terms for
-                            // nothing. CREATE turns that into a cheap conflict, handled as success.
-                            .opType(DocWriteRequest.OpType.CREATE)
-                            .source(
-                                    Map.of(
-                                            LogtestQueryIndex.QUERY_FIELD,
-                                            Map.of("query_string", Map.of("query", entry.getValue().query())),
-                                            LogtestQueryIndex.INTEGRATION_ID_FIELD,
-                                            integrationId,
-                                            LogtestQueryIndex.RULE_ID_FIELD,
-                                            entry.getValue().ruleId(),
-                                            LogtestQueryIndex.STORED_AT_FIELD,
-                                            System.currentTimeMillis())));
+                    queryDocument(
+                            indexName,
+                            entry.getKey(),
+                            entry.getValue().query(),
+                            integrationId,
+                            entry.getValue().ruleId()));
         }
 
         client.bulk(
@@ -312,7 +305,7 @@ public class PercolateRuleEvaluator {
                                     bulkResponse, compiled, storedDocIds, preparedIndex.mappingFailure());
 
                             if (storedDocIds.isEmpty()) {
-                                listener.onResponse(buildResult(rulesEvaluated, Collections.emptyList()));
+                                listener.onResponse(buildResult(rulesEvaluated, Collections.emptyList(), Map.of()));
                                 return;
                             }
                             percolate(
@@ -325,6 +318,66 @@ public class PercolateRuleEvaluator {
                                     listener);
                         },
                         listener::onFailure));
+    }
+
+    /**
+     * Builds the percolator document that holds one compiled query.
+     *
+     * @param indexName the percolator index.
+     * @param docId the content-addressed document id.
+     * @param query the compiled query.
+     * @param integrationId the integration the query belongs to.
+     * @param ruleId the rule the query belongs to.
+     * @return the index request.
+     */
+    private IndexRequest queryDocument(
+            String indexName, String docId, String query, String integrationId, String ruleId) {
+        return new IndexRequest(indexName)
+                .id(docId)
+                // Doc ids are content-addressed, so an existing document is byte-identical and
+                // re-indexing it would re-parse the query and re-extract its terms for nothing.
+                // CREATE turns that into a cheap conflict, handled as success.
+                .opType(DocWriteRequest.OpType.CREATE)
+                .source(
+                        Map.of(
+                                LogtestQueryIndex.QUERY_FIELD,
+                                Map.of("query_string", Map.of("query", query)),
+                                LogtestQueryIndex.INTEGRATION_ID_FIELD,
+                                integrationId,
+                                LogtestQueryIndex.RULE_ID_FIELD,
+                                ruleId,
+                                LogtestQueryIndex.STORED_AT_FIELD,
+                                System.currentTimeMillis()));
+    }
+
+    /**
+     * Builds the percolate search that asks which of a set of stored queries the event satisfies.
+     *
+     * @param integrationId the integration owning the queries.
+     * @param percolateQuery the {@code percolate_ext} query carrying the event.
+     * @param docIds the documents to consider; the search is scoped to exactly these.
+     * @return the search source.
+     */
+    private SearchSourceBuilder percolateSearch(
+            String integrationId, String percolateQuery, Set<String> docIds) {
+        return new SearchSourceBuilder()
+                .query(
+                        QueryBuilders.boolQuery()
+                                .must(
+                                        QueryBuilders.termQuery(LogtestQueryIndex.INTEGRATION_ID_FIELD, integrationId))
+                                // Restrict the search to the documents this request stored. The index
+                                // outlives a single call, so without this the queries of every earlier
+                                // call for this integration are eligible too: they would consume the size
+                                // budget below — scores are effectively tied, so the tie-break by
+                                // ascending doc id favours the older segments — and each such hit resolves
+                                // to nothing in the caller's map and is dropped, which reports a matching
+                                // rule as not matching.
+                                .filter(QueryBuilders.idsQuery().addIds(docIds.toArray(new String[0])))
+                                .filter(QueryBuilders.wrapperQuery(percolateQuery)))
+                // Every stored query may match, and an unset size would silently cap the result at the
+                // default 10 — which is what a deployed detector's fan-out does.
+                .size(docIds.size())
+                .fetchSource(false);
     }
 
     /**
@@ -468,30 +521,9 @@ public class PercolateRuleEvaluator {
             return;
         }
 
-        SearchSourceBuilder searchSourceBuilder =
-                new SearchSourceBuilder()
-                        .query(
-                                QueryBuilders.boolQuery()
-                                        .must(
-                                                QueryBuilders.termQuery(
-                                                        LogtestQueryIndex.INTEGRATION_ID_FIELD, integrationId))
-                                        // Restrict the search to the documents this request stored. The index
-                                        // outlives a single call, so without this the queries of every earlier
-                                        // call for this integration are eligible too: they would consume the
-                                        // size budget below — scores are effectively tied, so the tie-break by
-                                        // ascending doc id favours the older segments — and each such hit
-                                        // resolves to nothing in `compiled` and is dropped, which reports a
-                                        // matching rule as not matching.
-                                        .filter(QueryBuilders.idsQuery().addIds(storedDocIds.toArray(new String[0])))
-                                        .filter(QueryBuilders.wrapperQuery(percolateQuery)))
-                        // Every stored query may match, and an unset size would silently cap the result
-                        // at the default 10 — which is what a deployed detector's fan-out does.
-                        .size(storedDocIds.size())
-                        .fetchSource(false);
-
         client.search(
                 new SearchRequest(indexName)
-                        .source(searchSourceBuilder)
+                        .source(percolateSearch(integrationId, percolateQuery, storedDocIds))
                         .preference(Preference.PRIMARY_FIRST.type()),
                 ActionListener.wrap(
                         searchResponse -> {
@@ -506,8 +538,142 @@ public class PercolateRuleEvaluator {
                                     matches.add(query);
                                 }
                             }
-                            listener.onResponse(buildResult(rulesEvaluated, matches));
-                            deleteSupersededQueries(indexName, integrationId, compiled.values(), storedDocIds);
+                            explainMatches(
+                                    indexName,
+                                    integrationId,
+                                    eventJson,
+                                    matches,
+                                    ActionListener.wrap(
+                                            explanation -> {
+                                                listener.onResponse(
+                                                        buildResult(rulesEvaluated, matches, explanation.conditionsByRule()));
+                                                Set<String> keep = new LinkedHashSet<>(storedDocIds);
+                                                keep.addAll(explanation.conditionDocIds());
+                                                deleteSupersededQueries(indexName, integrationId, compiled.values(), keep);
+                                            },
+                                            e -> {
+                                                // The rules that matched are the answer; which of their
+                                                // conditions held is the detail. Losing the detail must not
+                                                // lose the answer, and reporting the rule's own conditions
+                                                // instead would describe the rule rather than the event.
+                                                log.warn(
+                                                        "Could not determine which conditions the event satisfied: {}",
+                                                        e.getMessage());
+                                                listener.onResponse(buildResult(rulesEvaluated, matches, Map.of()));
+                                                deleteSupersededQueries(
+                                                        indexName, integrationId, compiled.values(), storedDocIds);
+                                            }));
+                        },
+                        listener::onFailure));
+    }
+
+    /**
+     * Determines which conditions of the matched rules the event actually satisfies.
+     *
+     * <p>A percolate hit is all-or-nothing: it says the rule matched, not which part of its detection
+     * did. Describing the rule's conditions instead makes the response a restatement of the rule —
+     * every alternative of a value list is listed, so a rule with forty alternatives reports forty
+     * conditions and two different events caught by it read identically.
+     *
+     * <p>So each non-negated leaf is compiled on its own, through the same {@code convertCondition}
+     * call that produced the fragment inside the rule's query, stored as its own percolator document
+     * and percolated against the same event. The answer comes from the engine that decided the match
+     * in the first place; nothing here re-implements Sigma semantics.
+     *
+     * <p>Only the rules that matched are expanded, so the documents written are proportional to what
+     * the response has to explain rather than to the size of the integration.
+     *
+     * @param indexName the percolator index.
+     * @param integrationId the integration owning the rules.
+     * @param eventJson the event being evaluated.
+     * @param matches the rules that matched.
+     * @param listener receives the conditions per rule and the documents written for them.
+     */
+    private void explainMatches(
+            String indexName,
+            String integrationId,
+            String eventJson,
+            List<CompiledQuery> matches,
+            ActionListener<Explanation> listener) {
+
+        Map<String, ConditionLeaf> leaves = new LinkedHashMap<>();
+        for (CompiledQuery match : matches) {
+            collectLeaves(match, integrationId, leaves);
+        }
+        if (leaves.isEmpty()) {
+            listener.onResponse(new Explanation(Map.of(), Set.of()));
+            return;
+        }
+
+        String percolateQuery;
+        try {
+            percolateQuery = percolateQuery(eventJson);
+        } catch (Exception e) {
+            listener.onFailure(e);
+            return;
+        }
+
+        BulkRequest bulkRequest =
+                new BulkRequest().setRefreshPolicy(WriteRequest.RefreshPolicy.IMMEDIATE);
+        for (Map.Entry<String, ConditionLeaf> entry : leaves.entrySet()) {
+            bulkRequest.add(
+                    queryDocument(
+                            indexName,
+                            entry.getKey(),
+                            entry.getValue().query(),
+                            integrationId,
+                            entry.getValue().ruleId()));
+        }
+
+        client.bulk(
+                bulkRequest,
+                ActionListener.wrap(
+                        bulkResponse -> {
+                            Set<String> stored = new LinkedHashSet<>(leaves.keySet());
+                            for (BulkItemResponse itemResponse : bulkResponse) {
+                                if (!itemResponse.isFailed()
+                                        || (itemResponse.getFailure() != null
+                                                && itemResponse.getFailure().getStatus() == RestStatus.CONFLICT)) {
+                                    continue;
+                                }
+                                // A condition the percolator will not store cannot be confirmed, so it is
+                                // left out rather than claimed. The rule's own query carries the same
+                                // fragment, so this is only reachable when that query was stored before the
+                                // mapping it needs went missing.
+                                stored.remove(itemResponse.getId());
+                                ConditionLeaf leaf = leaves.get(itemResponse.getId());
+                                log.debug(
+                                        "Condition of rule '{}' could not be verified: {}",
+                                        leaf == null ? itemResponse.getId() : leaf.ruleId(),
+                                        rejectionCause(itemResponse));
+                            }
+                            if (stored.isEmpty()) {
+                                listener.onResponse(new Explanation(Map.of(), Set.of()));
+                                return;
+                            }
+                            client.search(
+                                    new SearchRequest(indexName)
+                                            .source(percolateSearch(integrationId, percolateQuery, stored))
+                                            .preference(Preference.PRIMARY_FIRST.type()),
+                                    ActionListener.wrap(
+                                            searchResponse -> {
+                                                Set<String> satisfied = new LinkedHashSet<>();
+                                                for (SearchHit hit : searchResponse.getHits()) {
+                                                    satisfied.add(hit.getId());
+                                                }
+                                                Map<String, List<String>> byRule = new LinkedHashMap<>();
+                                                for (Map.Entry<String, ConditionLeaf> entry : leaves.entrySet()) {
+                                                    if (!satisfied.contains(entry.getKey())) {
+                                                        continue;
+                                                    }
+                                                    byRule
+                                                            .computeIfAbsent(
+                                                                    entry.getValue().ruleId(), ruleId -> new ArrayList<>())
+                                                            .add(entry.getValue().description());
+                                                }
+                                                listener.onResponse(new Explanation(byRule, stored));
+                                            },
+                                            listener::onFailure));
                         },
                         listener::onFailure));
     }
@@ -608,13 +774,16 @@ public class PercolateRuleEvaluator {
      * @param matches the matched rules, one entry per rule.
      * @return the result as a JSON string.
      */
-    private String buildResult(int rulesEvaluated, List<CompiledQuery> matches) {
+    private String buildResult(
+            int rulesEvaluated, List<CompiledQuery> matches, Map<String, List<String>> conditionsByRule) {
 
         List<Map<String, Object>> matchEntries = new ArrayList<>();
         for (CompiledQuery match : matches) {
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put("rule", ruleInfo(match.rule(), match.ruleId()));
-            entry.put("matched_conditions", describeConditions(match));
+            entry.put(
+                    "matched_conditions",
+                    conditionsByRule.getOrDefault(match.ruleId(), Collections.emptyList()));
             matchEntries.add(entry);
         }
 
@@ -636,60 +805,85 @@ public class PercolateRuleEvaluator {
     }
 
     /**
-     * Describes the detection conditions of a rule that matched.
+     * Collects the conditions of a matched rule that can be checked on their own.
      *
-     * <p>One entry per condition of the rule's first detection condition — the one a deployed
-     * detector runs — rendered as {@code <field> matched '<value>'}, which is the shape the logtest
-     * response contract defines.
+     * <p>The rule is parsed afresh from its body: {@code SigmaCondition#parsed} drives a one-shot
+     * ANTLR parser, and compiling the rule consumed the one belonging to the instance that was
+     * percolated.
      *
-     * <p>Read from the parsed rule rather than from the match: percolation is all-or-nothing per
-     * query, so it reports that the rule matched, not which leaf did. For a rule whose conditions are
-     * combined with AND — the common case — every listed condition necessarily held. Where a
-     * condition offers alternatives, the alternatives are listed; which one matched is not
-     * recoverable from a percolate hit, and re-deriving it in the JVM is precisely the second
-     * evaluator this class exists to avoid.
+     * <p>Only the first detection condition is walked, because that is the only one a deployed
+     * detector runs, and negated branches are skipped: the rule matched, so a negated branch is one
+     * that did <em>not</em> hold.
      *
      * @param match the matched rule and the body it was parsed from.
-     * @return the condition descriptions, empty when they cannot be derived.
+     * @param integrationId the integration owning the rule; part of the document identity.
+     * @param leaves receives document id to leaf, in the order the conditions appear.
      */
-    private List<String> describeConditions(CompiledQuery match) {
-        List<String> conditions = new ArrayList<>();
+    private void collectLeaves(
+            CompiledQuery match, String integrationId, Map<String, ConditionLeaf> leaves) {
         if (match.body() == null) {
-            return conditions;
+            return;
         }
         try {
             SigmaRule described = SigmaRule.fromYaml(match.body(), true);
             List<SigmaCondition> parsed = described.getDetection().getParsedCondition();
-            if (parsed != null && !parsed.isEmpty()) {
-                describeCondition(parsed.get(0).parsed().getLeft(), conditions, false);
+            if (parsed == null || parsed.isEmpty()) {
+                return;
             }
+            collectLeaves(
+                    parsed.get(0).parsed().getLeft(),
+                    false,
+                    match.ruleId(),
+                    integrationId,
+                    new ConditionBackend(),
+                    leaves);
         } catch (Exception e) {
-            log.debug(
-                    "Could not describe the conditions of rule '{}': {}", match.ruleId(), e.getMessage());
+            log.debug("Could not read the conditions of rule '{}': {}", match.ruleId(), e.getMessage());
         }
-        return conditions;
     }
 
     /**
-     * Walks a condition tree, appending one description per leaf.
+     * Walks a condition tree, compiling every non-negated leaf into a query of its own.
+     *
+     * <p>Each leaf goes through {@code convertCondition} with the same arguments {@code
+     * QueryBackend#convertRule} uses for a top-level condition of that shape, so the fragment is the
+     * one the rule's own query embeds — the leaf is checked exactly as the rule checks it.
      *
      * @param item the condition node.
-     * @param conditions the accumulator.
      * @param negated whether this node sits under a {@code not}.
+     * @param ruleId the rule being walked.
+     * @param integrationId the integration owning the rule.
+     * @param backend the compiler.
+     * @param leaves the accumulator.
      */
-    private void describeCondition(ConditionItem item, List<String> conditions, boolean negated) {
+    private void collectLeaves(
+            ConditionItem item,
+            boolean negated,
+            String ruleId,
+            String integrationId,
+            QueryBackend backend,
+            Map<String, ConditionLeaf> leaves) {
         if (item == null || negated) {
-            // The rule matched, so a negated branch is one that did *not* hold; listing it as a
-            // matched condition would be wrong.
             return;
         }
         if (item instanceof ConditionFieldEqualsValueExpression fieldExpr) {
-            conditions.add(
-                    fieldExpr.getField() + " matched '" + formatSigmaValue(fieldExpr.getValue()) + "'");
+            addLeaf(
+                    ruleId,
+                    integrationId,
+                    fieldExpr.getField() + " matched '" + formatSigmaValue(fieldExpr.getValue()) + "'",
+                    new ConditionType(Either.right(Either.left(fieldExpr))),
+                    backend,
+                    leaves);
             return;
         }
         if (item instanceof ConditionValueExpression valueExpr) {
-            conditions.add("keywords contains '" + valueExpr.getValue() + "'");
+            addLeaf(
+                    ruleId,
+                    integrationId,
+                    "keywords contains '" + valueExpr.getValue() + "'",
+                    new ConditionType(Either.right(Either.right(valueExpr))),
+                    backend,
+                    leaves);
             return;
         }
         if (item.getArgs() == null) {
@@ -700,9 +894,47 @@ public class PercolateRuleEvaluator {
                         String>
                 arg : item.getArgs()) {
             if (arg.isLeft()) {
-                describeCondition(
-                        resolveConditionItem(arg.getLeft()), conditions, item instanceof ConditionNOT);
+                collectLeaves(
+                        resolveConditionItem(arg.getLeft()),
+                        item instanceof ConditionNOT,
+                        ruleId,
+                        integrationId,
+                        backend,
+                        leaves);
             }
+        }
+    }
+
+    /**
+     * Compiles one leaf and records it under its content-addressed document id.
+     *
+     * <p>A leaf that will not compile is left out rather than listed unverified: the response says
+     * what the event satisfied, and a condition nobody checked is not that.
+     *
+     * @param ruleId the rule the leaf belongs to.
+     * @param integrationId the integration owning the rule.
+     * @param description the leaf as the response describes it.
+     * @param conditionType the leaf, wrapped the way the backend expects it.
+     * @param backend the compiler.
+     * @param leaves the accumulator.
+     */
+    private void addLeaf(
+            String ruleId,
+            String integrationId,
+            String description,
+            ConditionType conditionType,
+            QueryBackend backend,
+            Map<String, ConditionLeaf> leaves) {
+        try {
+            String query = String.valueOf(backend.convertCondition(conditionType, false, false));
+            leaves.putIfAbsent(
+                    docId(integrationId, ruleId, query), new ConditionLeaf(ruleId, description, query));
+        } catch (Exception e) {
+            log.debug(
+                    "Condition '{}' of rule '{}' could not be compiled on its own: {}",
+                    description,
+                    ruleId,
+                    e.getMessage());
         }
     }
 
@@ -864,4 +1096,37 @@ public class PercolateRuleEvaluator {
      * @param query the compiled {@code query_string} query.
      */
     private record CompiledQuery(SigmaRule rule, String ruleId, String query, String body) {}
+
+    /**
+     * A backend that can compile a single condition.
+     *
+     * <p>{@code convertCondition} records the fields it walks in {@code ruleQueryFields}, a map only
+     * {@code convertRule} creates — so calling it on its own throws. Nothing here reads that map, but
+     * it has to exist. Set up in a subclass rather than in {@code QueryBackend} itself: that class is
+     * upstream code, and every edit to it has to be carried across the next fork migration.
+     */
+    private static final class ConditionBackend extends OSQueryBackend {
+        ConditionBackend() throws IOException {
+            super(Collections.emptyMap(), false);
+            this.ruleQueryFields = new HashMap<>();
+        }
+    }
+
+    /**
+     * One condition of a rule, with the query that decides it on its own.
+     *
+     * @param ruleId the rule the condition belongs to.
+     * @param description the condition as the response describes it.
+     * @param query the compiled query for this condition alone.
+     */
+    private record ConditionLeaf(String ruleId, String description, String query) {}
+
+    /**
+     * What the event satisfied, per rule.
+     *
+     * @param conditionsByRule rule id to the descriptions of the conditions the event satisfied.
+     * @param conditionDocIds the documents written to answer that, so the caller can keep them.
+     */
+    private record Explanation(
+            Map<String, List<String>> conditionsByRule, Set<String> conditionDocIds) {}
 }
