@@ -23,6 +23,7 @@ import org.opensearch.test.OpenSearchTestCase;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Pins the analysis settings every detector query index inherits.
@@ -68,5 +69,24 @@ public class RuleTopicIndicesTests extends OpenSearchTestCase {
 
         assertEquals("rule_analyzer", overrides.get("text").get("analyzer"));
         assertEquals("rule_ws_normalizer", overrides.get("keyword").get("normalizer"));
+    }
+
+    public void testMatchOnlyTextFieldsAreAnalyzedLikeEveryOtherRuleField() {
+        // The WCS maps every unbounded string field (process.command_line, url.*, message) as
+        // match_only_text to escape ignore_above: 1024. With no override the query index tokenizes
+        // it with the standard analyzer, and a compiled `|contains` query matches nothing: the
+        // failure is silent, so only this assertion and the percolation IT stand between that
+        // mapping choice and detection quietly going dark on the process_creation rule family.
+        Map<String, Map<String, String>> overrides = DetectorMonitorConfig.getRuleIndexMappingsByType();
+
+        assertEquals("rule_analyzer", overrides.get("match_only_text").get("analyzer"));
+    }
+
+    public void testEveryStringTypeTheWcsCanEmitHasAnOverride() {
+        // A WCS string field is keyword, match_only_text or text. Anything the generator can emit
+        // and this map does not cover is a field no rule can match.
+        Map<String, Map<String, String>> overrides = DetectorMonitorConfig.getRuleIndexMappingsByType();
+
+        assertEquals(Set.of("keyword", "match_only_text", "text"), overrides.keySet());
     }
 }
