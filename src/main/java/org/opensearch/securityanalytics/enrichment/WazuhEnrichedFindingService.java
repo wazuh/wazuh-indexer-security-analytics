@@ -19,7 +19,9 @@ package org.opensearch.securityanalytics.enrichment;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.action.DocWriteRequest;
+import org.opensearch.action.bulk.BulkItemResponse;
 import org.opensearch.action.bulk.BulkRequest;
+import org.opensearch.action.bulk.BulkResponse;
 import org.opensearch.action.get.MultiGetItemResponse;
 import org.opensearch.action.get.MultiGetRequest;
 import org.opensearch.action.index.IndexRequest;
@@ -30,6 +32,7 @@ import org.opensearch.common.xcontent.XContentType;
 import org.opensearch.commons.alerting.model.DocLevelQuery;
 import org.opensearch.commons.alerting.model.Finding;
 import org.opensearch.core.action.ActionListener;
+import org.opensearch.core.rest.RestStatus;
 import org.opensearch.securityanalytics.config.monitors.DetectorMonitorConfig;
 import org.opensearch.securityanalytics.model.LOG_CATEGORY;
 import org.opensearch.securityanalytics.model.Rule;
@@ -39,8 +42,12 @@ import org.opensearch.threadpool.ThreadPool;
 import org.opensearch.transport.client.Client;
 
 import java.io.Closeable;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -51,6 +58,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
 /**
@@ -66,6 +74,11 @@ import java.util.stream.Collectors;
  *
  * <p>Concurrent in-flight enrichment chains are bounded by {@link #maxInFlight} to prevent
  * transport-layer overload on resource-constrained nodes.
+ *
+ * <p>Writes are idempotent: every enriched finding carries a deterministic {@code _id} derived from
+ * the match it describes (see {@link #dedupId}), so a detector that reprocesses the same event —
+ * after an outage, a retry, or a checkpoint that failed to advance — rewrites the same document
+ * instead of appending an indistinguishable copy.
  */
 public class WazuhEnrichedFindingService implements Closeable {
 
@@ -122,6 +135,12 @@ public class WazuhEnrichedFindingService implements Closeable {
     private final ConcurrentLinkedQueue<IndexRequest> pendingRequests = new ConcurrentLinkedQueue<>();
 
     private final AtomicInteger pendingCount = new AtomicInteger(0);
+
+    /**
+     * Number of replayed enriched findings the deterministic {@code _id} has rejected as duplicates.
+     * A non-zero value means deduplication engaged, not that a write failed.
+     */
+    private final AtomicLong dedupedCount = new AtomicLong(0);
 
     private volatile Scheduler.Cancellable flushSchedule;
 
@@ -592,6 +611,10 @@ public class WazuhEnrichedFindingService implements Closeable {
      * only the {@code wazuh.rule} object varies per rule. When {@code queries} is empty the base doc
      * is indexed once without rule fields.
      *
+     * <p>Each document is keyed by {@link #dedupId} over the triggering event and the rule that
+     * matched it, which is what makes a reprocessed event rewrite its findings instead of appending
+     * copies.
+     *
      * <p>Reusing the base map is safe because {@link #indexEnrichedFinding} serializes the document
      * to bytes synchronously, so the map can be mutated for the next rule afterwards.
      */
@@ -620,7 +643,7 @@ public class WazuhEnrichedFindingService implements Closeable {
         doc.put("event", eventObj);
 
         if (queries.isEmpty()) {
-            this.indexEnrichedFinding(category, doc);
+            this.indexEnrichedFinding(category, doc, dedupId(finding.getIndex(), docId, null));
             return;
         }
 
@@ -638,7 +661,7 @@ public class WazuhEnrichedFindingService implements Closeable {
                 wazuhObj.put("rule", this.buildRuleObject(query, ruleMetadata, eventSource));
                 doc.put("wazuh", wazuhObj);
 
-                this.indexEnrichedFinding(category, doc);
+                this.indexEnrichedFinding(category, doc, dedupId(finding.getIndex(), docId, query.getId()));
             } catch (Exception e) {
                 log.warn(
                         "Failed to build enriched finding for finding {} doc {} rule {}",
@@ -710,10 +733,52 @@ public class WazuhEnrichedFindingService implements Closeable {
 
     // ── Step 4: buffer and bulk-index to wazuh-findings-v5-{category}-* ──────
 
-    private void indexEnrichedFinding(String category, Map<String, Object> document) {
+    /**
+     * Builds the deterministic document id of an enriched finding from the match it describes: the
+     * concrete index and document id of the triggering event, plus the id of the rule that matched
+     * it. Reprocessing the same event against the same rule therefore targets the same document, and
+     * the {@code create} op_type a data stream requires turns the replay into a rejected write
+     * instead of an indistinguishable copy.
+     *
+     * <p>Each part is length-prefixed before hashing, so no combination of index, document id and
+     * rule id can produce the key of a different combination, whatever characters the parts contain —
+     * a plain separator would need a character none of the three can hold. The digest is truncated to
+     * 128 bits and base64url-encoded: collision risk stays negligible while the {@code _id} stays
+     * short, which matters because every id lives in the terms dictionary of its backing index.
+     *
+     * <p>{@code ruleId} is the id of the doc-level query backing the match, which is the value the
+     * enriched document carries as {@code wazuh.rule.id}. It is stable for as long as the rule
+     * content is, but it is regenerated on a space transition (see the {@code sigma_id} handling in
+     * {@link #buildRuleObject}), so findings re-emitted after a content update key differently and
+     * are not deduplicated against the earlier copies. That is deliberate: the key matches the
+     * identity the document itself exposes, so a dashboard or a suite check grouping on {@code
+     * (event.doc_id, wazuh.rule.id)} gets the same answer the write path did.
+     *
+     * @param eventIndex concrete index holding the triggering event
+     * @param eventDocId document id of the triggering event
+     * @param ruleId id of the matching rule, or {@code null} for a finding carrying no rule fields
+     */
+    static String dedupId(String eventIndex, String eventDocId, String ruleId) {
+        StringBuilder key = new StringBuilder();
+        for (String part : Arrays.asList(eventIndex, eventDocId, ruleId == null ? "" : ruleId)) {
+            key.append(part.length()).append(':').append(part);
+        }
+        MessageDigest digest;
+        try {
+            digest = MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException e) {
+            // Every Java platform is required to provide SHA-256; unreachable in practice.
+            throw new IllegalStateException("SHA-256 is not available", e);
+        }
+        byte[] full = digest.digest(key.toString().getBytes(StandardCharsets.UTF_8));
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(Arrays.copyOf(full, 16));
+    }
+
+    private void indexEnrichedFinding(String category, Map<String, Object> document, String dedupId) {
         String alias = DetectorMonitorConfig.getWazuhFindingsIndex(category);
         IndexRequest request =
                 new IndexRequest(alias)
+                        .id(dedupId)
                         .source(document, XContentType.JSON)
                         .opType(DocWriteRequest.OpType.CREATE)
                         .timeout(this.indexTimeout);
@@ -752,16 +817,48 @@ public class WazuhEnrichedFindingService implements Closeable {
             this.client.bulk(
                     bulk,
                     ActionListener.wrap(
-                            response -> {
-                                if (response.hasFailures()) {
-                                    log.error(
-                                            "Bulk indexing of enriched findings completed with failures: {}",
-                                            response.buildFailureMessage());
-                                } else {
-                                    log.debug("Bulk indexing of enriched findings completed successfully");
-                                }
-                            },
+                            this::handleBulkResponse,
                             e -> log.warn("Bulk indexing of enriched findings failed", e)));
         }
+    }
+
+    /**
+     * Splits a bulk response into replays the deterministic {@code _id} rejected and failures that
+     * need attention. A duplicate {@code create} comes back as 409: that is deduplication working,
+     * not an error, so it is counted and logged at debug. Everything else is a real failure and is
+     * logged at error, listing only the offending items instead of the whole batch.
+     */
+    private void handleBulkResponse(BulkResponse response) {
+        if (!response.hasFailures()) {
+            log.debug("Bulk indexing of enriched findings completed successfully");
+            return;
+        }
+        int deduped = 0;
+        List<String> failures = new ArrayList<>();
+        for (BulkItemResponse item : response.getItems()) {
+            if (!item.isFailed()) {
+                continue;
+            }
+            if (item.getFailure().getStatus() == RestStatus.CONFLICT) {
+                deduped++;
+            } else {
+                failures.add(item.getId() + ": " + item.getFailureMessage());
+            }
+        }
+        if (deduped > 0) {
+            this.dedupedCount.addAndGet(deduped);
+            log.debug("Discarded {} replayed enriched findings already indexed", deduped);
+        }
+        if (!failures.isEmpty()) {
+            log.error("Bulk indexing of enriched findings completed with failures: {}", failures);
+        }
+    }
+
+    /**
+     * Number of replayed enriched findings discarded because their deterministic {@code _id} was
+     * already indexed, accumulated over the lifetime of this node's service instance.
+     */
+    public long getDedupedCount() {
+        return this.dedupedCount.get();
     }
 }
