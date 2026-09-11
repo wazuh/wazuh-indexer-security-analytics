@@ -25,6 +25,7 @@ import org.junit.Assert;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class QueryBackendTests extends OpenSearchTestCase {
 
@@ -396,7 +397,7 @@ public class QueryBackendTests extends OpenSearchTestCase {
                                         + "                    fieldA1|re: pat.*tern\"foo\"bar\n"
                                         + "                condition: sel",
                                 false));
-        Assert.assertEquals("mappedA: /pat.*tern\\\"foo\\\"bar/", queries.get(0).toString());
+        Assert.assertEquals("mappedA: /.*(pat.*tern\\\"foo\\\"bar).*/", queries.get(0).toString());
     }
 
     public void testConvertValueRegexUnbound() throws IOException, SigmaError, CompositeSigmaErrors {
@@ -419,7 +420,7 @@ public class QueryBackendTests extends OpenSearchTestCase {
                                         + "                    \"|re\": pat.*tern\"foo\"bar\n"
                                         + "                condition: sel",
                                 false));
-        Assert.assertEquals("/pat.*tern\\\"foo\\\"bar/", queries.get(0).toString());
+        Assert.assertEquals("/.*(pat.*tern\\\"foo\\\"bar).*/", queries.get(0).toString());
     }
 
     public void testConvertValueCidrWildcardNone()
@@ -470,7 +471,7 @@ public class QueryBackendTests extends OpenSearchTestCase {
                                         + "                condition: sel",
                                 false));
         Assert.assertEquals(
-                "(\"fieldA\" \"lt\" 123) AND (\"mappedB\" \"lte\" 123) AND (\"fieldC\" \"gt\" 123) AND (\"fieldD\" \"gte\" 123)",
+                "(fieldA: {* TO 123}) AND (mappedB: [* TO 123]) AND (fieldC: {123 TO *}) AND (fieldD: [123 TO *])",
                 queries.get(0).toString());
     }
 
@@ -1234,7 +1235,7 @@ public class QueryBackendTests extends OpenSearchTestCase {
                                         + "                condition: 1 of select*",
                                 false));
         Assert.assertEquals(
-                "(Image: \"\\/usr\\/bin\\/find\") OR (Image: \"\\/tree\") OR (Image: \"\\/usr\\/bin\\/mdfind\") OR ((Image: \"\\/usr\\/bin\\/file\") AND (CommandLine: /(.){200,}/)) OR ((Image: \"\\/bin\\/ls\") AND (CommandLine: *\\-R*))",
+                "(Image: \"\\/usr\\/bin\\/find\") OR (Image: \"\\/tree\") OR (Image: \"\\/usr\\/bin\\/mdfind\") OR ((Image: \"\\/usr\\/bin\\/file\") AND (CommandLine: /.*((.){200,}).*/)) OR ((Image: \"\\/bin\\/ls\") AND (CommandLine: *\\-R*))",
                 queries.get(0).toString());
     }
 
@@ -1638,6 +1639,107 @@ public class QueryBackendTests extends OpenSearchTestCase {
         // `not fieldB: '*'` means "fieldB is absent", so it must not be guarded with
         // "and fieldB exists" -- that pairing can never match.
         Assert.assertEquals("(fieldA: \"valueA\") AND ((NOT mappedB: *))", queries.get(0).toString());
+    }
+
+    /**
+     * Lucene's regexp is implicitly anchored to the whole term, so a leading {@code ^} has to become
+     * the absence of leading padding rather than a literal caret to match.
+     */
+    public void testConvertValueRegexAnchoredStart()
+            throws IOException, SigmaError, CompositeSigmaErrors {
+        Assert.assertEquals("mappedA: /(Repair).*/", firstQuery("fieldA1|re: '^Repair'"));
+    }
+
+    /** A pattern anchored at both ends is already a whole-term match and needs no padding. */
+    public void testConvertValueRegexAnchoredBothEnds()
+            throws IOException, SigmaError, CompositeSigmaErrors {
+        Assert.assertEquals("mappedA: /Repair/", firstQuery("fieldA1|re: '^Repair$'"));
+    }
+
+    /** An escaped dollar is a character to match, not an anchor, so the trailing padding stays. */
+    public void testConvertValueRegexEscapedDollarIsNotAnAnchor()
+            throws IOException, SigmaError, CompositeSigmaErrors {
+        // The dollar stays a character to match, and the backslash before it is doubled the way this
+        // backend escapes every backslash in a pattern.
+        Assert.assertEquals("mappedA: /.*(cost\\\\$).*/", firstQuery("fieldA1|re: 'cost\\$'"));
+    }
+
+    /**
+     * The padding has to wrap the whole pattern: {@code .*foo|bar.*} would leave the {@code foo}
+     * branch anchored at the end and the {@code bar} branch at the start.
+     */
+    public void testConvertValueRegexAlternationIsGrouped()
+            throws IOException, SigmaError, CompositeSigmaErrors {
+        Assert.assertEquals("mappedA: /.*(foo|bar).*/", firstQuery("fieldA1|re: 'foo|bar'"));
+    }
+
+    /** A pattern that is nothing but an anchor constrains nothing a whole-term match can express. */
+    public void testConvertValueRegexAnchorOnly()
+            throws IOException, SigmaError, CompositeSigmaErrors {
+        Assert.assertEquals("mappedA: /.*/", firstQuery("fieldA1|re: '^'"));
+    }
+
+    /** De Morgan's rewrite of a comparison negates the range clause, not a bare token sequence. */
+    public void testConvertCompareNot() throws IOException, SigmaError, CompositeSigmaErrors {
+        OSQueryBackend queryBackend = testBackend();
+        List<Object> queries =
+                queryBackend.convertRule(
+                        SigmaRule.fromYaml(
+                                ruleWith(
+                                        "                sel:\n" + "                    fieldA|gte: 123\n", "not sel"),
+                                false));
+        Assert.assertEquals("(NOT fieldA: [123 TO *] AND _exists_: fieldA)", queries.get(0).toString());
+    }
+
+    /**
+     * A comparison has to register its field: the query index maps exactly the fields the compiled
+     * queries name, and a range over an unmapped field is refused.
+     */
+    public void testConvertCompareRegistersQueryField()
+            throws IOException, SigmaError, CompositeSigmaErrors {
+        OSQueryBackend queryBackend = testBackend();
+        queryBackend.convertRule(
+                SigmaRule.fromYaml(
+                        ruleWith("                sel:\n" + "                    fieldA|gte: 123\n", "sel"),
+                        false));
+        Assert.assertEquals(Set.of("fieldA"), queryBackend.getQueryFields().keySet());
+    }
+
+    /** A rule whose every clause is a comparison still compiles to a usable query. */
+    public void testConvertCompareOnlyRule() throws IOException, SigmaError, CompositeSigmaErrors {
+        Assert.assertEquals(
+                "(fieldA: [5000 TO *]) AND (fieldC: {* TO 10})",
+                firstQuery("fieldA|gte: 5000\n" + "                    fieldC|lt: 10"));
+    }
+
+    /** Compiles a one-selection rule and returns its single query. */
+    private String firstQuery(String selection) throws IOException, SigmaError, CompositeSigmaErrors {
+        return testBackend()
+                .convertRule(
+                        SigmaRule.fromYaml(
+                                ruleWith(
+                                        "                sel:\n" + "                    " + selection + "\n", "sel"),
+                                false))
+                .get(0)
+                .toString();
+    }
+
+    /** Wraps a detection block and its condition in the boilerplate every rule needs. */
+    private String ruleWith(String detection, String condition) {
+        return "            title: Test\n"
+                + "            id: 39f919f3-980b-4e6f-a975-8af7e507ef2b\n"
+                + "            status: test\n"
+                + "            level: critical\n"
+                + "            description: Test rule\n"
+                + "            author: Test\n"
+                + "            date: 2017/05/15\n"
+                + "            logsource:\n"
+                + "                category: test_category\n"
+                + "                product: test_product\n"
+                + "            detection:\n"
+                + detection
+                + "                condition: "
+                + condition;
     }
 
     private OSQueryBackend testBackend() throws IOException {
