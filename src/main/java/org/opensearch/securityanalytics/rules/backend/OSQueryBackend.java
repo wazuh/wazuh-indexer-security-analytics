@@ -93,8 +93,6 @@ public class OSQueryBackend extends QueryBackend {
 
     private String unboundReExpression;
 
-    private String compareOpExpression;
-
     private int valExpCount;
 
     private String aggQuery;
@@ -106,11 +104,18 @@ public class OSQueryBackend extends QueryBackend {
     private String bucketTriggerScript;
 
     private static final String groupExpression = "(%s)";
+    /**
+     * Lucene range clause per Sigma comparison operator, as {@code field TO value} templates.
+     *
+     * <p>Square brackets are inclusive and curly brackets exclusive, so {@code gte} is {@code [v TO
+     * *]} and {@code gt} is {@code {v TO *}}. Naming the operator as a bare token instead — what this
+     * backend used to emit — produces a free-text search for the operator name, never a comparison.
+     */
     private static final Map<String, String> compareOperators = Map.of(
-            SigmaCompareExpression.CompareOperators.GT, "gt",
-            SigmaCompareExpression.CompareOperators.GTE, "gte",
-            SigmaCompareExpression.CompareOperators.LT, "lt",
-            SigmaCompareExpression.CompareOperators.LTE, "lte"
+            SigmaCompareExpression.CompareOperators.GT, "%s: {%s TO *}",
+            SigmaCompareExpression.CompareOperators.GTE, "%s: [%s TO *]",
+            SigmaCompareExpression.CompareOperators.LT, "%s: {* TO %s}",
+            SigmaCompareExpression.CompareOperators.LTE, "%s: [* TO %s]"
     );
 
     private static final List<Class<?>> precedence = Arrays.asList(ConditionNOT.class, ConditionAND.class, ConditionOR.class);
@@ -139,7 +144,6 @@ public class OSQueryBackend extends QueryBackend {
         this.unboundValueNumExpression = "\"%s\"";
         this.unboundWildcardExpression = "%s";
         this.unboundReExpression = "/%s/";
-        this.compareOpExpression = "\"%s\" \"%s\" %s";
         this.valExpCount = 0;
         this.aggQuery = "{\"%s\":{\"terms\":{\"field\":\"%s\"},\"aggs\":{\"%s\":{\"%s\":{\"field\":\"%s\"}}}}}";
         this.aggCountQuery = "{\"%s\":{\"terms\":{\"field\":\"%s\"}}}";
@@ -375,14 +379,20 @@ public class OSQueryBackend extends QueryBackend {
 
     @Override
     public Object convertConditionFieldEqValOpVal(ConditionFieldEqualsValueExpression condition, boolean applyDeMorgans) {
-        String exprWithDeMorgansApplied = this.notToken + " " + this.compareOpExpression;
+        String field = getFinalField(condition.getField());
+        // Registering the field is what makes the query index map it at all — without it the range
+        // would run against an unmapped field and the rule would be refused. No descriptor is given:
+        // every consumer of getQueryFields() reads only the names, and the type of a compared field
+        // is whatever the source index declares (a number), not the analyzed text the other
+        // converters ask for.
+        ruleQueryFields.put(field, Map.of());
+        SigmaCompareExpression compare = (SigmaCompareExpression) condition.getValue();
+        String rangeExpression = compareOperators.get(compare.getOp());
+        String expression = String.format(Locale.getDefault(), rangeExpression, field, compare.getNumber().toString());
         if (applyDeMorgans) {
-            return String.format(Locale.getDefault(), exprWithDeMorgansApplied, this.getMappedField(condition.getField()),
-                    compareOperators.get(((SigmaCompareExpression) condition.getValue()).getOp()), ((SigmaCompareExpression) condition.getValue()).getNumber().toString());
+            return this.notToken + " " + expression;
         }
-
-        return String.format(Locale.getDefault(), this.compareOpExpression, this.getMappedField(condition.getField()),
-                compareOperators.get(((SigmaCompareExpression) condition.getValue()).getOp()), ((SigmaCompareExpression) condition.getValue()).getNumber().toString());
+        return expression;
     }
 
 // TODO: below methods will be supported when Sigma Expand Modifier is supported.
@@ -528,7 +538,71 @@ public class OSQueryBackend extends QueryBackend {
     }
 
     private Object convertValueRe(SigmaRegularExpression re) {
-        return re.escape(this.reEscape, this.reEscapeChar);
+        return toLuceneRegex(re.getRegexp(), re.escape(this.reEscape, this.reEscapeChar));
+    }
+
+    /**
+     * Rewrites a Sigma regular expression into one Lucene can match.
+     *
+     * <p>Sigma's {@code |re} is a search: the pattern matches anywhere in the value unless it is
+     * anchored, and {@code ^} and {@code $} are the anchors. Lucene's regexp is the opposite — it is
+     * implicitly anchored to the whole term and has no anchor syntax, so it reads {@code ^} and
+     * {@code $} as ordinary characters to match. Passed through verbatim, {@code ^Repair} therefore
+     * asks for a term that literally starts with a caret and matches nothing.
+     *
+     * <p>So the anchors are removed and the ends they did not pin are padded with {@code .*}, which
+     * expresses the same intent in a whole-term match. The remainder is wrapped in a group first:
+     * padding {@code foo|bar} without it would give {@code .*foo|bar.*}, where the alternation
+     * swallows the padding and only one branch stays unanchored.
+     *
+     * <p>Only leading and trailing anchors are recognised. An anchor inside an alternation ({@code
+     * ^a|b}) applies to one branch, which a whole-term match cannot express, and is left as the
+     * literal character it already was.
+     *
+     * @param rawPattern the Sigma pattern as written, before escaping.
+     * @param escapedPattern the same pattern with this backend's regex escaping applied.
+     * @return a pattern with Sigma's anchoring semantics under Lucene's whole-term match.
+     */
+    private static String toLuceneRegex(String rawPattern, String escapedPattern) {
+        // Whether a trailing $ is an anchor depends on the backslashes before it, and escaping has
+        // already doubled those — so the anchors are read off the raw pattern. Escaping only inserts
+        // backslashes before a quote or a backslash, never before ^ or $, so an anchor sits at the
+        // same end of both strings and can be trimmed off the escaped one.
+        boolean anchoredStart = rawPattern.startsWith("^");
+        boolean anchoredEnd = endsWithAnchor(rawPattern);
+        String regex =
+                escapedPattern.substring(
+                        anchoredStart ? 1 : 0, escapedPattern.length() - (anchoredEnd ? 1 : 0));
+        if (anchoredStart && anchoredEnd) {
+            return regex;
+        }
+        if (regex.isEmpty()) {
+            // The pattern was nothing but an anchor, so it says only where the match sits, and a
+            // whole-term match has nowhere else to sit: everything matches.
+            return ".*";
+        }
+        return (anchoredStart ? "" : ".*") + "(" + regex + ")" + (anchoredEnd ? "" : ".*");
+    }
+
+    /**
+     * Tells a trailing {@code $} anchor from an escaped literal dollar sign.
+     *
+     * <p>{@code a$} is anchored; {@code a\$} matches a dollar sign; {@code a\\$} is an escaped
+     * backslash followed by the anchor. What separates them is whether the run of backslashes before
+     * the {@code $} is even.
+     *
+     * @param regex the unescaped pattern to inspect.
+     * @return true when the pattern ends in an anchor rather than a literal dollar sign.
+     */
+    private static boolean endsWithAnchor(String regex) {
+        if (!regex.endsWith("$")) {
+            return false;
+        }
+        int backslashes = 0;
+        for (int i = regex.length() - 2; i >= 0 && regex.charAt(i) == '\\'; i--) {
+            backslashes++;
+        }
+        return backslashes % 2 == 0;
     }
 
     private Object convertValueCidr(SigmaCIDRExpression ip) {
