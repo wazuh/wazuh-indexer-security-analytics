@@ -555,7 +555,8 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
             String category,
             Map<String, Object> eventSource,
             String docId,
-            DocLevelQuery primaryQuery)
+            DocLevelQuery primaryQuery,
+            Map<String, Object> ruleMetadata)
             throws Exception {
 
         List<DocLevelQuery> queries = primaryQuery == null ? List.of() : List.of(primaryQuery);
