@@ -81,6 +81,9 @@ public class Rule implements Writeable, ToXContentObject {
 
     public static final String DOCUMENT_ID_FIELD = "document.id";
 
+    /** Field name for the original upstream Sigma rule identifier. */
+    public static final String SIGMA_ID_FIELD = "sigma_id";
+
     /** Field name for the rule lifecycle space (for example, pre-packaged vs custom). */
     public static final String SPACE_FIELD = "space";
 
@@ -123,6 +126,8 @@ public class Rule implements Writeable, ToXContentObject {
     private final RuleMetadata metadata;
 
     private String documentId;
+
+    private String sigmaId;
 
     private String space;
 
@@ -230,6 +235,7 @@ public class Rule implements Writeable, ToXContentObject {
                                 rule.getMetadata().getCompatibility(),
                                 rule.getMetadata().getSupports())
                         : RuleMetadata.empty());
+        this.sigmaId = rule.getSigmaId();
     }
 
     @SuppressWarnings("unchecked")
@@ -254,6 +260,7 @@ public class Rule implements Writeable, ToXContentObject {
                 RuleMetadata.readFrom(sin));
         this.documentId = sin.readOptionalString();
         this.space = sin.readOptionalString();
+        this.sigmaId = sin.readOptionalString();
     }
 
     @Override
@@ -283,6 +290,7 @@ public class Rule implements Writeable, ToXContentObject {
         this.metadata.writeTo(out);
         out.writeOptionalString(this.documentId);
         out.writeOptionalString(this.space);
+        out.writeOptionalString(this.sigmaId);
     }
 
     @Override
@@ -338,6 +346,9 @@ public class Rule implements Writeable, ToXContentObject {
             builder.field(METADATA, this.metadata.toMap());
         }
 
+        if (this.sigmaId != null) {
+            builder.field(SIGMA_ID_FIELD, this.sigmaId);
+        }
         if (this.documentId != null) {
             builder.startObject(DOCUMENT).field(ID_FIELD, this.documentId).endObject();
         }
@@ -393,6 +404,7 @@ public class Rule implements Writeable, ToXContentObject {
         Map<String, Object> compliance = Collections.emptyMap();
         RuleMetadata metadata = RuleMetadata.empty();
         String documentId = null;
+        String sigmaId = null;
         String space = null;
 
         XContentParserUtils.ensureExpectedToken(
@@ -479,6 +491,9 @@ public class Rule implements Writeable, ToXContentObject {
                         }
                     }
                     break;
+                case SIGMA_ID_FIELD:
+                    sigmaId = xcp.textOrNull();
+                    break;
                 case SPACE_FIELD:
                     space = xcp.textOrNull();
                     break;
@@ -507,6 +522,7 @@ public class Rule implements Writeable, ToXContentObject {
                         compliance,
                         metadata);
         rule.setDocumentId(documentId);
+        rule.setSigmaId(sigmaId);
         rule.setSpace(space);
         return rule;
     }
@@ -611,6 +627,28 @@ public class Rule implements Writeable, ToXContentObject {
      */
     public void setDocumentId(String documentId) {
         this.documentId = documentId;
+    }
+
+    /**
+     * Gets the original upstream Sigma rule identifier.
+     *
+     * <p>This is the optional {@code sigma_id} field of the Sigma rule body, preserved on import. It
+     * is distinct from both {@link #getId()} (the rules-index {@code _id}, regenerated on every space
+     * transition) and {@link #getDocumentId()} (the rule's own Wazuh identifier).
+     *
+     * @return the upstream Sigma UUID, or null when the rule does not declare one
+     */
+    public String getSigmaId() {
+        return this.sigmaId;
+    }
+
+    /**
+     * Sets the original upstream Sigma rule identifier.
+     *
+     * @param sigmaId the upstream Sigma UUID, or null when the rule does not declare one
+     */
+    public void setSigmaId(String sigmaId) {
+        this.sigmaId = sigmaId;
     }
 
     /**
