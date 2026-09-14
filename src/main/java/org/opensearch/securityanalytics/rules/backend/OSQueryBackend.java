@@ -555,9 +555,12 @@ public class OSQueryBackend extends QueryBackend {
      * padding {@code foo|bar} without it would give {@code .*foo|bar.*}, where the alternation
      * swallows the padding and only one branch stays unanchored.
      *
-     * <p>Only leading and trailing anchors are recognised. An anchor inside an alternation ({@code
-     * ^a|b}) applies to one branch, which a whole-term match cannot express, and is left as the
-     * literal character it already was.
+     * <p>Only an anchor at the very start or end of the pattern is recognised, and it is applied to
+     * the pattern as a whole. That is exact for a single branch, but a top-level alternation carries
+     * its anchor on one branch only: {@code ^a|b} becomes {@code (a|b).*}, which narrows {@code b}
+     * from "contains b" to "starts with b". Expressing that faithfully would mean splitting the
+     * alternation and padding each branch on its own ({@code (a.*)|(.*b.*)}); this backend does not,
+     * so an anchor on one branch is read as anchoring the whole pattern.
      *
      * @param rawPattern the Sigma pattern as written, before escaping.
      * @param escapedPattern the same pattern with this backend's regex escaping applied.
