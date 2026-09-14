@@ -29,6 +29,10 @@ import static org.opensearch.action.ValidateActions.addValidationError;
 /**
  * Request to evaluate a list of Sigma rules against a normalized event.
  *
+ * <p>The rules are compiled and percolated the same way a deployed detector matches them, so the
+ * request also carries what identifies the percolator index to use: the owning integration, its log
+ * type and the source indices whose field mappings the compiled queries are parsed against.
+ *
  * @see WEvaluateRulesAction
  */
 public class WEvaluateRulesRequest extends ActionRequest {
@@ -39,16 +43,36 @@ public class WEvaluateRulesRequest extends ActionRequest {
     /** The list of Sigma rule bodies to evaluate. */
     private final List<String> rulesBodies;
 
+    /** Identifier of the integration owning the rules; scopes the percolator queries. */
+    private final String integrationId;
+
+    /** The integration's log type, which names the percolator index. */
+    private final String logType;
+
+    /** Source indices whose mappings the compiled queries must resolve against. */
+    private final List<String> sourceIndices;
+
     /**
      * Constructs a new WEvaluateRulesRequest.
      *
      * @param normalizedEvent the normalized event as a JSON string
      * @param rulesBodies the list of Sigma rule bodies to evaluate
+     * @param integrationId the identifier of the integration owning the rules
+     * @param logType the integration's log type
+     * @param sourceIndices the source indices the detector for this integration reads
      */
-    public WEvaluateRulesRequest(String normalizedEvent, List<String> rulesBodies) {
+    public WEvaluateRulesRequest(
+            String normalizedEvent,
+            List<String> rulesBodies,
+            String integrationId,
+            String logType,
+            List<String> sourceIndices) {
         super();
         this.normalizedEvent = normalizedEvent;
         this.rulesBodies = rulesBodies;
+        this.integrationId = integrationId;
+        this.logType = logType;
+        this.sourceIndices = sourceIndices;
     }
 
     /**
@@ -61,6 +85,9 @@ public class WEvaluateRulesRequest extends ActionRequest {
         super(sin);
         this.normalizedEvent = sin.readString();
         this.rulesBodies = sin.readStringList();
+        this.integrationId = sin.readString();
+        this.logType = sin.readString();
+        this.sourceIndices = sin.readStringList();
     }
 
     @Override
@@ -68,6 +95,9 @@ public class WEvaluateRulesRequest extends ActionRequest {
         super.writeTo(out);
         out.writeString(normalizedEvent);
         out.writeStringCollection(rulesBodies);
+        out.writeString(integrationId);
+        out.writeString(logType);
+        out.writeStringCollection(sourceIndices);
     }
 
     @Override
@@ -80,6 +110,18 @@ public class WEvaluateRulesRequest extends ActionRequest {
         if (rulesBodies == null || rulesBodies.isEmpty()) {
             validationException =
                     addValidationError("rulesBodies must not be null or empty", validationException);
+        }
+        if (integrationId == null || integrationId.isEmpty()) {
+            validationException =
+                    addValidationError("integrationId must not be null or empty", validationException);
+        }
+        if (logType == null || logType.isEmpty()) {
+            validationException =
+                    addValidationError("logType must not be null or empty", validationException);
+        }
+        if (sourceIndices == null || sourceIndices.isEmpty()) {
+            validationException =
+                    addValidationError("sourceIndices must not be null or empty", validationException);
         }
         return validationException;
     }
@@ -100,5 +142,32 @@ public class WEvaluateRulesRequest extends ActionRequest {
      */
     public List<String> getRulesBodies() {
         return rulesBodies;
+    }
+
+    /**
+     * Gets the identifier of the integration owning the rules.
+     *
+     * @return the integration id
+     */
+    public String getIntegrationId() {
+        return integrationId;
+    }
+
+    /**
+     * Gets the integration's log type.
+     *
+     * @return the log type
+     */
+    public String getLogType() {
+        return logType;
+    }
+
+    /**
+     * Gets the source indices the compiled queries must resolve their fields against.
+     *
+     * @return the source indices
+     */
+    public List<String> getSourceIndices() {
+        return sourceIndices;
     }
 }

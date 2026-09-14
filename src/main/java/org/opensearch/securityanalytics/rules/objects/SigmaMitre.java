@@ -428,8 +428,11 @@ public class SigmaMitre {
     }
 
     /**
-     * Builds the MITRE data into the nested format for WCS indexing. Per the WCS spec, sub-technique
-     * IDs and names are merged into the technique arrays.
+     * Builds the MITRE data into the nested format for WCS indexing. Each category is emitted under
+     * its own key: sub-techniques belong to {@code subtechnique} only and are never folded into
+     * {@code technique}, which the WCS mapping defines as a separate field. Folding them in would
+     * also desynchronize the positional {@code id} and {@code name} arrays whenever the two
+     * categories do not both carry names.
      *
      * @return a map representing the nested MITRE ATT&amp;CK data
      */
@@ -447,17 +450,13 @@ public class SigmaMitre {
             mitreMap.put("tactic", tacticMap);
         }
 
-        List<String> allTechniqueIds = new ArrayList<>(this.techniqueId);
-        allTechniqueIds.addAll(this.subtechniqueId);
-        List<String> allTechniqueNames = new ArrayList<>(this.techniqueName);
-        allTechniqueNames.addAll(this.subtechniqueName);
-        if (!allTechniqueIds.isEmpty() || !allTechniqueNames.isEmpty()) {
+        if (!this.techniqueId.isEmpty() || !this.techniqueName.isEmpty()) {
             Map<String, Object> techniqueMap = new HashMap<>();
-            if (!allTechniqueIds.isEmpty()) {
-                techniqueMap.put("id", allTechniqueIds);
+            if (!this.techniqueId.isEmpty()) {
+                techniqueMap.put("id", new ArrayList<>(this.techniqueId));
             }
-            if (!allTechniqueNames.isEmpty()) {
-                techniqueMap.put("name", allTechniqueNames);
+            if (!this.techniqueName.isEmpty()) {
+                techniqueMap.put("name", new ArrayList<>(this.techniqueName));
             }
             mitreMap.put("technique", techniqueMap);
         }
