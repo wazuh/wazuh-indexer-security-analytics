@@ -75,6 +75,30 @@ public class LogtestQueryIndexTests extends OpenSearchTestCase {
         assertNull(leaf(properties, "event", "duration").get("analyzer"));
     }
 
+    public void testMatchOnlyTextLeavesGetTheAnalyzer() {
+        // These are the fields the WCS moved off `keyword` to escape ignore_above: 1024, and the
+        // ones `|contains` rules are written against. Copying them into the percolator index with
+        // their type but without rule_analyzer is what makes logtest disagree with a detector: the
+        // standard analyzer splits the value, and `*a\ b*` then matches no token.
+        Map<String, Object> properties =
+                mutable(
+                        Map.of(
+                                "process",
+                                mutable(
+                                        Map.of(
+                                                "properties",
+                                                mutable(
+                                                        Map.of("command_line", mutable(Map.of("type", "match_only_text")))))),
+                                "message",
+                                mutable(Map.of("type", "match_only_text"))));
+
+        LogtestQueryIndex.applyAnalysisOverrides(properties);
+
+        assertEquals("rule_analyzer", leaf(properties, "process", "command_line").get("analyzer"));
+        assertEquals("match_only_text", leaf(properties, "process", "command_line").get("type"));
+        assertEquals("rule_analyzer", leaf(properties, "message").get("analyzer"));
+    }
+
     public void testNestedContainersKeepTheirType() {
         Map<String, Object> properties =
                 mutable(
