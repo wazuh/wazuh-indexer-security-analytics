@@ -105,14 +105,19 @@ public class DetectorMonitorConfig {
 
     /**
      * Analysis overrides applied to the query index copy of every source field, keyed by the source
-     * field's type. Both chains are defined in {@code mappings/detector-settings.json}: {@code text}
-     * fields get the {@code rule_analyzer}, {@code keyword} fields the {@code rule_ws_normalizer},
-     * and since WCS string fields are {@code keyword}, the normalizer is the chain that applies to
-     * almost every real rule.
+     * field's type. The chains are defined in {@code mappings/detector-settings.json}: {@code text}
+     * and {@code match_only_text} fields get the {@code rule_analyzer}, {@code keyword} fields the
+     * {@code rule_ws_normalizer}. Every WCS string field is one of those three types, so a type
+     * missing from this map is a type whose fields no {@code |contains} rule can match.
+     *
+     * <p>Both chains share the {@code rule_ws_filter} char_filter and leave the value whole ({@code
+     * rule_analyzer} tokenizes with {@code keyword}), which is what makes a compiled Sigma query
+     * comparable against a whole field value.
      *
      * <p>These overrides decide how a compiled Sigma query is compared against a document, so
      * whatever they contain applies identically to a deployed detector and to logtest, which copies
-     * them onto its own percolator index.
+     * them onto its own percolator index. They apply only to the query index copy of a field; the
+     * events stream keeps its own mapping, so word-level search over {@code message} is unaffected.
      *
      * @return field properties to merge into the query index mapping, keyed by source field type.
      */
@@ -128,6 +133,17 @@ public class DetectorMonitorConfig {
         HashMap<String, String> keywordProperties = new HashMap<>();
         keywordProperties.put("normalizer", "rule_ws_normalizer");
         fieldMappingProperties.put("keyword", keywordProperties);
+        // The WCS maps every unbounded string field (process.command_line, url.*, message,
+        // registry.data.strings, ...) as `match_only_text`, because `keyword` drops anything past
+        // ignore_above: 1024 from the index. Without an override, that field is tokenized by the
+        // standard analyzer in the query index and neither shape SigmaString.convert() emits agrees
+        // with it any more: `field: *a\ b*` finds no single token holding a space, and
+        // `field: "a_ws_b"` analyzes to a token the document never produced. `rule_analyzer`
+        // tokenizes with `keyword`, so the field stays one whole-value token and matches exactly as
+        // it did under `keyword` + `rule_ws_normalizer`, minus the 1024-character ceiling.
+        HashMap<String, String> matchOnlyTextProperties = new HashMap<>();
+        matchOnlyTextProperties.put("analyzer", "rule_analyzer");
+        fieldMappingProperties.put("match_only_text", matchOnlyTextProperties);
         return fieldMappingProperties;
     }
 
