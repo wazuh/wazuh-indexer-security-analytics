@@ -268,7 +268,7 @@ public class PercolateRuleEvaluator {
      * documents are removed after the search — see {@link #deleteSupersededQueries}. The refresh is
      * immediate because the percolate search runs right after.
      *
-     * @param indexName the percolator index.
+     * @param preparedIndex prepared query index information, including the percolator index name.
      * @param integrationId scopes the stored queries.
      * @param compiled doc id to compiled query.
      * @param rulesEvaluated number of rules the request covered.
