@@ -62,15 +62,15 @@ public class WTransportDeleteCustomRuleAction
             Task task, WDeleteCustomRuleRequest request, ActionListener<WDeleteRuleResponse> listener) {
         if (request.getDocumentId() != null && request.getSpace() != null) {
             // Search by document.id + space, then delete the found document.
-            this.resolveAndDelete(task, request, listener);
+            this.resolveAndDelete(request, listener);
         } else {
             this.deleteById(
-                    task, request.getRuleId(), request.getRefreshPolicy(), request.isForced(), listener);
+                    request.getRuleId(), request.getRefreshPolicy(), request.isForced(), listener);
         }
     }
 
     private void resolveAndDelete(
-            Task task, WDeleteCustomRuleRequest request, ActionListener<WDeleteRuleResponse> listener) {
+            WDeleteCustomRuleRequest request, ActionListener<WDeleteRuleResponse> listener) {
         SearchSourceBuilder searchSource =
                 new SearchSourceBuilder()
                         .query(
@@ -110,7 +110,7 @@ public class WTransportDeleteCustomRuleAction
                                 request.getSpace(),
                                 resolvedId);
                         WTransportDeleteCustomRuleAction.this.deleteById(
-                                task, resolvedId, request.getRefreshPolicy(), request.isForced(), listener);
+                                resolvedId, request.getRefreshPolicy(), request.isForced(), listener);
                     }
 
                     @Override
@@ -122,7 +122,6 @@ public class WTransportDeleteCustomRuleAction
     }
 
     private void deleteById(
-            Task task,
             String ruleId,
             org.opensearch.action.support.WriteRequest.RefreshPolicy refreshPolicy,
             Boolean forced,
