@@ -19,7 +19,9 @@ package org.opensearch.securityanalytics.transport;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.opensearch.ExceptionsHelper;
 import org.opensearch.OpenSearchStatusException;
+import org.opensearch.ResourceAlreadyExistsException;
 import org.opensearch.action.ActionRunnable;
 import org.opensearch.action.StepListener;
 import org.opensearch.action.admin.indices.create.CreateIndexResponse;
@@ -1975,6 +1977,24 @@ public class TransportIndexDetectorAction
 
                                                     @Override
                                                     public void onFailure(Exception e) {
+                                                        // detectorIndexExists() reads the local cluster state, so two
+                                                        // detector creates issued before either one's create-index has
+                                                        // been applied both decide the index is missing and both try to
+                                                        // create it. The loser gets ResourceAlreadyExistsException
+                                                        if (ExceptionsHelper.unwrapCause(e)
+                                                                instanceof ResourceAlreadyExistsException) {
+                                                            log.debug(
+                                                                    "{} was created concurrently by another request;"
+                                                                            + " continuing with detector indexing.",
+                                                                    Detector.DETECTORS_INDEX);
+                                                            try {
+                                                                AsyncIndexDetectorsAction.this.prepareDetectorIndexing();
+                                                            } catch (Exception ex) {
+                                                                log.debug("detector index creation failed", ex);
+                                                                AsyncIndexDetectorsAction.this.onFailures(ex);
+                                                            }
+                                                            return;
+                                                        }
                                                         AsyncIndexDetectorsAction.this.onFailures(e);
                                                     }
                                                 });

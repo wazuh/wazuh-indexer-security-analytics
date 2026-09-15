@@ -19,6 +19,8 @@ package org.opensearch.securityanalytics.transport;
 import org.apache.commons.lang3.tuple.Pair;
 import org.opensearch.OpenSearchException;
 import org.opensearch.OpenSearchStatusException;
+import org.opensearch.ResourceAlreadyExistsException;
+import org.opensearch.action.admin.indices.create.CreateIndexResponse;
 import org.opensearch.action.search.SearchRequest;
 import org.opensearch.action.search.SearchResponse;
 import org.opensearch.action.support.ActionFilters;
@@ -28,6 +30,9 @@ import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.settings.ClusterSettings;
 import org.opensearch.common.settings.Setting;
 import org.opensearch.common.settings.Settings;
+import org.opensearch.common.unit.TimeValue;
+import org.opensearch.common.util.concurrent.OpenSearchExecutors;
+import org.opensearch.common.util.concurrent.ThreadContext;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.common.io.stream.NamedWriteableRegistry;
 import org.opensearch.core.rest.RestStatus;
@@ -36,6 +41,7 @@ import org.opensearch.index.IndexNotFoundException;
 import org.opensearch.rest.RestRequest;
 import org.opensearch.securityanalytics.action.IndexDetectorRequest;
 import org.opensearch.securityanalytics.action.IndexDetectorResponse;
+import org.opensearch.securityanalytics.config.monitors.DetectorMonitorConfig;
 import org.opensearch.securityanalytics.logtype.LogTypeService;
 import org.opensearch.securityanalytics.mapper.MapperService;
 import org.opensearch.securityanalytics.model.Detector;
@@ -51,6 +57,7 @@ import org.opensearch.securityanalytics.util.RuleIndices;
 import org.opensearch.securityanalytics.util.RuleTopicIndices;
 import org.opensearch.test.OpenSearchTestCase;
 import org.opensearch.threadpool.ThreadPool;
+import org.opensearch.transport.RemoteTransportException;
 import org.opensearch.transport.TransportService;
 import org.opensearch.transport.client.Client;
 
@@ -89,10 +96,21 @@ public class TransportIndexDetectorActionTests extends OpenSearchTestCase {
     }
 
     private TransportIndexDetectorAction createAction(Client client) {
+        return this.createAction(mock(DetectorIndices.class), mock(LogTypeService.class), client);
+    }
+
+    private TransportIndexDetectorAction createAction(
+            DetectorIndices detectorIndices, LogTypeService logTypeService, Client client) {
         TransportService transportService = mock(TransportService.class);
         ClusterService clusterService = mock(ClusterService.class);
-        DetectorIndices detectorIndices = mock(DetectorIndices.class);
         ThreadPool threadPool = mock(ThreadPool.class);
+
+        // AsyncIndexDetectorsAction.start() stashes the thread context, and finishHim() hands the
+        // outcome to the generic pool; run it inline so the listener is settled before the test
+        // asserts on it.
+        when(threadPool.getThreadContext()).thenReturn(new ThreadContext(Settings.EMPTY));
+        when(threadPool.executor(any(String.class)))
+                .thenReturn(OpenSearchExecutors.newDirectExecutorService());
 
         Set<Setting<?>> settings =
                 new HashSet<>(
@@ -118,7 +136,7 @@ public class TransportIndexDetectorActionTests extends OpenSearchTestCase {
                 clusterService,
                 Settings.EMPTY,
                 mock(NamedWriteableRegistry.class),
-                mock(LogTypeService.class),
+                logTypeService,
                 mock(IndexNameExpressionResolver.class),
                 mock(ExceptionChecker.class));
     }
@@ -389,5 +407,70 @@ public class TransportIndexDetectorActionTests extends OpenSearchTestCase {
         OpenSearchException ex = (OpenSearchException) listener.failure;
         assertEquals(RestStatus.NOT_FOUND, ex.status());
         assertTrue(ex.getMessage().contains("Indices not found wazuh-events-v5-missing"));
+    }
+
+    /**
+     * detectorIndexExists() reads the local cluster state, so a batch of detector creates issued
+     * together can all decide the config index is missing and all try to create it. Every loser of
+     * that race used to be failed outright with the ResourceAlreadyExistsException, which silently
+     * cost the deployment a detector even though the index it was waiting for is right there. The
+     * request must carry on indexing instead.
+     */
+    @SuppressWarnings("unchecked")
+    public void testStart_detectorsConfigIndexCreatedConcurrently_stillIndexesTheDetector()
+            throws Exception {
+        Client client = mock(Client.class);
+        SearchResponse searchResponse = mock(SearchResponse.class);
+        when(searchResponse.getTook()).thenReturn(TimeValue.timeValueMillis(1));
+        doAnswer(
+                        invocation -> {
+                            invocation.<ActionListener<SearchResponse>>getArgument(1).onResponse(searchResponse);
+                            return null;
+                        })
+                .when(client)
+                .search(any(SearchRequest.class), any(ActionListener.class));
+
+        DetectorIndices detectorIndices = mock(DetectorIndices.class);
+        when(detectorIndices.detectorIndexExists()).thenReturn(false);
+        // Shaped like the real thing: the cluster manager's ResourceAlreadyExistsException reaches
+        // the requesting node wrapped in a RemoteTransportException.
+        doAnswer(
+                        invocation -> {
+                            invocation
+                                    .<ActionListener<CreateIndexResponse>>getArgument(0)
+                                    .onFailure(
+                                            new RemoteTransportException(
+                                                    "[node-1][127.0.0.1:9300][indices:admin/create]",
+                                                    new ResourceAlreadyExistsException(Detector.DETECTORS_INDEX)));
+                            return null;
+                        })
+                .when(detectorIndices)
+                .initDetectorIndex(any(ActionListener.class));
+
+        LogTypeService logTypeService = mock(LogTypeService.class);
+        doAnswer(
+                        invocation -> {
+                            invocation.<ActionListener<Boolean>>getArgument(1).onResponse(true);
+                            return null;
+                        })
+                .when(logTypeService)
+                .doesLogTypeExist(any(String.class), any(ActionListener.class));
+
+        TransportIndexDetectorAction action = createAction(detectorIndices, logTypeService, client);
+        IndexDetectorRequest request = requestWithIndices("wazuh-events-v5-test");
+        CapturingListener listener = new CapturingListener();
+
+        invokeCheckIndicesAndExecute(action, request, listener);
+
+        // createDetector() stamps the monitor indices onto the detector before it does anything else,
+        // so seeing them is proof the request got past the create-index race rather than being
+        // failed on it.
+        String ruleTopic = request.getDetector().getDetectorType();
+        assertEquals(
+                DetectorMonitorConfig.getAlertsIndex(ruleTopic), request.getDetector().getAlertsIndex());
+        assertEquals(
+                DetectorMonitorConfig.getFindingsIndex(ruleTopic),
+                request.getDetector().getFindingsIndex());
+        assertNull("the create-index race must not surface as a detector failure", listener.failure);
     }
 }
