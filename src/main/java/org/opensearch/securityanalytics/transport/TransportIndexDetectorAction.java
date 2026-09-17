@@ -19,7 +19,9 @@ package org.opensearch.securityanalytics.transport;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.opensearch.ExceptionsHelper;
 import org.opensearch.OpenSearchStatusException;
+import org.opensearch.ResourceAlreadyExistsException;
 import org.opensearch.action.ActionRunnable;
 import org.opensearch.action.StepListener;
 import org.opensearch.action.admin.indices.create.CreateIndexResponse;
@@ -1968,6 +1970,16 @@ public class TransportIndexDetectorAction
 
                                                     @Override
                                                     public void onFailure(Exception e) {
+                                                        // detectorIndexExists() reads the local cluster state, so two
+                                                        // detector creates issued before either one's create-index has
+                                                        // been applied both decide the index is missing and both try to
+                                                        // create it. The loser gets ResourceAlreadyExistsException
+                                                        if (ExceptionsHelper.unwrapCause(e)
+                                                                instanceof ResourceAlreadyExistsException) {
+                                                            AsyncIndexDetectorsAction.this
+                                                                    .resumeAfterConcurrentDetectorIndexCreation();
+                                                            return;
+                                                        }
                                                         AsyncIndexDetectorsAction.this.onFailures(e);
                                                     }
                                                 });
@@ -2019,6 +2031,40 @@ public class TransportIndexDetectorAction
 
                         @Override
                         public void onFailure(Exception e) {
+                            AsyncIndexDetectorsAction.this.onFailures(e);
+                        }
+                    });
+        }
+
+        /**
+         * Resumes a detector create that lost the race to create {@link Detector#DETECTORS_INDEX}.
+         *
+         * <p>The rejection only tells us the index exists at the cluster manager. Its shards may not be
+         * assigned on this node yet and {@link #prepareDetectorIndexing()} reads the index straight
+         * away, so wait for an active shard first or the request dies on "no shard available".
+         */
+        private void resumeAfterConcurrentDetectorIndexCreation() {
+            log.debug(
+                    "{} was created concurrently by another request; waiting for an active shard.",
+                    Detector.DETECTORS_INDEX);
+            IndexUtils.waitForActiveShard(
+                    TransportIndexDetectorAction.this.client,
+                    Detector.DETECTORS_INDEX,
+                    new ActionListener<>() {
+                        @Override
+                        public void onResponse(Void unused) {
+                            try {
+                                AsyncIndexDetectorsAction.this.prepareDetectorIndexing();
+                            } catch (Exception e) {
+                                log.debug("detector index creation failed", e);
+                                AsyncIndexDetectorsAction.this.onFailures(e);
+                            }
+                        }
+
+                        @Override
+                        public void onFailure(Exception e) {
+                            log.error(
+                                    "Failed waiting for {} shards to become active", Detector.DETECTORS_INDEX, e);
                             AsyncIndexDetectorsAction.this.onFailures(e);
                         }
                     });
