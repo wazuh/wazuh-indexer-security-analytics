@@ -23,18 +23,14 @@ import org.opensearch.ExceptionsHelper;
 import org.opensearch.OpenSearchStatusException;
 import org.opensearch.ResourceAlreadyExistsException;
 import org.opensearch.action.DocWriteRequest;
-import org.opensearch.action.admin.cluster.health.ClusterHealthRequest;
-import org.opensearch.action.admin.cluster.health.ClusterHealthResponse;
 import org.opensearch.action.admin.indices.create.CreateIndexRequest;
 import org.opensearch.action.admin.indices.create.CreateIndexResponse;
 import org.opensearch.action.bulk.BulkRequest;
 import org.opensearch.action.index.IndexRequest;
 import org.opensearch.action.search.SearchRequest;
 import org.opensearch.action.search.SearchResponse;
-import org.opensearch.action.support.ActiveShardCount;
 import org.opensearch.action.support.WriteRequest;
 import org.opensearch.cluster.ClusterState;
-import org.opensearch.cluster.health.ClusterHealthStatus;
 import org.opensearch.cluster.metadata.IndexMetadata;
 import org.opensearch.cluster.metadata.MappingMetadata;
 import org.opensearch.cluster.routing.Preference;
@@ -59,6 +55,7 @@ import org.opensearch.search.builder.SearchSourceBuilder;
 import org.opensearch.securityanalytics.model.CustomLogType;
 import org.opensearch.securityanalytics.model.FieldMappingDoc;
 import org.opensearch.securityanalytics.model.LogType;
+import org.opensearch.securityanalytics.util.IndexUtils;
 import org.opensearch.securityanalytics.util.SecurityAnalyticsException;
 import org.opensearch.transport.client.Client;
 
@@ -700,35 +697,28 @@ public class LogTypeService {
      * acknowledged, or because the shards are still recovering when the node starts up.
      */
     private void waitForIndexShardsAndLoad(ActionListener<Void> listener) {
-        ClusterHealthRequest healthRequest =
-                new ClusterHealthRequest(LOG_TYPE_INDEX).waitForActiveShards(ActiveShardCount.ONE);
-        this.client
-                .admin()
-                .cluster()
-                .health(
-                        healthRequest,
-                        new ActionListener<>() {
-                            @Override
-                            public void onResponse(ClusterHealthResponse response) {
-                                if (response.getStatus() == ClusterHealthStatus.RED) {
-                                    logger.warn("{} health is RED after waiting for shards", LOG_TYPE_INDEX);
-                                }
-                                LogTypeService.this.loadBuiltinLogTypes(
-                                        ActionListener.delegateFailure(
-                                                listener,
-                                                (delegatedListener, unused) -> {
-                                                    isConfigIndexInitialized = true;
-                                                    LogTypeService.this.doIndexLogTypeMetadata(listener);
-                                                }));
-                            }
+        IndexUtils.waitForActiveShard(
+                this.client,
+                LOG_TYPE_INDEX,
+                new ActionListener<>() {
+                    @Override
+                    public void onResponse(Void unused) {
+                        LogTypeService.this.loadBuiltinLogTypes(
+                                ActionListener.delegateFailure(
+                                        listener,
+                                        (delegatedListener, ignored) -> {
+                                            isConfigIndexInitialized = true;
+                                            LogTypeService.this.doIndexLogTypeMetadata(listener);
+                                        }));
+                    }
 
-                            @Override
-                            public void onFailure(Exception e) {
-                                isConfigIndexInitialized = false;
-                                logger.error("Failed waiting for {} shards to become active", LOG_TYPE_INDEX, e);
-                                listener.onFailure(e);
-                            }
-                        });
+                    @Override
+                    public void onFailure(Exception e) {
+                        isConfigIndexInitialized = false;
+                        logger.error("Failed waiting for {} shards to become active", LOG_TYPE_INDEX, e);
+                        listener.onFailure(e);
+                    }
+                });
     }
 
     public void loadBuiltinLogTypes(ActionListener<Void> listener) {

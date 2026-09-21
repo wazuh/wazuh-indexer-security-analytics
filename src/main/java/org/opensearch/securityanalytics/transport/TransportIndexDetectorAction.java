@@ -19,7 +19,9 @@ package org.opensearch.securityanalytics.transport;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.opensearch.ExceptionsHelper;
 import org.opensearch.OpenSearchStatusException;
+import org.opensearch.ResourceAlreadyExistsException;
 import org.opensearch.action.ActionRunnable;
 import org.opensearch.action.StepListener;
 import org.opensearch.action.admin.indices.create.CreateIndexResponse;
@@ -789,7 +791,6 @@ public class TransportIndexDetectorAction
                                                         indexMonitorsStep.whenComplete(
                                                                 indexMonitorResponses ->
                                                                         TransportIndexDetectorAction.this.saveWorkflow(
-                                                                                rulesById,
                                                                                 detector,
                                                                                 indexMonitorResponses,
                                                                                 refreshPolicy,
@@ -802,7 +803,7 @@ public class TransportIndexDetectorAction
                                                         int numberOfUnprocessedResponses = monitorRequests.size() - 1;
                                                         if (numberOfUnprocessedResponses == 0) {
                                                             TransportIndexDetectorAction.this.saveWorkflow(
-                                                                    rulesById, detector, monitorResponses, refreshPolicy, listener);
+                                                                    detector, monitorResponses, refreshPolicy, listener);
                                                         } else {
                                                             // Saves the rest of the monitors and saves the workflow if supported
                                                             TransportIndexDetectorAction.this.saveMonitors(
@@ -844,7 +845,7 @@ public class TransportIndexDetectorAction
                                         addedFirstMonitorResponse -> {
                                             monitorResponses.add(addedFirstMonitorResponse);
                                             TransportIndexDetectorAction.this.saveWorkflow(
-                                                    rulesById, detector, monitorResponses, refreshPolicy, listener);
+                                                    detector, monitorResponses, refreshPolicy, listener);
                                         },
                                         e -> {
                                             listener.onFailure(e);
@@ -902,14 +903,12 @@ public class TransportIndexDetectorAction
      * If the workflow is enabled, saves the workflow, updates the detector and returns the saved
      * monitors if not, returns the saved monitors
      *
-     * @param rulesById
      * @param detector
      * @param monitorResponses
      * @param refreshPolicy
      * @param actionListener
      */
     private void saveWorkflow(
-            List<Pair<String, Rule>> rulesById,
             Detector detector,
             List<IndexMonitorResponse> monitorResponses,
             RefreshPolicy refreshPolicy,
@@ -1178,7 +1177,6 @@ public class TransportIndexDetectorAction
                         .collect(Collectors.toList()));
 
         this.updateAlertingMonitors(
-                rulesById,
                 detector,
                 monitorsToBeAdded,
                 monitorsToBeUpdated,
@@ -1199,7 +1197,6 @@ public class TransportIndexDetectorAction
      * @param listener Listener that accepts the list of updated monitors if the action was successful
      */
     private void updateAlertingMonitors(
-            List<Pair<String, Rule>> rulesById,
             Detector detector,
             List<IndexMonitorRequest> monitorsToBeAdded,
             List<IndexMonitorRequest> monitorsToBeUpdated,
@@ -1227,7 +1224,6 @@ public class TransportIndexDetectorAction
                                 }
                                 if (detector.isWorkflowSupported() && this.enabledWorkflowUsage) {
                                     this.updateWorkflowStep(
-                                            rulesById,
                                             detector,
                                             monitorsToBeDeleted,
                                             refreshPolicy,
@@ -1270,7 +1266,6 @@ public class TransportIndexDetectorAction
     }
 
     private void updateWorkflowStep(
-            List<Pair<String, Rule>> rulesById,
             Detector detector,
             List<String> monitorsToBeDeleted,
             RefreshPolicy refreshPolicy,
@@ -1975,6 +1970,16 @@ public class TransportIndexDetectorAction
 
                                                     @Override
                                                     public void onFailure(Exception e) {
+                                                        // detectorIndexExists() reads the local cluster state, so two
+                                                        // detector creates issued before either one's create-index has
+                                                        // been applied both decide the index is missing and both try to
+                                                        // create it. The loser gets ResourceAlreadyExistsException
+                                                        if (ExceptionsHelper.unwrapCause(e)
+                                                                instanceof ResourceAlreadyExistsException) {
+                                                            AsyncIndexDetectorsAction.this
+                                                                    .resumeAfterConcurrentDetectorIndexCreation();
+                                                            return;
+                                                        }
                                                         AsyncIndexDetectorsAction.this.onFailures(e);
                                                     }
                                                 });
@@ -2026,6 +2031,40 @@ public class TransportIndexDetectorAction
 
                         @Override
                         public void onFailure(Exception e) {
+                            AsyncIndexDetectorsAction.this.onFailures(e);
+                        }
+                    });
+        }
+
+        /**
+         * Resumes a detector create that lost the race to create {@link Detector#DETECTORS_INDEX}.
+         *
+         * <p>The rejection only tells us the index exists at the cluster manager. Its shards may not be
+         * assigned on this node yet and {@link #prepareDetectorIndexing()} reads the index straight
+         * away, so wait for an active shard first or the request dies on "no shard available".
+         */
+        private void resumeAfterConcurrentDetectorIndexCreation() {
+            log.debug(
+                    "{} was created concurrently by another request; waiting for an active shard.",
+                    Detector.DETECTORS_INDEX);
+            IndexUtils.waitForActiveShard(
+                    TransportIndexDetectorAction.this.client,
+                    Detector.DETECTORS_INDEX,
+                    new ActionListener<>() {
+                        @Override
+                        public void onResponse(Void unused) {
+                            try {
+                                AsyncIndexDetectorsAction.this.prepareDetectorIndexing();
+                            } catch (Exception e) {
+                                log.debug("detector index creation failed", e);
+                                AsyncIndexDetectorsAction.this.onFailures(e);
+                            }
+                        }
+
+                        @Override
+                        public void onFailure(Exception e) {
+                            log.error(
+                                    "Failed waiting for {} shards to become active", Detector.DETECTORS_INDEX, e);
                             AsyncIndexDetectorsAction.this.onFailures(e);
                         }
                     });
@@ -2555,7 +2594,7 @@ public class TransportIndexDetectorAction
                                 ruleFieldNames.clear();
                             }
                             AsyncIndexDetectorsAction.this.upsertMonitorQueries(
-                                    enabledQueries, detector, listener, ruleFieldNames, logIndex);
+                                    enabledQueries, detector, listener, ruleFieldNames);
                         }
 
                         @Override
@@ -2570,8 +2609,7 @@ public class TransportIndexDetectorAction
                 List<Pair<String, Rule>> queries,
                 Detector detector,
                 ActionListener<List<IndexMonitorResponse>> listener,
-                Set<String> ruleFieldNames,
-                String logIndex) {
+                Set<String> ruleFieldNames) {
             if (this.request.getMethod() == Method.POST || detector.getMonitorIds().isEmpty()) {
                 TransportIndexDetectorAction.this.createMonitorFromQueries(
                         queries,
