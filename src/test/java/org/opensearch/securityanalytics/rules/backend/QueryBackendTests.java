@@ -883,7 +883,7 @@ public class QueryBackendTests extends OpenSearchTestCase {
                                         + "                    fieldA: value1\n"
                                         + "                condition: not sel",
                                 false));
-        Assert.assertEquals("(NOT fieldA: \"value1\" AND _exists_: fieldA)", queries.get(0).toString());
+        Assert.assertEquals("(NOT fieldA: \"value1\")", queries.get(0).toString());
     }
 
     public void testConvertNotWithParenthesis() throws IOException, SigmaError, CompositeSigmaErrors {
@@ -909,7 +909,7 @@ public class QueryBackendTests extends OpenSearchTestCase {
                                         + "                condition: not (sel1 or sel2)",
                                 false));
         Assert.assertEquals(
-                "(((NOT Opcode: \"Info\" AND _exists_: Opcode) AND (NOT Severity: \"value2\" AND _exists_: Severity)))",
+                "(((NOT Opcode: \"Info\") AND (NOT Severity: \"value2\")))",
                 queries.get(0).toString());
     }
 
@@ -944,9 +944,9 @@ public class QueryBackendTests extends OpenSearchTestCase {
                                         + "                condition: selection1 and not filter and not fp1_igfx",
                                 false));
         Assert.assertEquals(
-                "((CommandLine: *.cpl) AND ((((NOT CommandLine: *\\\\System32\\\\* AND _exists_: CommandLine) AND "
-                        + "(NOT CommandLine: *%System%* AND _exists_: CommandLine))))) AND ((((NOT CommandLine: *regsvr32\\ * AND _exists_: CommandLine) OR "
-                        + "(NOT CommandLine: *\\ \\/s\\ * AND _exists_: CommandLine) OR (NOT CommandLine: *igfxCPL.cpl* AND _exists_: CommandLine))))",
+                "((CommandLine: *.cpl) AND ((((NOT CommandLine: *\\\\System32\\\\*) AND "
+                        + "(NOT CommandLine: *%System%*))))) AND ((((NOT CommandLine: *regsvr32\\ *) OR "
+                        + "(NOT CommandLine: *\\ \\/s\\ *) OR (NOT CommandLine: *igfxCPL.cpl*))))",
                 queries.get(0).toString());
     }
 
@@ -974,7 +974,7 @@ public class QueryBackendTests extends OpenSearchTestCase {
                                         + "                condition: selection and not filter",
                                 false));
         Assert.assertEquals(
-                "((EventType: \"SetValue\") AND (TargetObject: *\\\\Software\\\\Microsoft\\\\WAB\\\\DLLPath)) AND ((NOT Details: \"%CommonProgramFiles%\\\\System\\\\wab32.dll\" AND _exists_: Details))",
+                "((EventType: \"SetValue\") AND (TargetObject: *\\\\Software\\\\Microsoft\\\\WAB\\\\DLLPath)) AND ((NOT Details: \"%CommonProgramFiles%\\\\System\\\\wab32.dll\"))",
                 queries.get(0).toString());
     }
 
@@ -1004,7 +1004,7 @@ public class QueryBackendTests extends OpenSearchTestCase {
                                         + "                condition: not sel1 or sel3",
                                 false));
         Assert.assertEquals(
-                "((((NOT field1: \"valueA1\" AND _exists_: field1) OR (NOT field2: \"valueA2\" AND _exists_: field2) OR (NOT field3: \"valueA3\" AND _exists_: field3)))) OR ((resp_mime_types: *dosexec*) OR (c-uri: *.exe))",
+                "((((NOT field1: \"valueA1\") OR (NOT field2: \"valueA2\") OR (NOT field3: \"valueA3\")))) OR ((resp_mime_types: *dosexec*) OR (c-uri: *.exe))",
                 queries.get(0).toString());
     }
 
@@ -1031,7 +1031,7 @@ public class QueryBackendTests extends OpenSearchTestCase {
                                         + "                condition: not sel1 and not sel2",
                                 false));
         Assert.assertEquals(
-                "((NOT field1: 1 AND _exists_: field1)) AND ((NOT field2: true AND _exists_: field2))",
+                "((NOT field1: 1)) AND ((NOT field2: true))",
                 queries.get(0).toString());
     }
 
@@ -1058,7 +1058,7 @@ public class QueryBackendTests extends OpenSearchTestCase {
                                         + "                condition: not sel1",
                                 false));
         Assert.assertEquals(
-                "(NOT fieldA: (NOT [* TO *]) AND _exists_: fieldA)", queries.get(0).toString());
+                "(NOT fieldA: (NOT [* TO *]))", queries.get(0).toString());
     }
 
     public void testConvertNotWithKeywords() throws IOException, SigmaError, CompositeSigmaErrors {
@@ -1116,7 +1116,7 @@ public class QueryBackendTests extends OpenSearchTestCase {
                                         + "                condition: (sel1 or sel2) and not (sel3 and sel4)",
                                 false));
         Assert.assertEquals(
-                "((fieldA: \"value1\") OR (mappedB: \"value2\")) AND ((((NOT fieldC: \"value4\" AND _exists_: fieldC) OR (NOT fieldD: \"value5\" AND _exists_: fieldD))))",
+                "((fieldA: \"value1\") OR (mappedB: \"value2\")) AND ((((NOT fieldC: \"value4\") OR (NOT fieldD: \"value5\"))))",
                 queries.get(0).toString());
     }
 
@@ -1279,9 +1279,9 @@ public class QueryBackendTests extends OpenSearchTestCase {
                                         + "    - attack.s0190",
                                 false));
         Assert.assertEquals(
-                "(c-useragent: Microsoft\\ BITS\\/*) AND ((((NOT r-dns: *.com AND _exists_: r-dns)"
-                        + " AND (NOT r-dns: *.net AND _exists_: r-dns) AND (NOT r-dns: *.org AND"
-                        + " _exists_: r-dns) AND (NOT r-dns: *.scdn.co AND _exists_: r-dns))))",
+                "(c-useragent: Microsoft\\ BITS\\/*) AND ((((NOT r-dns: *.com)"
+                        + " AND (NOT r-dns: *.net) AND (NOT r-dns: *.org)"
+                        + " AND (NOT r-dns: *.scdn.co))))",
                 queries.get(0).toString());
     }
 
@@ -1642,6 +1642,59 @@ public class QueryBackendTests extends OpenSearchTestCase {
     }
 
     /**
+     * Sigma reads {@code not filter} as true whenever the filter does not match, and a filter on a
+     * field the document does not carry does not match. Requiring the field to exist drops exactly
+     * the events the filter is meant to keep: the rule for uncategorized alerts would need a
+     * category.
+     */
+    public void testConvertNotDoesNotRequireTheFilteredFieldToExist()
+            throws IOException, SigmaError, CompositeSigmaErrors {
+        OSQueryBackend queryBackend = testBackend();
+        List<Object> queries =
+                queryBackend.convertRule(
+                        SigmaRule.fromYaml(
+                                ruleWith(
+                                        "                selection:\n"
+                                                + "                    fieldA: alert\n"
+                                                + "                filter_known:\n"
+                                                + "                    fieldB|contains:\n"
+                                                + "                        - 'Trojan'\n"
+                                                + "                        - 'Malware'\n",
+                                        "selection and not filter_known"),
+                                false));
+
+        Assert.assertEquals(
+                "(fieldA: \"alert\") AND ((((NOT mappedB: *Trojan*) AND (NOT mappedB: *Malware*))))",
+                queries.get(0).toString());
+    }
+
+    /**
+     * No negated value carries an existence requirement, whatever its type: a string, a number, a
+     * boolean, a regular expression, a range or a null all compile to the bare negation.
+     */
+    public void testConvertNotNeverEmitsAnExistenceGuard()
+            throws IOException, SigmaError, CompositeSigmaErrors {
+        OSQueryBackend queryBackend = testBackend();
+        List<Object> queries =
+                queryBackend.convertRule(
+                        SigmaRule.fromYaml(
+                                ruleWith(
+                                        "                selection:\n"
+                                                + "                    fieldA: valueA\n"
+                                                + "                filter:\n"
+                                                + "                    fieldC: value1\n"
+                                                + "                    fieldD: 1\n"
+                                                + "                    fieldE: true\n"
+                                                + "                    fieldF|re: 'pattern'\n"
+                                                + "                    fieldG|gte: 123\n"
+                                                + "                    fieldH: null\n",
+                                        "selection and not filter"),
+                                false));
+
+        Assert.assertFalse(queries.get(0).toString().contains("_exists_"));
+    }
+
+    /**
      * Lucene's regexp is implicitly anchored to the whole term, so a leading {@code ^} has to become
      * the absence of leading padding rather than a literal caret to match.
      */
@@ -1688,7 +1741,7 @@ public class QueryBackendTests extends OpenSearchTestCase {
                                 ruleWith(
                                         "                sel:\n" + "                    fieldA|gte: 123\n", "not sel"),
                                 false));
-        Assert.assertEquals("(NOT fieldA: [123 TO *] AND _exists_: fieldA)", queries.get(0).toString());
+        Assert.assertEquals("(NOT fieldA: [123 TO *])", queries.get(0).toString());
     }
 
     /**
