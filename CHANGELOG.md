@@ -65,6 +65,7 @@
 - Fix `not <field>: '*'` filters never matching, so a rule cannot detect a missing field [(#1518)](https://github.com/wazuh/wazuh-indexer-plugins/issues/1518)
 - [BUG] Log threat detector enable/disable transitions and the account that requested them [(#1531)](https://github.com/wazuh/wazuh-indexer-plugins/issues/1531)
 - Recovering from an indexer write outage writes the same finding eleven times, with nothing to deduplicate it [(#1885)](https://github.com/wazuh/wazuh-indexer/issues/1885)
+- [BUG] Sigma `|re` anchors and numeric comparison modifiers compile to queries that never match [(#335)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/335)
 
 ## Prior versions
 - []()
