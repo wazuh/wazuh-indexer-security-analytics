@@ -41,6 +41,15 @@ public class SigmaModifierTests extends OpenSearchTestCase {
         Assert.assertTrue(dummyPlainModifier().typeCheck(Either.left(new SigmaString("foobar"))));
     }
 
+    public void testTypecheckPlainApply()
+            throws SigmaRegularExpressionError, SigmaValueError, SigmaModifierError {
+        List<SigmaType> values = dummyPlainModifier().apply(Either.left(new SigmaString("foobar")));
+        Assert.assertEquals(1, values.size());
+        SigmaType first = values.get(0);
+        Assert.assertTrue(first instanceof SigmaString);
+        Assert.assertEquals("", first.toString());
+    }
+
     public void testTypecheckPlainWrong()
             throws SigmaRegularExpressionError, SigmaValueError, SigmaModifierError {
         Assert.assertFalse(dummyPlainModifier().typeCheck(Either.left(new SigmaNumber(123))));

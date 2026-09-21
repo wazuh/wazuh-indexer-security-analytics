@@ -165,6 +165,6 @@ public class ThreatIntelFeedData implements Writeable, ToXContentObject {
 
     @Override
     public int hashCode() {
-        return Objects.hash();
+        return Objects.hash(iocType, iocValue, feedId);
     }
 }

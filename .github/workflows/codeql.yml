@@ -109,7 +109,7 @@ jobs:
             m2-common-utils-${{ github.ref_name }}-${{ needs.branches.outputs.common_utils_plugin_ref }}-${{ needs.branches.outputs.common_utils_sha }}-
       - name: Publish to Maven Local
         if: steps.cache-alerting.outputs.cache-hit != 'true'
-        uses: wazuh/wazuh-indexer-alerting/.github/actions/5_local_maven_publisher@5.0.0
+        uses: wazuh/wazuh-indexer-alerting/.github/actions/5_local_maven_publisher@5.0.1
         with:
           version: ${{ needs.get-version.outputs.version }}
           revision: 0

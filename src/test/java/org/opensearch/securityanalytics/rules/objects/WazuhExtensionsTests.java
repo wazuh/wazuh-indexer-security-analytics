@@ -749,6 +749,61 @@ public class WazuhExtensionsTests extends OpenSearchTestCase {
         assertErrorContaining(rule, "'name' for only some entries");
     }
 
+    /**
+     * The nested form must enforce the same positional invariant as the entry-object form above.
+     * Before this check, more ids than names was accepted silently, leaving every id past the end of
+     * the name array unnamed and, worse, pairing the earlier ids with whichever names were given.
+     */
+    public void testMitreNestedFormWithFewerNamesThanIdsIsReported() {
+        String yaml =
+                ruleWithMitreBlock(
+                        "mitre:\n"
+                                + "    technique:\n"
+                                + "        id:\n"
+                                + "            - T1059\n"
+                                + "            - T1562\n"
+                                + "        name:\n"
+                                + "            - Command and Scripting Interpreter\n");
+
+        SigmaRule rule = SigmaRule.fromYaml(yaml, true);
+        assertErrorContaining(rule, "positional");
+    }
+
+    /** More names than ids misaligns the arrays just the same, so it is reported too. */
+    public void testMitreNestedFormWithMoreNamesThanIdsIsReported() {
+        String yaml =
+                ruleWithMitreBlock(
+                        "mitre:\n"
+                                + "    technique:\n"
+                                + "        id:\n"
+                                + "            - T1059\n"
+                                + "        name:\n"
+                                + "            - Command and Scripting Interpreter\n"
+                                + "            - Impair Defenses\n");
+
+        SigmaRule rule = SigmaRule.fromYaml(yaml, true);
+        assertErrorContaining(rule, "positional");
+    }
+
+    /**
+     * Omitting {@code name} entirely is the supported way to give ids without ATT&amp;CK names, so the
+     * length check must not reject it.
+     */
+    public void testMitreNestedFormWithoutNamesIsAccepted() {
+        String yaml =
+                ruleWithMitreBlock(
+                        "mitre:\n"
+                                + "    technique:\n"
+                                + "        id:\n"
+                                + "            - T1059\n"
+                                + "            - T1562\n");
+
+        SigmaRule rule = SigmaRule.fromYaml(yaml, true);
+        Assert.assertTrue(rule.getErrors().getErrors().isEmpty());
+        Assert.assertEquals(List.of("T1059", "T1562"), rule.getMitre().getTechniqueId());
+        Assert.assertEquals(List.of(), rule.getMitre().getTechniqueName());
+    }
+
     /** An entry object without an id carries no usable ATT&amp;CK reference and must be reported. */
     public void testMitreEntryObjectWithoutIdIsReported() {
         String yaml =
