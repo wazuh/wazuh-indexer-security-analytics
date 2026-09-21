@@ -19,15 +19,24 @@ package org.opensearch.securityanalytics.transport;
 import org.apache.commons.lang3.tuple.Pair;
 import org.opensearch.OpenSearchException;
 import org.opensearch.OpenSearchStatusException;
+import org.opensearch.ResourceAlreadyExistsException;
+import org.opensearch.action.admin.cluster.health.ClusterHealthRequest;
+import org.opensearch.action.admin.cluster.health.ClusterHealthResponse;
+import org.opensearch.action.admin.indices.create.CreateIndexResponse;
 import org.opensearch.action.search.SearchRequest;
 import org.opensearch.action.search.SearchResponse;
 import org.opensearch.action.support.ActionFilters;
+import org.opensearch.action.support.ActiveShardCount;
 import org.opensearch.action.support.WriteRequest;
+import org.opensearch.cluster.health.ClusterHealthStatus;
 import org.opensearch.cluster.metadata.IndexNameExpressionResolver;
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.settings.ClusterSettings;
 import org.opensearch.common.settings.Setting;
 import org.opensearch.common.settings.Settings;
+import org.opensearch.common.unit.TimeValue;
+import org.opensearch.common.util.concurrent.OpenSearchExecutors;
+import org.opensearch.common.util.concurrent.ThreadContext;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.common.io.stream.NamedWriteableRegistry;
 import org.opensearch.core.rest.RestStatus;
@@ -36,6 +45,7 @@ import org.opensearch.index.IndexNotFoundException;
 import org.opensearch.rest.RestRequest;
 import org.opensearch.securityanalytics.action.IndexDetectorRequest;
 import org.opensearch.securityanalytics.action.IndexDetectorResponse;
+import org.opensearch.securityanalytics.config.monitors.DetectorMonitorConfig;
 import org.opensearch.securityanalytics.logtype.LogTypeService;
 import org.opensearch.securityanalytics.mapper.MapperService;
 import org.opensearch.securityanalytics.model.Detector;
@@ -51,8 +61,11 @@ import org.opensearch.securityanalytics.util.RuleIndices;
 import org.opensearch.securityanalytics.util.RuleTopicIndices;
 import org.opensearch.test.OpenSearchTestCase;
 import org.opensearch.threadpool.ThreadPool;
+import org.opensearch.transport.RemoteTransportException;
 import org.opensearch.transport.TransportService;
+import org.opensearch.transport.client.AdminClient;
 import org.opensearch.transport.client.Client;
+import org.opensearch.transport.client.ClusterAdminClient;
 
 import java.lang.reflect.Method;
 import java.time.Instant;
@@ -63,6 +76,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+
+import org.mockito.ArgumentCaptor;
 
 import static org.opensearch.securityanalytics.TestHelpers.randomDetectorWithInputs;
 import static org.mockito.ArgumentMatchers.any;
@@ -89,10 +104,21 @@ public class TransportIndexDetectorActionTests extends OpenSearchTestCase {
     }
 
     private TransportIndexDetectorAction createAction(Client client) {
+        return this.createAction(mock(DetectorIndices.class), mock(LogTypeService.class), client);
+    }
+
+    private TransportIndexDetectorAction createAction(
+            DetectorIndices detectorIndices, LogTypeService logTypeService, Client client) {
         TransportService transportService = mock(TransportService.class);
         ClusterService clusterService = mock(ClusterService.class);
-        DetectorIndices detectorIndices = mock(DetectorIndices.class);
         ThreadPool threadPool = mock(ThreadPool.class);
+
+        // AsyncIndexDetectorsAction.start() stashes the thread context, and finishHim() hands the
+        // outcome to the generic pool; run it inline so the listener is settled before the test
+        // asserts on it.
+        when(threadPool.getThreadContext()).thenReturn(new ThreadContext(Settings.EMPTY));
+        when(threadPool.executor(any(String.class)))
+                .thenReturn(OpenSearchExecutors.newDirectExecutorService());
 
         Set<Setting<?>> settings =
                 new HashSet<>(
@@ -118,7 +144,7 @@ public class TransportIndexDetectorActionTests extends OpenSearchTestCase {
                 clusterService,
                 Settings.EMPTY,
                 mock(NamedWriteableRegistry.class),
-                mock(LogTypeService.class),
+                logTypeService,
                 mock(IndexNameExpressionResolver.class),
                 mock(ExceptionChecker.class));
     }
@@ -130,6 +156,88 @@ public class TransportIndexDetectorActionTests extends OpenSearchTestCase {
         Detector detector = randomDetectorWithInputs(List.of(input));
         return new IndexDetectorRequest(
                 "", WriteRequest.RefreshPolicy.IMMEDIATE, RestRequest.Method.POST, detector);
+    }
+
+    /**
+     * Stubs the cluster health call behind {@code client.admin().cluster()} and hands back the
+     * ClusterAdminClient so a test can assert on the request that was issued.
+     */
+    @SuppressWarnings("unchecked")
+    private static ClusterAdminClient stubClusterHealth(Client client, Exception failure) {
+        AdminClient adminClient = mock(AdminClient.class);
+        ClusterAdminClient clusterAdminClient = mock(ClusterAdminClient.class);
+        when(client.admin()).thenReturn(adminClient);
+        when(adminClient.cluster()).thenReturn(clusterAdminClient);
+
+        ClusterHealthResponse healthResponse = mock(ClusterHealthResponse.class);
+        when(healthResponse.getStatus()).thenReturn(ClusterHealthStatus.GREEN);
+        doAnswer(
+                        invocation -> {
+                            ActionListener<ClusterHealthResponse> healthListener = invocation.getArgument(1);
+                            if (failure == null) {
+                                healthListener.onResponse(healthResponse);
+                            } else {
+                                healthListener.onFailure(failure);
+                            }
+                            return null;
+                        })
+                .when(clusterAdminClient)
+                .health(any(ClusterHealthRequest.class), any(ActionListener.class));
+        return clusterAdminClient;
+    }
+
+    /**
+     * Wires a detector config index that is always reported missing and always loses the create race.
+     */
+    @SuppressWarnings("unchecked")
+    private static DetectorIndices detectorIndicesLosingCreateRace() throws Exception {
+        DetectorIndices detectorIndices = mock(DetectorIndices.class);
+        when(detectorIndices.detectorIndexExists()).thenReturn(false);
+        // Shaped like the real thing: the cluster manager's ResourceAlreadyExistsException reaches
+        // the requesting node wrapped in a RemoteTransportException.
+        doAnswer(
+                        invocation -> {
+                            invocation
+                                    .<ActionListener<CreateIndexResponse>>getArgument(0)
+                                    .onFailure(
+                                            new RemoteTransportException(
+                                                    "[node-1][127.0.0.1:9300][indices:admin/create]",
+                                                    new ResourceAlreadyExistsException(Detector.DETECTORS_INDEX)));
+                            return null;
+                        })
+                .when(detectorIndices)
+                .initDetectorIndex(any(ActionListener.class));
+        return detectorIndices;
+    }
+
+    /** A LogTypeService that reports every log type as known. */
+    @SuppressWarnings("unchecked")
+    private static LogTypeService logTypeServiceAcceptingEveryType() {
+        LogTypeService logTypeService = mock(LogTypeService.class);
+        doAnswer(
+                        invocation -> {
+                            invocation.<ActionListener<Boolean>>getArgument(1).onResponse(true);
+                            return null;
+                        })
+                .when(logTypeService)
+                .doesLogTypeExist(any(String.class), any(ActionListener.class));
+        return logTypeService;
+    }
+
+    /** A client whose source-existence search always succeeds. */
+    @SuppressWarnings("unchecked")
+    private static Client clientWithSuccessfulSourceCheck() {
+        Client client = mock(Client.class);
+        SearchResponse searchResponse = mock(SearchResponse.class);
+        when(searchResponse.getTook()).thenReturn(TimeValue.timeValueMillis(1));
+        doAnswer(
+                        invocation -> {
+                            invocation.<ActionListener<SearchResponse>>getArgument(1).onResponse(searchResponse);
+                            return null;
+                        })
+                .when(client)
+                .search(any(SearchRequest.class), any(ActionListener.class));
+        return client;
     }
 
     private static void invokeCheckIndicesAndExecute(
@@ -389,5 +497,65 @@ public class TransportIndexDetectorActionTests extends OpenSearchTestCase {
         OpenSearchException ex = (OpenSearchException) listener.failure;
         assertEquals(RestStatus.NOT_FOUND, ex.status());
         assertTrue(ex.getMessage().contains("Indices not found wazuh-events-v5-missing"));
+    }
+
+    /**
+     * detectorIndexExists() reads the local cluster state, so a batch of detector creates issued
+     * together can all decide the config index is missing and all try to create it. Every loser of
+     * that race used to be failed outright with the ResourceAlreadyExistsException, which silently
+     * cost the deployment a detector even though the index it was waiting for is right there. The
+     * request must carry on indexing instead.
+     */
+    @SuppressWarnings("unchecked")
+    public void testStart_detectorsConfigIndexCreatedConcurrently_stillIndexesTheDetector()
+            throws Exception {
+        Client client = clientWithSuccessfulSourceCheck();
+        ClusterAdminClient clusterAdminClient = stubClusterHealth(client, null);
+
+        TransportIndexDetectorAction action =
+                createAction(detectorIndicesLosingCreateRace(), logTypeServiceAcceptingEveryType(), client);
+        IndexDetectorRequest request = requestWithIndices("wazuh-events-v5-test");
+        CapturingListener listener = new CapturingListener();
+
+        invokeCheckIndicesAndExecute(action, request, listener);
+
+        // createDetector() stamps the monitor indices onto the detector before it does anything else,
+        // so seeing them is proof the request got past the create-index race rather than being
+        // failed on it.
+        String ruleTopic = request.getDetector().getDetectorType();
+        assertEquals(
+                DetectorMonitorConfig.getAlertsIndex(ruleTopic), request.getDetector().getAlertsIndex());
+        assertEquals(
+                DetectorMonitorConfig.getFindingsIndex(ruleTopic),
+                request.getDetector().getFindingsIndex());
+        assertNull("the create-index race must not surface as a detector failure", listener.failure);
+
+        // Losing the race only tells us the index exists at the cluster manager. Its shards may not
+        // be assigned on this node yet, and prepareDetectorIndexing() reads the index straight away,
+        // so the request has to wait for an active shard first or it dies on "no shard available".
+        ArgumentCaptor<ClusterHealthRequest> healthRequest =
+                ArgumentCaptor.forClass(ClusterHealthRequest.class);
+        verify(clusterAdminClient).health(healthRequest.capture(), any(ActionListener.class));
+        assertArrayEquals(new String[] {Detector.DETECTORS_INDEX}, healthRequest.getValue().indices());
+        assertEquals(ActiveShardCount.ONE, healthRequest.getValue().waitForActiveShards());
+    }
+
+    /**
+     * The shard wait is not allowed to swallow its own failure: if no shard ever becomes active the
+     * request must fail rather than fall through to a read that cannot succeed.
+     */
+    @SuppressWarnings("unchecked")
+    public void testStart_shardWaitFails_failsTheRequest() throws Exception {
+        Client client = clientWithSuccessfulSourceCheck();
+        stubClusterHealth(client, new OpenSearchException("cluster health timed out"));
+
+        TransportIndexDetectorAction action =
+                createAction(detectorIndicesLosingCreateRace(), logTypeServiceAcceptingEveryType(), client);
+        CapturingListener listener = new CapturingListener();
+
+        invokeCheckIndicesAndExecute(action, requestWithIndices("wazuh-events-v5-test"), listener);
+
+        assertNotNull(listener.failure);
+        assertTrue(listener.failure.getMessage().contains("cluster health timed out"));
     }
 }

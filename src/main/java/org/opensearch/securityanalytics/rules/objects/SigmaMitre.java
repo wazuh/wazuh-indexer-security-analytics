@@ -228,9 +228,26 @@ public class SigmaMitre {
                                 + "; expected 'id' and/or 'name'");
                 return Category.EMPTY;
             }
-            return new Category(
-                    toStringList("mitre." + category + ".id", categoryMap.get("id"), problems),
-                    toStringList("mitre." + category + ".name", categoryMap.get("name"), problems));
+            int problemsBefore = problems.size();
+            List<String> ids =
+                    toStringList("mitre." + category + ".id", categoryMap.get("id"), problems);
+            List<String> names =
+                    toStringList("mitre." + category + ".name", categoryMap.get("name"), problems);
+            // Only meaningful when both lists were read cleanly: toStringList drops the elements it
+            // reports, so a length difference after a problem says nothing about what the rule wrote.
+            if (problems.size() == problemsBefore && !names.isEmpty() && names.size() != ids.size()) {
+                problems.add(
+                        "'mitre."
+                                + category
+                                + "' supplies "
+                                + ids.size()
+                                + " 'id' value(s) and "
+                                + names.size()
+                                + " 'name' value(s); the ID and name arrays are positional, so 'name' must be"
+                                + " empty or hold one entry per 'id'");
+                return Category.EMPTY;
+            }
+            return new Category(ids, names);
         }
 
         if (value instanceof List) {
