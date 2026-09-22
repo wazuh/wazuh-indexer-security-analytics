@@ -64,7 +64,12 @@ dependencies {
 def projectName = 'wazuh-indexer-security-analytics-commons'
 def projectDescription = 'Wazuh Indexer Security Analytics Common Library'
 def projectPath = System.getProperty('projectPath', 'com.wazuh')
-def wazuh_version = System.getProperty('wazuh.version', '5.0.0')
+// Reads the same `version` system property as the root build.gradle, so a single
+// -Dversion drives both coordinates, and falls back to VERSION.json when it is not
+// passed. It used to read a `wazuh.version` property that nothing ever set, which
+// pinned the published POM to a literal regardless of what the build was asked for.
+def wazuh_version = System.getProperty('version') ?: new groovy.json.JsonSlurper()
+        .parse(new File(projectDir, '../VERSION.json')).version
 def revision = System.getProperty('revision', '0')
 
 test {
