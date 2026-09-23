@@ -35,7 +35,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -109,41 +108,16 @@ public abstract class QueryBackend {
         } else if (conditionType.isConditionNOT()) {
             return this.convertConditionNot(conditionType.getConditionNOT(), applyDeMorgans);
         } else if (conditionType.isEqualsValueExpression()) {
-            // check to see if conditionNot is an ancestor of the parse tree, otherwise return as normal
-            if (isConditionNot) {
-                return this.convertConditionFieldEqValNot(conditionType, isConditionNot, applyDeMorgans);
-            } else {
-                return this.convertConditionFieldEqVal(conditionType.getEqualsValueExpression(), isConditionNot, applyDeMorgans);
-            }
+            // A negated leaf converts exactly like a positive one: De Morgan's rewrite has already
+            // turned it into its negated form. Sigma reads `not filter` as true whenever the filter
+            // does not match, and a filter on a field the document does not carry does not match, so
+            // nothing further is required of the document (wazuh/wazuh-indexer-plugins#1527).
+            return this.convertConditionFieldEqVal(conditionType.getEqualsValueExpression(), isConditionNot, applyDeMorgans);
         } else if (conditionType.isValueExpression()) {
             return this.convertConditionVal(conditionType.getValueExpression(), applyDeMorgans);
         } else {
             throw new IllegalArgumentException("Unexpected data type in condition parse tree");
         }
-    }
-
-    public String convertConditionFieldEqValNot(ConditionType conditionType, boolean isConditionNot, boolean applyDeMorgans) throws SigmaValueError {
-        String baseString = this.convertConditionFieldEqVal(conditionType.getEqualsValueExpression(), isConditionNot, applyDeMorgans).toString();
-        if (conditionType.getEqualsValueExpression().getValue() instanceof SigmaExists) {
-            return baseString;
-        }
-        // A wildcard-only value is itself an existence test, so `not <field>: '*'` already means
-        // "the field is absent". Guarding it with "and the field exists" makes it unsatisfiable and
-        // the rule can never match (wazuh/wazuh-indexer-plugins#1518).
-        if (isWildcardOnly(conditionType.getEqualsValueExpression().getValue())) {
-            return baseString;
-        }
-        String addExists = this.convertExistsField(conditionType.getEqualsValueExpression()).toString();
-        return String.format(Locale.getDefault(), ("%s" + "%s"), baseString, addExists);
-    }
-
-    /** Whether a detection value is made up of wildcards only, e.g. {@code field: '*'}. */
-    private static boolean isWildcardOnly(SigmaType value) {
-        if (!(value instanceof SigmaString)) {
-            return false;
-        }
-        String original = ((SigmaString) value).getOriginal();
-        return original != null && !original.isEmpty() && original.chars().allMatch(c -> c == '*');
     }
 
     public boolean decideConvertConditionAsInExpression(Either<ConditionAND, ConditionOR> condition) {
@@ -240,8 +214,6 @@ public abstract class QueryBackend {
     public abstract Object convertConditionFieldEqValNull(ConditionFieldEqualsValueExpression condition, boolean applyDeMorgans);
 
     public abstract Object convertConditionFieldEqValExists(ConditionFieldEqualsValueExpression condition, boolean applyDeMorgans);
-
-    public abstract Object convertExistsField(ConditionFieldEqualsValueExpression condition);
 
         /*    public abstract Object convertConditionFieldEqValQueryExpr(ConditionFieldEqualsValueExpression condition);*/
 

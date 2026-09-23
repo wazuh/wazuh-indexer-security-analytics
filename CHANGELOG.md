@@ -66,6 +66,7 @@
 - [BUG] Log threat detector enable/disable transitions and the account that requested them [(#1531)](https://github.com/wazuh/wazuh-indexer-plugins/issues/1531)
 - Recovering from an indexer write outage writes the same finding eleven times, with nothing to deduplicate it [(#1885)](https://github.com/wazuh/wazuh-indexer/issues/1885)
 - [BUG] Sigma `|re` anchors and numeric comparison modifiers compile to queries that never match [(#335)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/335)
+- A negated filter requires the field to exist, so the rule for uncategorized alerts needs a category [(#1527)](https://github.com/wazuh/wazuh-indexer-plugins/issues/1527)
 
 ## Prior versions
 - []()
