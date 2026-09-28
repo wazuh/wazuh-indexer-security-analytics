@@ -109,10 +109,8 @@ public class WTransportDeleteSpaceResourcesActionTests extends OpenSearchTestCas
     }
 
     /**
-     * Regression test for issue #352. Selecting detectors by {@code detector.detector_type} deleted
-     * the detectors of other spaces, because that field holds the integration name and a name is only
-     * unique within a space. A detector is stored under its integration's document id, so the id is
-     * the only key that stays within the space being deleted.
+     * A detector is stored under its integration's document id. Matching on {@code
+     * detector.detector_type} instead reached other spaces, since a name is only unique within one.
      */
     public void testDetectorsByIntegrationIds_selectsByDocumentId() {
         List<String> integrationIds =

@@ -23,9 +23,8 @@ import org.opensearch.index.query.TermQueryBuilder;
 import org.opensearch.test.OpenSearchTestCase;
 
 /**
- * Regression tests for issue #352. The guards that block deleting or renaming a log type looked its
- * rules and detectors up by name alone. A name is only unique within a space, so another space's
- * copy blocked the operation: both queries must be scoped to the space being operated on.
+ * The guards that block deleting or renaming a log type looked its rules and detectors up by name
+ * alone, so another space's copy blocked the operation. Both queries must be scoped to their space.
  */
 public class LogTypeScopedQueriesTests extends OpenSearchTestCase {
 
