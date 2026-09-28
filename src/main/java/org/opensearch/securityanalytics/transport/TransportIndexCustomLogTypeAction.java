@@ -16,7 +16,6 @@
  */
 package org.opensearch.securityanalytics.transport;
 
-import org.apache.lucene.search.join.ScoreMode;
 import org.opensearch.OpenSearchStatusException;
 import org.opensearch.action.ActionRunnable;
 import org.opensearch.action.admin.indices.create.CreateIndexResponse;
@@ -331,6 +330,7 @@ public class TransportIndexCustomLogTypeAction
                                     if (detectorIndices.detectorIndexExists()) {
                                         searchDetectors(
                                                 existingLogType.getName(),
+                                                existingLogType.getSpace(),
                                                 new ActionListener<>() {
                                                     @Override
                                                     public void onResponse(SearchResponse response) {
@@ -516,6 +516,7 @@ public class TransportIndexCustomLogTypeAction
             if (ruleIndices.ruleIndexExists(false)) {
                 ruleIndices.searchRules(
                         existingLogType.getName(),
+                        existingLogType.getSpace(),
                         new ActionListener<>() {
                             @Override
                             public void onResponse(SearchResponse response) {
@@ -616,13 +617,14 @@ public class TransportIndexCustomLogTypeAction
             client.search(searchRequest, listener);
         }
 
-        private void searchDetectors(String logTypeName, ActionListener<SearchResponse> listener) {
-            QueryBuilder queryBuilder =
-                    QueryBuilders.nestedQuery(
-                            "detector",
-                            QueryBuilders.boolQuery()
-                                    .must(QueryBuilders.matchQuery("detector.detector_type", logTypeName)),
-                            ScoreMode.Avg);
+        /**
+         * Searches the detectors of a log type within one space. A detector references its log type by
+         * name, and its {@code source} is the only notion of space it carries: only the standard and
+         * custom spaces own detectors, so draft and test match nothing.
+         */
+        private void searchDetectors(
+                String logTypeName, String space, ActionListener<SearchResponse> listener) {
+            QueryBuilder queryBuilder = DetectorIndices.detectorsByLogTypeAndSpace(logTypeName, space);
 
             SearchRequest searchRequest =
                     new SearchRequest(Detector.DETECTORS_INDEX)

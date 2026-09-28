@@ -167,10 +167,10 @@ public class WTransportDeleteSpaceResourcesAction
     }
 
     /**
-     * Finds and deletes the detectors owned by the given integrations. A detector is stored under its
-     * integration's document id, so only the standard space has any: no other space ever owns one.
-     * Matching by {@code detector.detector_type} instead would reach other spaces, since that field
-     * holds the integration name and a name is only unique within a space.
+     * Finds and deletes the detectors owned by the given integrations. Only a standard integration
+     * owns a detector, and that detector is stored under the integration's document id, so no other
+     * space matches. Matching by {@code detector.detector_type} instead would reach other spaces,
+     * since that field holds the integration name and a name is only unique within a space.
      *
      * <p>Detectors are deleted sequentially via {@link DeleteDetectorAction} to ensure proper
      * resource cleanup (alerts, findings, etc.).
@@ -218,7 +218,8 @@ public class WTransportDeleteSpaceResourcesAction
             return;
         }
 
-        // Standard detectors are protected from deletion; only the standard space may bypass that.
+        // Standard detectors are protected from deletion, and only the standard space may bypass
+        // that. The query above cannot reach one from another space, so this guards a regression.
         boolean internalCaller = STANDARD_SPACE.equals(space);
 
         String id = iterator.next();
