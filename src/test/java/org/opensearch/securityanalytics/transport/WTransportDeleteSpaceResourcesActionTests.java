@@ -19,9 +19,12 @@ package org.opensearch.securityanalytics.transport;
 import org.opensearch.OpenSearchException;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.index.IndexNotFoundException;
+import org.opensearch.index.query.IdsQueryBuilder;
+import org.opensearch.index.query.QueryBuilder;
 import org.opensearch.test.OpenSearchTestCase;
 
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -103,5 +106,24 @@ public class WTransportDeleteSpaceResourcesActionTests extends OpenSearchTestCas
         assertNotNull(delivered);
         assertTrue(
                 "expected Integer but got " + delivered.getClass().getName(), delivered instanceof Integer);
+    }
+
+    /**
+     * Regression test for issue #352. Selecting detectors by {@code detector.detector_type} deleted
+     * the detectors of other spaces, because that field holds the integration name and a name is only
+     * unique within a space. A detector is stored under its integration's document id, so the id is
+     * the only key that stays within the space being deleted.
+     */
+    public void testDetectorsByIntegrationIds_selectsByDocumentId() {
+        List<String> integrationIds =
+                List.of("a70773ab-c36c-5d3b-a533-66ddcc5412e2", "52016f10-75c6-556b-ae9c-120ab8860005");
+
+        QueryBuilder query =
+                WTransportDeleteSpaceResourcesAction.detectorsByIntegrationIds(integrationIds);
+
+        assertTrue(
+                "expected an ids query but got " + query.getClass().getName(),
+                query instanceof IdsQueryBuilder);
+        assertEquals(new HashSet<>(integrationIds), ((IdsQueryBuilder) query).ids());
     }
 }

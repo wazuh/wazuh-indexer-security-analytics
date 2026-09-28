@@ -909,8 +909,7 @@ public class QueryBackendTests extends OpenSearchTestCase {
                                         + "                condition: not (sel1 or sel2)",
                                 false));
         Assert.assertEquals(
-                "(((NOT Opcode: \"Info\") AND (NOT Severity: \"value2\")))",
-                queries.get(0).toString());
+                "(((NOT Opcode: \"Info\") AND (NOT Severity: \"value2\")))", queries.get(0).toString());
     }
 
     public void testConvertNotComplicatedExpression()
@@ -1030,9 +1029,7 @@ public class QueryBackendTests extends OpenSearchTestCase {
                                         + "                    field2: true\n"
                                         + "                condition: not sel1 and not sel2",
                                 false));
-        Assert.assertEquals(
-                "((NOT field1: 1)) AND ((NOT field2: true))",
-                queries.get(0).toString());
+        Assert.assertEquals("((NOT field1: 1)) AND ((NOT field2: true))", queries.get(0).toString());
     }
 
     public void testConvertNotWithNull() throws IOException, SigmaError, CompositeSigmaErrors {
@@ -1057,8 +1054,7 @@ public class QueryBackendTests extends OpenSearchTestCase {
                                         + "                    fieldB: true\n"
                                         + "                condition: not sel1",
                                 false));
-        Assert.assertEquals(
-                "(NOT fieldA: (NOT [* TO *]))", queries.get(0).toString());
+        Assert.assertEquals("(NOT fieldA: (NOT [* TO *]))", queries.get(0).toString());
     }
 
     public void testConvertNotWithKeywords() throws IOException, SigmaError, CompositeSigmaErrors {

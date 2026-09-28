@@ -18,7 +18,6 @@ package org.opensearch.securityanalytics.transport;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.apache.lucene.search.join.ScoreMode;
 import org.opensearch.action.bulk.BulkItemResponse;
 import org.opensearch.action.bulk.BulkRequest;
 import org.opensearch.action.delete.DeleteRequest;
@@ -29,6 +28,7 @@ import org.opensearch.action.support.WriteRequest;
 import org.opensearch.common.inject.Inject;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.index.IndexNotFoundException;
+import org.opensearch.index.query.QueryBuilder;
 import org.opensearch.index.query.QueryBuilders;
 import org.opensearch.search.SearchHit;
 import org.opensearch.search.builder.SearchSourceBuilder;
@@ -76,10 +76,9 @@ public class WTransportDeleteSpaceResourcesAction
             LogManager.getLogger(WTransportDeleteSpaceResourcesAction.class);
 
     private static final String SPACE_KEYWORD_FIELD = "space.keyword";
-    private static final String DETECTOR_NESTED_PATH = "detector";
-    private static final String DETECTOR_TYPE_FIELD = "detector.detector_type";
     private static final String RULE_NESTED_PATH = "rule";
     private static final String INTEGRATION_NAME_FIELD = "name";
+    private static final String STANDARD_SPACE = "standard";
     private static final int MAX_RESULTS = 10000;
 
     private final Client client;
@@ -125,16 +124,17 @@ public class WTransportDeleteSpaceResourcesAction
             WriteRequest.RefreshPolicy refreshPolicy,
             ActionListener<WDeleteSpaceResourcesResponse> listener) {
 
-        List<String> integrationNames = new ArrayList<>();
+        List<String> integrationIds = new ArrayList<>();
         for (IntegrationInfo info : integrations) {
-            if (info.name != null && !info.name.isEmpty()) {
-                integrationNames.add(info.name);
+            if (info.id != null && !info.id.isEmpty()) {
+                integrationIds.add(info.id);
             }
         }
 
-        // Step 2: Delete detectors that reference these integrations.
+        // Step 2: Delete the detectors owned by these integrations.
         this.deleteDetectors(
-                integrationNames,
+                space,
+                integrationIds,
                 refreshPolicy,
                 ActionListener.wrap(
                         deletedDetectors ->
@@ -167,26 +167,27 @@ public class WTransportDeleteSpaceResourcesAction
     }
 
     /**
-     * Finds and deletes all detectors whose {@code detector.detector_type} matches any of the given
-     * integration names. Detectors are deleted sequentially via {@link DeleteDetectorAction} to
-     * ensure proper resource cleanup (alerts, findings, etc.).
+     * Finds and deletes the detectors owned by the given integrations. A detector is stored under its
+     * integration's document id, so only the standard space has any: no other space ever owns one.
+     * Matching by {@code detector.detector_type} instead would reach other spaces, since that field
+     * holds the integration name and a name is only unique within a space.
+     *
+     * <p>Detectors are deleted sequentially via {@link DeleteDetectorAction} to ensure proper
+     * resource cleanup (alerts, findings, etc.).
      */
     private void deleteDetectors(
-            List<String> integrationNames,
+            String space,
+            List<String> integrationIds,
             WriteRequest.RefreshPolicy refreshPolicy,
             ActionListener<Integer> listener) {
-        if (integrationNames.isEmpty()) {
+        if (integrationIds.isEmpty()) {
             listener.onResponse(0);
             return;
         }
 
         SearchSourceBuilder source =
                 new SearchSourceBuilder()
-                        .query(
-                                QueryBuilders.nestedQuery(
-                                        DETECTOR_NESTED_PATH,
-                                        QueryBuilders.termsQuery(DETECTOR_TYPE_FIELD, integrationNames),
-                                        ScoreMode.None))
+                        .query(detectorsByIntegrationIds(integrationIds))
                         .size(MAX_RESULTS)
                         .fetchSource(false);
 
@@ -196,12 +197,18 @@ public class WTransportDeleteSpaceResourcesAction
                         response -> {
                             List<String> ids = collectIds(response);
                             this.deleteDetectorsSequentially(
-                                    ids.iterator(), refreshPolicy, new AtomicInteger(0), listener);
+                                    space, ids.iterator(), refreshPolicy, new AtomicInteger(0), listener);
                         },
                         e -> resolveOrFail(e, 0, listener)));
     }
 
+    /** Builds the query selecting the detectors owned by the given integrations. */
+    static QueryBuilder detectorsByIntegrationIds(List<String> integrationIds) {
+        return QueryBuilders.idsQuery().addIds(integrationIds.toArray(new String[0]));
+    }
+
     private void deleteDetectorsSequentially(
+            String space,
             Iterator<String> iterator,
             WriteRequest.RefreshPolicy refreshPolicy,
             AtomicInteger deleted,
@@ -211,18 +218,21 @@ public class WTransportDeleteSpaceResourcesAction
             return;
         }
 
+        // Standard detectors are protected from deletion; only the standard space may bypass that.
+        boolean internalCaller = STANDARD_SPACE.equals(space);
+
         String id = iterator.next();
         this.client.execute(
                 DeleteDetectorAction.INSTANCE,
-                new DeleteDetectorRequest(id, refreshPolicy, true),
+                new DeleteDetectorRequest(id, refreshPolicy, internalCaller),
                 ActionListener.wrap(
                         response -> {
                             deleted.incrementAndGet();
-                            this.deleteDetectorsSequentially(iterator, refreshPolicy, deleted, listener);
+                            this.deleteDetectorsSequentially(space, iterator, refreshPolicy, deleted, listener);
                         },
                         e -> {
                             log.warn("Failed to delete detector [{}]: {}", id, e.getMessage());
-                            this.deleteDetectorsSequentially(iterator, refreshPolicy, deleted, listener);
+                            this.deleteDetectorsSequentially(space, iterator, refreshPolicy, deleted, listener);
                         }));
     }
 
