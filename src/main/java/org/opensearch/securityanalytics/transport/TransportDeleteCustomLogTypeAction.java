@@ -16,7 +16,6 @@
  */
 package org.opensearch.securityanalytics.transport;
 
-import org.apache.lucene.search.join.ScoreMode;
 import org.opensearch.OpenSearchStatusException;
 import org.opensearch.action.ActionRunnable;
 import org.opensearch.action.delete.DeleteRequest;
@@ -36,7 +35,6 @@ import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.rest.RestStatus;
 import org.opensearch.index.IndexNotFoundException;
 import org.opensearch.index.query.QueryBuilder;
-import org.opensearch.index.query.QueryBuilders;
 import org.opensearch.search.builder.SearchSourceBuilder;
 import org.opensearch.securityanalytics.action.DeleteCustomLogTypeAction;
 import org.opensearch.securityanalytics.action.DeleteCustomLogTypeRequest;
@@ -222,6 +220,7 @@ public class TransportDeleteCustomLogTypeAction
             if (detectorIndices.detectorIndexExists()) {
                 searchDetectors(
                         logType.getName(),
+                        logType.getSpace(),
                         new ActionListener<>() {
                             @Override
                             public void onResponse(SearchResponse response) {
@@ -264,6 +263,7 @@ public class TransportDeleteCustomLogTypeAction
             if (ruleIndices.ruleIndexExists(false)) {
                 ruleIndices.searchRules(
                         logType.getName(),
+                        logType.getSpace(),
                         new ActionListener<>() {
                             @Override
                             public void onResponse(SearchResponse response) {
@@ -339,13 +339,9 @@ public class TransportDeleteCustomLogTypeAction
                     });
         }
 
-        private void searchDetectors(String logTypeName, ActionListener<SearchResponse> listener) {
-            QueryBuilder queryBuilder =
-                    QueryBuilders.nestedQuery(
-                            "detector",
-                            QueryBuilders.boolQuery()
-                                    .must(QueryBuilders.matchQuery("detector.detector_type", logTypeName)),
-                            ScoreMode.Avg);
+        private void searchDetectors(
+                String logTypeName, String space, ActionListener<SearchResponse> listener) {
+            QueryBuilder queryBuilder = DetectorIndices.detectorsByLogTypeAndSpace(logTypeName, space);
 
             SearchRequest searchRequest =
                     new SearchRequest(Detector.DETECTORS_INDEX)
