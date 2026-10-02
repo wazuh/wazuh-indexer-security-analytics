@@ -24,6 +24,7 @@
 - Configurable resource creation limits [(#1276)](https://github.com/wazuh/wazuh-indexer-plugins/issues/1276)
 - Findings case management pt.2 [(#1334)](https://github.com/wazuh/wazuh-indexer-plugins/issues/1334)
 - Integration's mode [(#1356)](https://github.com/wazuh/wazuh-indexer-plugins/issues/1356)
+- Detection rule for sensitive files served over HTTP [(#355)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/355)
 
 ### Changed
 - Upgrade to JDK 25 [(#1341)](https://github.com/wazuh/wazuh-indexer/issues/1341)
