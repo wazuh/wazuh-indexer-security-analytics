@@ -297,9 +297,14 @@ public class RuleIndices {
         client.search(request, listener);
     }
 
-    public void searchRules(String logTypeName, ActionListener<SearchResponse> listener) {
-        QueryBuilder queryBuilder =
-                QueryBuilders.boolQuery().must(QueryBuilders.matchQuery("rule.category", logTypeName));
+    /**
+     * Searches the rules of a log type within one space. A rule references its log type by name, and
+     * a name is only unique within a space, so the space is required to avoid matching the rules of
+     * another space's log type that happens to share the name.
+     */
+    public void searchRules(
+            String logTypeName, String space, ActionListener<SearchResponse> listener) {
+        QueryBuilder queryBuilder = rulesByLogTypeAndSpace(logTypeName, space);
 
         SearchRequest searchRequest =
                 new SearchRequest(Rule.CUSTOM_RULES_INDEX)
@@ -311,6 +316,13 @@ public class RuleIndices {
                                         .size(0));
 
         client.search(searchRequest, listener);
+    }
+
+    /** Builds the query selecting the rules of a log type within one space. */
+    static QueryBuilder rulesByLogTypeAndSpace(String logTypeName, String space) {
+        return QueryBuilders.boolQuery()
+                .must(QueryBuilders.matchQuery("rule.category", logTypeName))
+                .filter(QueryBuilders.termQuery("rule." + Rule.SPACE_FIELD, space));
     }
 
     private List<String> getRules(List<Path> listOfRules) {
