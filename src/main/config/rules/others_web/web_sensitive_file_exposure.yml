@@ -1,0 +1,76 @@
+title: Web Request for Sensitive Files That Should Not Be Publicly Served
+id: 1db47b0a-e363-431c-981a-896aee29f97d
+status: experimental
+description: >
+  Detects requests for files that should never be reachable over HTTP, such as
+  environment files holding secrets, source control metadata, version control
+  backups, and package manager or cloud credentials. Default Apache and nginx
+  configurations do not block these paths, so a single request can disclose
+  source code or credentials. Responses that are not 404 are reported, because
+  a 404 means the file is absent while anything else indicates the server
+  answered for a path that should not exist.
+author: Sandiyo Christan
+date: 2026/10/02
+modified: 2026/10/02
+references:
+  - https://pentester.land/tutorials/2018/10/25/source-code-disclosure-via-exposed-git-folder.html
+  - https://owasp.org/www-project-web-security-testing-guide/stable/4-Web_Application_Security_Testing/02-Configuration_and_Deployment_Management_Testing/04-Review_Old_Backup_and_Unreferenced_Files_for_Sensitive_Information
+  - https://attack.mitre.org/techniques/T1083/
+logsource:
+  category: webserver
+detection:
+  selection_env:
+    c-uri|contains:
+      - '/.env'
+      - '/.env.'
+      - '/.envrc'
+      - '/composer.lock'
+      - '/package-lock.json'
+      - '/yarn.lock'
+  selection_vcs:
+    c-uri|contains:
+      - '/.git/'
+      - '/.svn/'
+      - '/.hg/'
+      - '/.bzr/'
+  selection_credentials:
+    c-uri|contains:
+      - '/.htpasswd'
+      - '/.netrc'
+      - '/.npmrc'
+      - '/.pypirc'
+      - '/.aws/credentials'
+      - '/.docker/config.json'
+      - '/id_rsa'
+      - '/id_dsa'
+      - '/id_ecdsa'
+      - '/id_ed25519'
+      - '/wp-config.php'
+      - '/configuration.php'
+  selection_backup:
+    c-uri|endswith:
+      - '.bak'
+      - '.old'
+      - '.orig'
+      - '.save'
+      - '.swp'
+      - '~'
+  filter_not_found:
+    sc-status: 404
+  condition: >
+    (selection_env or selection_vcs or selection_credentials or selection_backup)
+    and not filter_not_found
+falsepositives:
+  - Internet background noise and vulnerability scanners probe these paths constantly
+  - Applications that deliberately serve a file such as composer.lock or package-lock.json
+  - Sites that answer every path with the same status code
+level: medium
+fields:
+  - client_ip
+  - vhost
+  - c-uri
+  - cs-method
+  - sc-status
+tags:
+  - attack.discovery
+  - attack.t1083
