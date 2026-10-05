@@ -35,13 +35,10 @@
 - (operational) Publish the plugin zip to the local Maven repository under the `com.wazuh` group [(#1439)](https://github.com/wazuh/wazuh-indexer/issues/1439)
 - (operational) Share build artifacts between workflow jobs through the Maven cache [(#1443)](https://github.com/wazuh/wazuh-indexer/issues/1443)
 - (operational) Resolve the plugin build version from `VERSION.json` [(#1595)](https://github.com/wazuh/wazuh-indexer-plugins/issues/1595)
-- (operational) Migrate the workflows to AWS runners [(#236)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/236)
-- (operational) Skip the pull request workflows while the pull request is a draft [(#228)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/228)
 - (operational) Update CodeQL configuration [(#61)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/61) [(#110)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/110) [(#1497)](https://github.com/wazuh/wazuh-indexer-plugins/issues/1497)
 
 ### Removed
-- Remove the Threat Intelligence (IOC) feature, its REST endpoints and settings [(#12)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/12) [(#219)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/219)
-- Remove the upstream pre-packaged Sigma rules and log types [(#9)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/9)
+- Remove the Threat Intelligence (IOC) feature, its REST endpoints and settings [(#219)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/219)
 - Remove the rule and log type management REST endpoints [(#38)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/38)
 
 ### Fixed
@@ -53,7 +50,6 @@
 - Fix detectors being lost when several are created at the same time [(#1914)](https://github.com/wazuh/wazuh-indexer/issues/1914)
 - Fix errors logged by correlation and detector deletion right after startup [(#1730)](https://github.com/wazuh/wazuh-indexer/issues/1730)
 - Fix duplicated log type initialization errors at node startup [(#282)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/282)
-- Fix malformed detector and correlation rule requests returning HTTP 500 before the permission check [(#312)](https://github.com/wazuh/wazuh-indexer-security-analytics/pull/312)
 - Fix ANTLR version mismatch warnings logged at startup [(#1583)](https://github.com/wazuh/wazuh-indexer/issues/1583)
 - Fix Sigma rule conversion errors and invalid CIDR prefixes not being reported [(#313)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/313)
 
