@@ -1,6 +1,7 @@
 ## [v5.0.0]
 
 ### Added
+- Initialize `wazuh-indexer-security-analytics` repository [(#1)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/1)
 - Compatibility with OpenSearch 3.6.0 [(#103)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/103)
 - Add standard threat detectors, created and configured from CTI for every Wazuh integration [(#112)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/112) [(#1029)](https://github.com/wazuh/wazuh-indexer-plugins/issues/1029) [(#1356)](https://github.com/wazuh/wazuh-indexer-plugins/issues/1356) [(#1403)](https://github.com/wazuh/wazuh-indexer-plugins/issues/1403)
 - Add lifecycle spaces (`draft`, `test`, `custom`, `standard`) for rules and integrations [(#37)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/37) [(#812)](https://github.com/wazuh/wazuh-indexer-plugins/issues/812)
@@ -15,9 +16,6 @@
 - Add settings to limit the number of detectors and the rules per detector [(#111)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/111) [(#1276)](https://github.com/wazuh/wazuh-indexer-plugins/issues/1276) [(#1420)](https://github.com/wazuh/wazuh-indexer-plugins/issues/1420)
 - Add settings to tune findings enrichment and correlation under load [(#244)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/244) [(#1683)](https://github.com/wazuh/wazuh-indexer/issues/1683)
 - Add a log entry when a threat detector is enabled or disabled [(#1531)](https://github.com/wazuh/wazuh-indexer-plugins/issues/1531)
-
-- Initialize `wazuh-indexer-security-analytics` repository [(#1)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/1)
-
 - (operational) Add a GitHub Action to publish Security Analytics and its commons library to the local Maven repository [(#743)](https://github.com/wazuh/wazuh-indexer-plugins/issues/743)
 - (operational) Add Spotless formatting checks and a pre-commit hook [(#60)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/60)
 - (operational) Add the `--set-as-main` flag to the repository bumper [(#88)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/88)
@@ -29,7 +27,6 @@
 - Reject threat detectors that mix `standard` and `custom` rules or use rules not yet promoted from `draft` or `test` [(#39)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/39) [(#117)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/117)
 - Restrict threat detector data sources to `wazuh-events-v5*` [(#208)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/208)
 - Change the `rule` field of the rules indices from `nested` to `object` [(#1214)](https://github.com/wazuh/wazuh-indexer-plugins/issues/1214)
-
 - (operational) Upgrade the CI workflows to JDK 25 [(#1341)](https://github.com/wazuh/wazuh-indexer/issues/1341)
 - (operational) Upgrade the GitHub Actions to Node.js 24 [(#1368)](https://github.com/wazuh/wazuh-indexer/issues/1368)
 - (operational) Publish the plugin zip to the local Maven repository under the `com.wazuh` group [(#1439)](https://github.com/wazuh/wazuh-indexer/issues/1439)
@@ -52,7 +49,6 @@
 - Fix duplicated log type initialization errors at node startup [(#282)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/282)
 - Fix ANTLR version mismatch warnings logged at startup [(#1583)](https://github.com/wazuh/wazuh-indexer/issues/1583)
 - Fix Sigma rule conversion errors and invalid CIDR prefixes not being reported [(#313)](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/313)
-
 - (operational) Fix the package generation workflow ignoring the requested revision [(#1194)](https://github.com/wazuh/wazuh-indexer/issues/1194)
 - (operational) Fix package generation failing in the alerting publication stage [(#1430)](https://github.com/wazuh/wazuh-indexer/issues/1430)
 - (operational) Fix `linkchecker` workflow failures [(#867)](https://github.com/wazuh/wazuh-indexer-plugins/issues/867)
