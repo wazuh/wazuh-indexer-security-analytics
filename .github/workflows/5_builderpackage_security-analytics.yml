@@ -51,7 +51,7 @@ jobs:
 
       - name: Resolve branches
         id: resolve
-        uses: wazuh/wazuh-indexer/.github/actions/5_builderpackage_indexer_branch_resolver@5.0.0
+        uses: wazuh/wazuh-indexer/.github/actions/5_builderpackage_indexer_branch_resolver@v5.0.0-rc1
         with:
           branch: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
 
@@ -95,7 +95,7 @@ jobs:
     needs: [branches, get-version]
     steps:
       - name: Publish common-utils to Maven Local
-        uses: wazuh/wazuh-indexer-common-utils/.github/actions/5_local_maven_publisher@5.0.0
+        uses: wazuh/wazuh-indexer-common-utils/.github/actions/5_local_maven_publisher@v5.0.0-rc1
         with:
           version: ${{ needs.get-version.outputs.version }}
           revision: ${{ inputs.revision }}
@@ -117,7 +117,7 @@ jobs:
           path: ~/.m2/repository
           key: ${{ github.run_id }}-common-utils
       - name: Publish alerting to Maven Local
-        uses: wazuh/wazuh-indexer-alerting/.github/actions/5_local_maven_publisher@5.0.0
+        uses: wazuh/wazuh-indexer-alerting/.github/actions/5_local_maven_publisher@v5.0.0-rc1
         with:
           version: ${{ needs.get-version.outputs.version }}
           revision: ${{ inputs.revision }}
