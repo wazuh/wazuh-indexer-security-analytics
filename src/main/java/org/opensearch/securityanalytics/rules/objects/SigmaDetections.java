@@ -25,7 +25,7 @@ public class SigmaDetections {
 
     private List<SigmaCondition> parsedCondition;
 
-    public SigmaDetections(Map<String, SigmaDetection> detections, List<String> condition, String timeframe) throws SigmaDetectionError {
+    public SigmaDetections(Map<String, SigmaDetection> detections, List<String> condition, String timeframe) throws SigmaDetectionError, SigmaConditionError {
         this.detections = detections;
         this.condition = condition;
         this.timeframe = timeframe;

@@ -6,6 +6,7 @@ package org.opensearch.securityanalytics.rules.objects;
 
 import org.junit.Assert;
 import org.opensearch.securityanalytics.rules.condition.ConditionOR;
+import org.opensearch.securityanalytics.rules.exceptions.SigmaConditionError;
 import org.opensearch.securityanalytics.rules.exceptions.SigmaDetectionError;
 import org.opensearch.securityanalytics.rules.exceptions.SigmaError;
 import org.opensearch.securityanalytics.rules.exceptions.CompositeSigmaErrors;
@@ -155,7 +156,7 @@ public class SigmaRuleTests extends OpenSearchTestCase {
         assertTrue(actualMessage.contains(expectedMessage));
     }
 
-    public void testSigmaRuleNoneToList() throws SigmaRegularExpressionError, SigmaValueError, SigmaModifierError, SigmaDetectionError, SigmaLogsourceError {
+    public void testSigmaRuleNoneToList() throws SigmaRegularExpressionError, SigmaValueError, SigmaModifierError, SigmaDetectionError, SigmaLogsourceError, SigmaConditionError {
         SigmaLogSource logSource = new SigmaLogSource(null, "test", null);
         SigmaDetectionItem detectionItem = new SigmaDetectionItem("CommandLine", Arrays.asList(SigmaContainsModifier.class),
                 List.of(new SigmaString("*test.exe*")), null, null, false);
@@ -232,7 +233,7 @@ public class SigmaRuleTests extends OpenSearchTestCase {
         assertTrue(actualMessage.contains(expectedMessage));
     }
 
-    private SigmaRule sigmaRule() throws SigmaRegularExpressionError, SigmaValueError, SigmaModifierError, SigmaDetectionError, ParseException, SigmaLogsourceError {
+    private SigmaRule sigmaRule() throws SigmaRegularExpressionError, SigmaValueError, SigmaModifierError, SigmaDetectionError, ParseException, SigmaLogsourceError, SigmaConditionError {
         SigmaLogSource logSource = new SigmaLogSource("windows", null, "system");
 
         SigmaDetectionItem detectionItem1 = new SigmaDetectionItem("EventID", Collections.emptyList(),
