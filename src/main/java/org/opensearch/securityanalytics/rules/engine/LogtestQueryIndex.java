@@ -32,6 +32,7 @@ import org.opensearch.common.settings.Settings;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.rest.RestStatus;
 import org.opensearch.securityanalytics.config.monitors.DetectorMonitorConfig;
+import org.opensearch.securityanalytics.util.IndexUtils;
 import org.opensearch.securityanalytics.util.RuleTopicIndices;
 import org.opensearch.securityanalytics.util.SecurityAnalyticsException;
 import org.opensearch.transport.client.Client;
@@ -171,6 +172,26 @@ public class LogtestQueryIndex {
             List<String> sourceIndices,
             Set<String> requiredFields,
             ActionListener<PreparedIndex> listener) {
+        // The source indices are read off the integration document, which a content author can
+        // write, and everything past this point runs under the plugin's own context. Refuse them
+        // here instead of resolving them: the detection content this index serves is written
+        // against the WCS event data streams and nothing else, which is the same rule the detector
+        // path enforces in TransportIndexDetectorAction#checkIndicesAndExecute.
+        List<String> unsupported = unsupportedSources(sourceIndices);
+        if (!unsupported.isEmpty()) {
+            listener.onFailure(
+                    SecurityAnalyticsException.wrap(
+                            new org.opensearch.OpenSearchStatusException(
+                                    String.format(
+                                            Locale.ROOT,
+                                            "Rules can only be evaluated against the %s event data streams. "
+                                                    + "Unsupported source indices: %s.",
+                                            IndexUtils.WCS_EVENTS_INDEX_PATTERN,
+                                            unsupported),
+                                    RestStatus.BAD_REQUEST)));
+            return;
+        }
+
         // The template carries rule_analyzer and rule_ws_normalizer, and it is otherwise only
         // installed when a detector is created. Nothing guarantees that has happened: logtest is
         // mostly used in the test space, which has no detector at all. Without the template the index
@@ -191,6 +212,26 @@ public class LogtestQueryIndex {
         } catch (IOException e) {
             listener.onFailure(e);
         }
+    }
+
+    /**
+     * The source expressions this index will not resolve.
+     *
+     * <p>An expression is supported only when it names a WCS event data stream. That rules out a
+     * foreign index, a bare wildcard, a wildcard rooted anywhere else and an exclusion, all of which
+     * would otherwise have their mappings read and merged into this index.
+     *
+     * @param sourceIndices the source indices named by the integration.
+     * @return the expressions that cannot be used, in the order given; empty when all are usable.
+     */
+    static List<String> unsupportedSources(List<String> sourceIndices) {
+        List<String> unsupported = new ArrayList<>();
+        for (String source : sourceIndices) {
+            if (!IndexUtils.isWcsEventsIndex(source)) {
+                unsupported.add(source);
+            }
+        }
+        return unsupported;
     }
 
     /**
