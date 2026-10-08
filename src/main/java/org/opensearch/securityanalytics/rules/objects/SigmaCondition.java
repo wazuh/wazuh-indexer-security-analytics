@@ -39,11 +39,32 @@ import org.opensearch.securityanalytics.rules.utils.Either;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class SigmaCondition {
+
+    /**
+     * Longest condition accepted, in characters. The longest condition among the Sigma rules this
+     * plugin bundles is 542 characters.
+     */
+    public static final int MAX_CONDITION_LENGTH = 4096;
+
+    /**
+     * Deepest parenthesis nesting accepted. ANTLR parses each level by recursion. The bundled Sigma
+     * rules nest at most 2 levels.
+     */
+    public static final int MAX_CONDITION_NESTING = 32;
+
+    /**
+     * Most logical operators ({@code and}, {@code or}, {@code not}) accepted in one condition. The
+     * parse tree is binary, so a chain of N operators is N levels deep, and the visitor and the query
+     * backend recurse once per level: a chain a few hundred operators long overflows a 1 MiB thread
+     * stack. The bundled Sigma rules use at most 35.
+     */
+    public static final int MAX_CONDITION_OPERATORS = 128;
 
     private final String identifier = "[a-zA-Z0-9-_]+";
 
@@ -92,7 +113,54 @@ public class SigmaCondition {
         return sb.toString();
     }
 
-    public SigmaCondition(String condition, SigmaDetections detections) {
+    /**
+     * Rejects a condition too large to parse and convert safely. Every stage after this one (the
+     * ANTLR parser, the condition visitor, the query backend) recurses once per nesting level and per
+     * operator, and a {@link StackOverflowError} escaping them takes the node down. The checks are a
+     * single linear pass, so they cost nothing for a condition of legitimate size.
+     *
+     * @param condition the condition as written in the rule, aggregation included.
+     * @throws SigmaConditionError when the condition exceeds one of the limits.
+     */
+    static void validateSize(String condition) throws SigmaConditionError {
+        if (condition.length() > MAX_CONDITION_LENGTH) {
+            throw new SigmaConditionError(
+                    String.format(
+                            Locale.ROOT,
+                            "Sigma condition is %d characters long, more than the %d allowed",
+                            condition.length(),
+                            MAX_CONDITION_LENGTH));
+        }
+        int depth = 0;
+        for (int i = 0; i < condition.length(); i++) {
+            char c = condition.charAt(i);
+            if (c == '(' && ++depth > MAX_CONDITION_NESTING) {
+                throw new SigmaConditionError(
+                        String.format(
+                                Locale.ROOT,
+                                "Sigma condition nests parentheses more than %d levels deep",
+                                MAX_CONDITION_NESTING));
+            } else if (c == ')' && depth > 0) {
+                depth--;
+            }
+        }
+        int operators = 0;
+        Matcher m = OPERATOR_PATTERN.matcher(condition);
+        while (m.find()) {
+            operators++;
+        }
+        if (operators > MAX_CONDITION_OPERATORS) {
+            throw new SigmaConditionError(
+                    String.format(
+                            Locale.ROOT,
+                            "Sigma condition has %d logical operators, more than the %d allowed",
+                            operators,
+                            MAX_CONDITION_OPERATORS));
+        }
+    }
+
+    public SigmaCondition(String condition, SigmaDetections detections) throws SigmaConditionError {
+        SigmaCondition.validateSize(condition);
         condition = SigmaCondition.normalizeOperators(condition);
         if (condition.contains(" | ")) {
             this.condition = condition.split(" \\| ")[0];
@@ -113,7 +181,27 @@ public class SigmaCondition {
         this.aggVisitor = new AggregationTraverseVisitor();
     }
 
+    /**
+     * Parses the condition and its aggregation.
+     *
+     * <p>{@link #validateSize} keeps conditions shallow enough to parse, so a {@link
+     * StackOverflowError} here is not expected. Should one happen anyway, it is reported as a
+     * condition error: the parse works only on this object's own state, so nothing is left
+     * half-updated, and letting the error escape would reach OpenSearch's uncaught-error handler,
+     * which halts the node.
+     *
+     * @return the parsed condition and, when the condition has one, its aggregation.
+     * @throws SigmaConditionError when the condition cannot be parsed.
+     */
     public Pair<ConditionItem, AggregationItem> parsed() throws SigmaConditionError {
+        try {
+            return this.parse();
+        } catch (StackOverflowError e) {
+            throw new SigmaConditionError("Sigma condition is too deeply nested to parse");
+        }
+    }
+
+    private Pair<ConditionItem, AggregationItem> parse() throws SigmaConditionError {
         ConditionItem parsedConditionItem;
         Either<ConditionItem, String> itemOrCondition = conditionVisitor.visit(parser.start());
         if (itemOrCondition.isLeft()) {

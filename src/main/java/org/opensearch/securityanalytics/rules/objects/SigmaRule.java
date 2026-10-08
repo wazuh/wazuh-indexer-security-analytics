@@ -277,7 +277,11 @@ public class SigmaRule {
             try {
                 detections = SigmaDetections.fromDict((Map<String, Object>) rule.get("detection"));
             } catch (SigmaError ex) {
-                errors.addError(new SigmaDetectionError("Sigma rule must have a detection definitions"));
+                // The reason is kept: on its own the message cannot tell a missing detection from
+                // one that is present but refused, such as a condition over the size limits.
+                errors.addError(
+                        new SigmaDetectionError(
+                                "Sigma rule must have a detection definitions: " + ex.getMessage()));
             }
         } else {
             errors.addError(new SigmaDetectionError("Sigma rule must have a detection definitions"));

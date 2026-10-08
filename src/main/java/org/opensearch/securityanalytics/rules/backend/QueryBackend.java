@@ -61,7 +61,29 @@ public abstract class QueryBackend {
         }
     }
 
+    /**
+     * Converts every condition of a rule into a query.
+     *
+     * <p>The conversion recurses once per level of the condition tree. The size limits enforced when
+     * the condition is read ({@link SigmaCondition#validateSize}) keep that well within the thread
+     * stack, so a {@link StackOverflowError} is not expected here. Should one happen anyway, it is
+     * reported as a condition error rather than left to reach OpenSearch's uncaught-error handler,
+     * which halts the node. The queries and fields gathered so far are discarded with it.
+     *
+     * @param rule the rule to convert.
+     * @return one query per condition, followed by its aggregation when the condition has one.
+     * @throws SigmaValueError when a value cannot be converted.
+     * @throws SigmaConditionError when a condition cannot be parsed or converted.
+     */
     public List<Object> convertRule(SigmaRule rule) throws SigmaValueError, SigmaConditionError {
+        try {
+            return this.convert(rule);
+        } catch (StackOverflowError e) {
+            throw new SigmaConditionError("Sigma condition is too deeply nested to convert into a query");
+        }
+    }
+
+    private List<Object> convert(SigmaRule rule) throws SigmaValueError, SigmaConditionError {
         this.ruleQueryFields = new HashMap<>();
         List<Object> queries = new ArrayList<>();
         for (SigmaCondition condition: rule.getDetection().getParsedCondition()) {
