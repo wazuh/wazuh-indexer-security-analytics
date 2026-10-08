@@ -16,7 +16,9 @@
  */
 package org.opensearch.securityanalytics.rules.engine;
 
+import org.opensearch.OpenSearchStatusException;
 import org.opensearch.core.action.ActionListener;
+import org.opensearch.core.rest.RestStatus;
 import org.opensearch.test.OpenSearchTestCase;
 
 import java.util.HashMap;
@@ -332,6 +334,30 @@ public class LogtestQueryIndexTests extends OpenSearchTestCase {
         assertNotNull("the source should have been refused", failure.get());
         assertTrue(
                 failure.get().getMessage(), failure.get().getMessage().contains(".opendistro_security"));
+        // Unwrapped and 400: a caller input error, reported the way the detector path reports the
+        // same refusal. Wrapping it would log it as a plugin error, with a stack trace, every time.
+        assertEquals(OpenSearchStatusException.class, failure.get().getClass());
+        assertEquals(RestStatus.BAD_REQUEST, ((OpenSearchStatusException) failure.get()).status());
+    }
+
+    public void testAnEmptySourceListIsRefusedBeforeAnyMappingIsRead() {
+        // An empty list is not "no indices" to the resolver: it takes the same branch as `*`
+        // (IndexNameExpressionResolver#isEmptyOrTrivialWildcard) and, under the options this class
+        // uses, expands to every open index in the cluster, hidden ones included. Collaborators are
+        // null so a clean refusal proves nothing was resolved.
+        LogtestQueryIndex queryIndex = new LogtestQueryIndex(null, null, null);
+        AtomicReference<Exception> failure = new AtomicReference<>();
+
+        queryIndex.ensureIndex(
+                "apache",
+                List.of(),
+                Set.of(),
+                ActionListener.wrap(
+                        prepared -> fail("an empty source list should be refused"), failure::set));
+
+        assertNotNull("an empty source list should be refused", failure.get());
+        assertEquals(OpenSearchStatusException.class, failure.get().getClass());
+        assertEquals(RestStatus.BAD_REQUEST, ((OpenSearchStatusException) failure.get()).status());
     }
 
     public void testASourceOutsideTheEventDataStreamsIsRefused() {

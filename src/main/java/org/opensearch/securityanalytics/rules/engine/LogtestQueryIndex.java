@@ -18,6 +18,7 @@ package org.opensearch.securityanalytics.rules.engine;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.opensearch.OpenSearchStatusException;
 import org.opensearch.ResourceAlreadyExistsException;
 import org.opensearch.action.admin.indices.create.CreateIndexRequest;
 import org.opensearch.action.admin.indices.create.CreateIndexResponse;
@@ -177,18 +178,18 @@ public class LogtestQueryIndex {
         // here instead of resolving them: the detection content this index serves is written
         // against the WCS event data streams and nothing else, which is the same rule the detector
         // path enforces in TransportIndexDetectorAction#checkIndicesAndExecute.
+        //
+        // An empty list is refused with them. It does not mean "no indices" to the resolver: it
+        // takes the same branch as `*` (IndexNameExpressionResolver#isEmptyOrTrivialWildcard) and,
+        // with the options used below, expands to every open index in the cluster.
+        if (sourceIndices == null || sourceIndices.isEmpty()) {
+            listener.onFailure(refuseSources("No source indices were given"));
+            return;
+        }
         List<String> unsupported = unsupportedSources(sourceIndices);
         if (!unsupported.isEmpty()) {
             listener.onFailure(
-                    SecurityAnalyticsException.wrap(
-                            new org.opensearch.OpenSearchStatusException(
-                                    String.format(
-                                            Locale.ROOT,
-                                            "Rules can only be evaluated against the %s event data streams. "
-                                                    + "Unsupported source indices: %s.",
-                                            IndexUtils.WCS_EVENTS_INDEX_PATTERN,
-                                            unsupported),
-                                    RestStatus.BAD_REQUEST)));
+                    refuseSources(String.format(Locale.ROOT, "Unsupported source indices: %s", unsupported)));
             return;
         }
 
@@ -212,6 +213,28 @@ public class LogtestQueryIndex {
         } catch (IOException e) {
             listener.onFailure(e);
         }
+    }
+
+    /**
+     * The refusal a caller gets for source indices this index will not resolve.
+     *
+     * <p>Thrown as it is, not wrapped: this is a caller input error, and {@code
+     * SecurityAnalyticsException.wrap} logs what it wraps as a plugin error with a full stack trace,
+     * which would let anyone holding the log test permission fill the node log at will. The detector
+     * path refuses the same thing the same way ({@code
+     * TransportIndexDetectorAction#checkIndicesAndExecute}).
+     *
+     * @param detail what is wrong with the source indices.
+     * @return the exception to hand to the listener.
+     */
+    private static OpenSearchStatusException refuseSources(String detail) {
+        return new OpenSearchStatusException(
+                String.format(
+                        Locale.ROOT,
+                        "Rules can only be evaluated against the %s event data streams. %s.",
+                        IndexUtils.WCS_EVENTS_INDEX_PATTERN,
+                        detail),
+                RestStatus.BAD_REQUEST);
     }
 
     /**
@@ -265,7 +288,7 @@ public class LogtestQueryIndex {
                                     if (properties.isEmpty()) {
                                         listener.onFailure(
                                                 SecurityAnalyticsException.wrap(
-                                                        new org.opensearch.OpenSearchStatusException(
+                                                        new OpenSearchStatusException(
                                                                 String.format(
                                                                         Locale.ROOT,
                                                                         "No field mappings found for source indices %s. Rules cannot be "
