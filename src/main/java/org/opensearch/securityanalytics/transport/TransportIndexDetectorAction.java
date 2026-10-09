@@ -656,12 +656,15 @@ public class TransportIndexDetectorAction
                         .toArray(String[]::new);
 
         boolean hasInvalidSource =
-                Arrays.stream(detectorIndices).anyMatch(index -> !index.startsWith("wazuh-events-v5"));
+                Arrays.stream(detectorIndices).anyMatch(index -> !IndexUtils.isWcsEventsIndex(index));
 
         if (hasInvalidSource) {
             listener.onFailure(
                     new OpenSearchStatusException(
-                            "Threat detectors can only be created for `wazuh-events-v5` data sources.",
+                            String.format(
+                                    Locale.ROOT,
+                                    "Threat detectors can only be created for `%s` data sources.",
+                                    IndexUtils.WCS_EVENTS_INDEX_PREFIX),
                             RestStatus.BAD_REQUEST));
             return;
         }
@@ -791,10 +794,7 @@ public class TransportIndexDetectorAction
                                                         indexMonitorsStep.whenComplete(
                                                                 indexMonitorResponses ->
                                                                         TransportIndexDetectorAction.this.saveWorkflow(
-                                                                                detector,
-                                                                                indexMonitorResponses,
-                                                                                refreshPolicy,
-                                                                                listener),
+                                                                                detector, indexMonitorResponses, refreshPolicy, listener),
                                                                 e -> {
                                                                     log.error("Failed to index the workflow: {}", e.getMessage());
                                                                     listener.onFailure(e);

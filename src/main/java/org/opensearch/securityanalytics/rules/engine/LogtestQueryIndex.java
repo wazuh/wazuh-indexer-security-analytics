@@ -18,6 +18,7 @@ package org.opensearch.securityanalytics.rules.engine;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.opensearch.OpenSearchStatusException;
 import org.opensearch.ResourceAlreadyExistsException;
 import org.opensearch.action.admin.indices.create.CreateIndexRequest;
 import org.opensearch.action.admin.indices.create.CreateIndexResponse;
@@ -32,6 +33,7 @@ import org.opensearch.common.settings.Settings;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.rest.RestStatus;
 import org.opensearch.securityanalytics.config.monitors.DetectorMonitorConfig;
+import org.opensearch.securityanalytics.util.IndexUtils;
 import org.opensearch.securityanalytics.util.RuleTopicIndices;
 import org.opensearch.securityanalytics.util.SecurityAnalyticsException;
 import org.opensearch.transport.client.Client;
@@ -171,6 +173,26 @@ public class LogtestQueryIndex {
             List<String> sourceIndices,
             Set<String> requiredFields,
             ActionListener<PreparedIndex> listener) {
+        // The source indices are read off the integration document, which a content author can
+        // write, and everything past this point runs under the plugin's own context. Refuse them
+        // here instead of resolving them: the detection content this index serves is written
+        // against the WCS event data streams and nothing else, which is the same rule the detector
+        // path enforces in TransportIndexDetectorAction#checkIndicesAndExecute.
+        //
+        // An empty list is refused with them. It does not mean "no indices" to the resolver: it
+        // takes the same branch as `*` (IndexNameExpressionResolver#isEmptyOrTrivialWildcard) and,
+        // with the options used below, expands to every open index in the cluster.
+        if (sourceIndices == null || sourceIndices.isEmpty()) {
+            listener.onFailure(refuseSources("No source indices were given"));
+            return;
+        }
+        List<String> unsupported = unsupportedSources(sourceIndices);
+        if (!unsupported.isEmpty()) {
+            listener.onFailure(
+                    refuseSources(String.format(Locale.ROOT, "Unsupported source indices: %s", unsupported)));
+            return;
+        }
+
         // The template carries rule_analyzer and rule_ws_normalizer, and it is otherwise only
         // installed when a detector is created. Nothing guarantees that has happened: logtest is
         // mostly used in the test space, which has no detector at all. Without the template the index
@@ -191,6 +213,48 @@ public class LogtestQueryIndex {
         } catch (IOException e) {
             listener.onFailure(e);
         }
+    }
+
+    /**
+     * The refusal a caller gets for source indices this index will not resolve.
+     *
+     * <p>Thrown as it is, not wrapped: this is a caller input error, and {@code
+     * SecurityAnalyticsException.wrap} logs what it wraps as a plugin error with a full stack trace,
+     * which would let anyone holding the log test permission fill the node log at will. The detector
+     * path refuses the same thing the same way ({@code
+     * TransportIndexDetectorAction#checkIndicesAndExecute}).
+     *
+     * @param detail what is wrong with the source indices.
+     * @return the exception to hand to the listener.
+     */
+    private static OpenSearchStatusException refuseSources(String detail) {
+        return new OpenSearchStatusException(
+                String.format(
+                        Locale.ROOT,
+                        "Rules can only be evaluated against the %s event data streams. %s.",
+                        IndexUtils.WCS_EVENTS_INDEX_PATTERN,
+                        detail),
+                RestStatus.BAD_REQUEST);
+    }
+
+    /**
+     * The source expressions this index will not resolve.
+     *
+     * <p>An expression is supported only when it names a WCS event data stream. That rules out a
+     * foreign index, a bare wildcard, a wildcard rooted anywhere else and an exclusion, all of which
+     * would otherwise have their mappings read and merged into this index.
+     *
+     * @param sourceIndices the source indices named by the integration.
+     * @return the expressions that cannot be used, in the order given; empty when all are usable.
+     */
+    static List<String> unsupportedSources(List<String> sourceIndices) {
+        List<String> unsupported = new ArrayList<>();
+        for (String source : sourceIndices) {
+            if (!IndexUtils.isWcsEventsIndex(source)) {
+                unsupported.add(source);
+            }
+        }
+        return unsupported;
     }
 
     /**
@@ -224,7 +288,7 @@ public class LogtestQueryIndex {
                                     if (properties.isEmpty()) {
                                         listener.onFailure(
                                                 SecurityAnalyticsException.wrap(
-                                                        new org.opensearch.OpenSearchStatusException(
+                                                        new OpenSearchStatusException(
                                                                 String.format(
                                                                         Locale.ROOT,
                                                                         "No field mappings found for source indices %s. Rules cannot be "
