@@ -18,8 +18,12 @@ package org.opensearch.securityanalytics.enrichment;
 
 import org.opensearch.action.DocWriteRequest;
 import org.opensearch.action.bulk.BulkItemResponse;
+import org.opensearch.action.bulk.BulkRequest;
 import org.opensearch.action.bulk.BulkResponse;
 import org.opensearch.action.index.IndexRequest;
+import org.opensearch.cluster.block.ClusterBlockException;
+import org.opensearch.cluster.metadata.IndexMetadata;
+import org.opensearch.cluster.node.DiscoveryNode;
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.settings.ClusterSettings;
 import org.opensearch.common.settings.Setting;
@@ -28,7 +32,10 @@ import org.opensearch.common.unit.TimeValue;
 import org.opensearch.common.util.concurrent.ThreadContext;
 import org.opensearch.commons.alerting.model.DocLevelQuery;
 import org.opensearch.commons.alerting.model.Finding;
+import org.opensearch.core.action.ActionListener;
+import org.opensearch.core.concurrency.OpenSearchRejectedExecutionException;
 import org.opensearch.core.rest.RestStatus;
+import org.opensearch.node.NodeClosedException;
 import org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings;
 import org.opensearch.test.OpenSearchTestCase;
 import org.opensearch.threadpool.Scheduler;
@@ -38,6 +45,7 @@ import org.opensearch.transport.client.Client;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -47,6 +55,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -54,10 +63,36 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
 
     private WazuhEnrichedFindingService service;
 
+    /** Bulks the service sent, in order, with the listener waiting for each one's outcome. */
+    private final List<SentBulk> sentBulks = new ArrayList<>();
+
+    private record SentBulk(BulkRequest request, ActionListener<BulkResponse> listener) {}
+
+    /**
+     * When set, every bulk fails with it before {@code client.bulk} returns, the way a cluster block
+     * rejects a request on the sending node.
+     */
+    private Exception inlineFailure;
+
     @Override
+    @SuppressWarnings("unchecked")
     public void setUp() throws Exception {
         super.setUp();
         Client client = mock(Client.class);
+        doAnswer(
+                        invocation -> {
+                            SentBulk sent =
+                                    new SentBulk(
+                                            invocation.getArgument(0),
+                                            (ActionListener<BulkResponse>) invocation.getArgument(1));
+                            sentBulks.add(sent);
+                            if (inlineFailure != null) {
+                                sent.listener().onFailure(inlineFailure);
+                            }
+                            return null;
+                        })
+                .when(client)
+                .bulk(any(BulkRequest.class), any(ActionListener.class));
         ThreadPool threadPool = mock(ThreadPool.class);
         when(threadPool.getThreadContext()).thenReturn(new ThreadContext(Settings.EMPTY));
         Scheduler.Cancellable cancellable = mock(Scheduler.Cancellable.class);
@@ -68,6 +103,8 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
         settingsSet.add(SecurityAnalyticsSettings.ENRICHED_FINDINGS_MAX_IN_FLIGHT);
         settingsSet.add(SecurityAnalyticsSettings.ENRICHED_FINDINGS_FLUSH_INTERVAL);
         settingsSet.add(SecurityAnalyticsSettings.ENRICHED_FINDINGS_ENRICH_BATCH_SIZE);
+        settingsSet.add(SecurityAnalyticsSettings.ENRICHED_FINDINGS_MAX_RETRIES);
+        settingsSet.add(SecurityAnalyticsSettings.ENRICHED_FINDINGS_MAX_PENDING_RETRIES);
         ClusterSettings clusterSettings = new ClusterSettings(Settings.EMPTY, settingsSet);
         ClusterService clusterService = mock(ClusterService.class);
         when(clusterService.getSettings()).thenReturn(Settings.EMPTY);
@@ -494,23 +531,219 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
     public void testHandleBulkResponse_conflictsCountedAsDeduplicated() throws Exception {
         assertEquals(0L, service.getDedupedCount());
 
-        BulkResponse response =
-                new BulkResponse(
-                        new BulkItemResponse[] {
-                            failedItem(0, "dup-1", RestStatus.CONFLICT),
-                            failedItem(1, "dup-2", RestStatus.CONFLICT),
-                            failedItem(2, "bad-1", RestStatus.BAD_REQUEST),
-                        },
-                        1L);
-        invokeHandleBulkResponse(response);
+        sendQueued("dup-1", "dup-2", "bad-1");
+        respond(
+                0,
+                failedItem(0, "dup-1", RestStatus.CONFLICT),
+                failedItem(1, "dup-2", RestStatus.CONFLICT),
+                failedItem(2, "bad-1", RestStatus.BAD_REQUEST));
 
         assertEquals("Only the conflicts count as deduplicated replays", 2L, service.getDedupedCount());
+        assertEquals("The mapping error is dropped, not deduplicated", 1L, service.getDroppedCount());
     }
 
-    /** A batch with nothing to report leaves the counter untouched. */
+    /** A batch with nothing to report leaves the counters untouched. */
     public void testHandleBulkResponse_noFailuresLeavesCounterUntouched() throws Exception {
-        invokeHandleBulkResponse(new BulkResponse(new BulkItemResponse[0], 1L));
+        sendQueued("ok-1");
+        respond(0);
         assertEquals(0L, service.getDedupedCount());
+        assertEquals(0L, service.getRetriedCount());
+        assertEquals(0L, service.getDroppedCount());
+    }
+
+    /**
+     * A write rejected under load is resent on the next periodic flush, and only that write: the
+     * items that succeeded are not sent twice.
+     */
+    public void testTransientItemFailure_resentOnPeriodicFlush() throws Exception {
+        sendQueued("ok-1", "busy-1");
+        respond(0, failedItem(1, "busy-1", RestStatus.TOO_MANY_REQUESTS));
+
+        assertEquals(1L, service.getRetriedCount());
+        assertEquals(0L, service.getDroppedCount());
+
+        invokePrivate("periodicFlush");
+        assertEquals("The retry goes out as a bulk of its own", 2, sentBulks.size());
+        assertEquals(List.of("busy-1"), ids(sentBulks.get(1)));
+
+        respond(1);
+        assertEquals(0L, service.getDroppedCount());
+    }
+
+    /**
+     * A resend of a write that had in fact landed the first time comes back as a 409, which the
+     * deterministic id turns into a discarded duplicate instead of a second copy.
+     */
+    public void testRetryOfWriteThatLanded_countedAsDeduplicated() throws Exception {
+        sendQueued("slow-1");
+        respond(0, failedItem(0, "slow-1", RestStatus.SERVICE_UNAVAILABLE));
+
+        invokePrivate("periodicFlush");
+        respond(1, failedItem(0, "slow-1", RestStatus.CONFLICT));
+
+        assertEquals(1L, service.getDedupedCount());
+        assertEquals(0L, service.getDroppedCount());
+    }
+
+    /**
+     * A write block is a 403 that stays until someone lifts it: resending would only fail again, so
+     * the write is dropped on the first attempt.
+     */
+    public void testPermanentItemFailure_droppedWithoutRetry() throws Exception {
+        sendQueued("blocked-1");
+        respond(0, failedItem(0, "blocked-1", RestStatus.FORBIDDEN));
+
+        assertEquals(0L, service.getRetriedCount());
+        assertEquals(1L, service.getDroppedCount());
+
+        invokePrivate("periodicFlush");
+        assertEquals("Nothing is left to resend", 1, sentBulks.size());
+    }
+
+    /** A bulk the node rejected as a whole is resent in full. */
+    public void testTransientBulkFailure_requeuesEveryWrite() throws Exception {
+        sendQueued("a-1", "a-2", "a-3");
+        sentBulks.get(0).listener().onFailure(new OpenSearchRejectedExecutionException("rejected"));
+
+        assertEquals(3L, service.getRetriedCount());
+        assertEquals(0L, service.getDroppedCount());
+
+        invokePrivate("periodicFlush");
+        assertEquals(List.of("a-1", "a-2", "a-3"), ids(sentBulks.get(1)));
+    }
+
+    /** A bulk that failed as a whole for a permanent reason drops every write in it. */
+    public void testPermanentBulkFailure_dropsEveryWrite() throws Exception {
+        sendQueued("a-1", "a-2");
+        sentBulks.get(0).listener().onFailure(new IllegalArgumentException("malformed"));
+
+        assertEquals(0L, service.getRetriedCount());
+        assertEquals(2L, service.getDroppedCount());
+    }
+
+    /** A write that keeps failing is given up on after the configured number of resends. */
+    public void testRetriesExhausted_writeDropped() throws Exception {
+        service.setMaxRetries(2);
+        sendQueued("busy-1");
+        respond(0, failedItem(0, "busy-1", RestStatus.TOO_MANY_REQUESTS));
+
+        for (int resend = 1; resend <= 2; resend++) {
+            invokePrivate("periodicFlush");
+            respond(resend, failedItem(0, "busy-1", RestStatus.TOO_MANY_REQUESTS));
+        }
+
+        assertEquals("The first attempt plus two resends", 3, sentBulks.size());
+        assertEquals(2L, service.getRetriedCount());
+        assertEquals(1L, service.getDroppedCount());
+
+        invokePrivate("periodicFlush");
+        assertEquals("The dropped write is not sent again", 3, sentBulks.size());
+    }
+
+    /** With retries disabled, a transient failure is dropped straight away. */
+    public void testRetriesDisabled_transientFailureDropped() throws Exception {
+        service.setMaxRetries(0);
+        sendQueued("busy-1");
+        respond(0, failedItem(0, "busy-1", RestStatus.TOO_MANY_REQUESTS));
+
+        assertEquals(0L, service.getRetriedCount());
+        assertEquals(1L, service.getDroppedCount());
+    }
+
+    /**
+     * The retry queue is bounded: during a long outage, writes past the limit are dropped and counted
+     * instead of growing the heap.
+     */
+    public void testRetryQueueFull_overflowDropped() throws Exception {
+        service.setMaxPendingRetries(2);
+        sendQueued("a-1", "a-2", "a-3");
+        sentBulks.get(0).listener().onFailure(new OpenSearchRejectedExecutionException("rejected"));
+
+        assertEquals(2L, service.getRetriedCount());
+        assertEquals(1L, service.getDroppedCount());
+
+        invokePrivate("periodicFlush");
+        assertEquals(List.of("a-1", "a-2"), ids(sentBulks.get(1)));
+    }
+
+    /** A large retry backlog is resent in bulks no larger than the configured bulk size. */
+    public void testRetryBacklog_resentInBulkSizedChunks() throws Exception {
+        service.setBulkBatchSize(10);
+        String[] backlog = new String[25];
+        for (int i = 0; i < backlog.length; i++) {
+            backlog[i] = "a-" + i;
+        }
+        sendQueued(backlog);
+        sentBulks.get(0).listener().onFailure(new OpenSearchRejectedExecutionException("rejected"));
+
+        invokePrivate("periodicFlush");
+        assertEquals(4, sentBulks.size());
+        assertEquals(10, sentBulks.get(1).request().numberOfActions());
+        assertEquals(10, sentBulks.get(2).request().numberOfActions());
+        assertEquals(5, sentBulks.get(3).request().numberOfActions());
+    }
+
+    /**
+     * The size-triggered flush sends only new writes: resends wait for the periodic flush, so a node
+     * shedding load is not hit again as soon as the next batch fills.
+     */
+    public void testSizeTriggeredFlush_leavesRetriesForPeriodicFlush() throws Exception {
+        sendQueued("busy-1");
+        respond(0, failedItem(0, "busy-1", RestStatus.TOO_MANY_REQUESTS));
+
+        sendQueued("new-1");
+        assertEquals(List.of("new-1"), ids(sentBulks.get(1)));
+    }
+
+    /**
+     * A bulk rejected before {@code client.bulk} returns puts its writes back on the retry queue
+     * mid-flush. They must still wait for the next periodic flush instead of being resent in the same
+     * one.
+     */
+    public void testInlineFailure_resendWaitsForNextPeriodicFlush() throws Exception {
+        inlineFailure =
+                new ClusterBlockException(Set.of(IndexMetadata.INDEX_READ_ONLY_ALLOW_DELETE_BLOCK));
+        pendingRequests()
+                .add(
+                        new IndexRequest("wazuh-findings-v5-detection")
+                                .id("busy-1")
+                                .source(Map.of("id", "busy-1")));
+
+        invokePrivate("periodicFlush");
+        assertEquals("Only the first attempt goes out in this flush", 1, sentBulks.size());
+        assertEquals(1L, service.getRetriedCount());
+
+        invokePrivate("periodicFlush");
+        assertEquals("One resend per flush", 2, sentBulks.size());
+        assertEquals(List.of("busy-1"), ids(sentBulks.get(1)));
+    }
+
+    /** Statuses and causes that clear up on their own are retried; the rest are not. */
+    public void testIsRetryable() {
+        assertTrue(WazuhEnrichedFindingService.isRetryable(RestStatus.TOO_MANY_REQUESTS, null));
+        assertTrue(WazuhEnrichedFindingService.isRetryable(RestStatus.SERVICE_UNAVAILABLE, null));
+        assertTrue(WazuhEnrichedFindingService.isRetryable(RestStatus.GATEWAY_TIMEOUT, null));
+        assertTrue(
+                "A node shutting down reports a 500 but is transient",
+                WazuhEnrichedFindingService.isRetryable(
+                        RestStatus.INTERNAL_SERVER_ERROR, new NodeClosedException((DiscoveryNode) null)));
+
+        assertFalse(WazuhEnrichedFindingService.isRetryable(RestStatus.BAD_REQUEST, null));
+        assertFalse(WazuhEnrichedFindingService.isRetryable(RestStatus.NOT_FOUND, null));
+        assertFalse(
+                WazuhEnrichedFindingService.isRetryable(
+                        RestStatus.INTERNAL_SERVER_ERROR, new IllegalStateException("bug")));
+
+        ClusterBlockException writeBlock =
+                new ClusterBlockException(Set.of(IndexMetadata.INDEX_WRITE_BLOCK));
+        assertFalse(
+                "A write block stays until it is lifted",
+                WazuhEnrichedFindingService.isRetryable(writeBlock.status(), writeBlock));
+        ClusterBlockException floodStage =
+                new ClusterBlockException(Set.of(IndexMetadata.INDEX_READ_ONLY_ALLOW_DELETE_BLOCK));
+        assertTrue(
+                "The flood-stage block is lifted when disk frees up",
+                WazuhEnrichedFindingService.isRetryable(floodStage.status(), floodStage));
     }
 
     // ── Helper ──────────────────────────────────────────────────────────────
@@ -618,12 +851,28 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
         return (ConcurrentLinkedQueue<IndexRequest>) pendingField.get(service);
     }
 
-    private void invokeHandleBulkResponse(BulkResponse response) throws Exception {
-        Method method =
-                WazuhEnrichedFindingService.class.getDeclaredMethod(
-                        "handleBulkResponse", BulkResponse.class);
+    /** Queues one index request per id and sends them as a single bulk. */
+    private void sendQueued(String... ids) throws Exception {
+        for (String id : ids) {
+            pendingRequests()
+                    .add(new IndexRequest("wazuh-findings-v5-detection").id(id).source(Map.of("id", id)));
+        }
+        invokePrivate("drainAndFlush");
+    }
+
+    /** Completes the {@code index}-th sent bulk with the given failed items; none means success. */
+    private void respond(int index, BulkItemResponse... failedItems) {
+        sentBulks.get(index).listener().onResponse(new BulkResponse(failedItems, 1L));
+    }
+
+    private static List<String> ids(SentBulk bulk) {
+        return bulk.request().requests().stream().map(DocWriteRequest::id).toList();
+    }
+
+    private void invokePrivate(String name) throws Exception {
+        Method method = WazuhEnrichedFindingService.class.getDeclaredMethod(name);
         method.setAccessible(true);
-        method.invoke(service, response);
+        method.invoke(service);
     }
 
     private static BulkItemResponse failedItem(int itemId, String id, RestStatus status) {
