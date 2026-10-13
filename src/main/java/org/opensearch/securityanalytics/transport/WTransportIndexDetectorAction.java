@@ -27,6 +27,7 @@ import org.opensearch.action.support.IndicesOptions;
 import org.opensearch.common.inject.Inject;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.rest.RestStatus;
+import org.opensearch.index.query.QueryBuilder;
 import org.opensearch.index.query.QueryBuilders;
 import org.opensearch.rest.RestRequest;
 import org.opensearch.search.builder.SearchSourceBuilder;
@@ -73,6 +74,8 @@ public class WTransportIndexDetectorAction
 
     // Constant for the CTI Integrations index
     private static final String CTI_INTEGRATIONS_INDEX = "wazuh-threatintel-integrations";
+    // The only space detectors are built for
+    private static final String STANDARD_SPACE = "standard";
 
     /**
      * Constructs a new WTransportIndexDetectorAction.
@@ -106,12 +109,18 @@ public class WTransportIndexDetectorAction
 
         // Fetch the integration document from wazuh-threatintel-integrations to get the true list of
         // rules
+        if (request.getDetectorId() == null) {
+            log.warn(
+                    "Detector request for [{}] carries no integration id; validating its own rules",
+                    request.getLogTypeName());
+            this.validateRulesAndCreateDetector(request.getRules(), request, listener);
+            return;
+        }
         SearchRequest integrationSearch = new SearchRequest(CTI_INTEGRATIONS_INDEX);
         integrationSearch.indicesOptions(IndicesOptions.lenientExpandOpen());
 
         SearchSourceBuilder intSourceBuilder = new SearchSourceBuilder();
-        intSourceBuilder.query(
-                QueryBuilders.matchQuery("document.metadata.title", request.getLogTypeName()));
+        intSourceBuilder.query(integrationQuery(request.getDetectorId()));
         intSourceBuilder.size(1);
         integrationSearch.source(intSourceBuilder);
 
@@ -123,8 +132,10 @@ public class WTransportIndexDetectorAction
                     public void onResponse(SearchResponse intResponse) {
                         if (intResponse.getHits().getHits().length == 0) {
                             log.warn(
-                                    "Integration [{}] not found in {}",
+                                    "Integration [{}] ({}) not found in the {} space of {}",
                                     request.getLogTypeName(),
+                                    request.getDetectorId(),
+                                    STANDARD_SPACE,
                                     CTI_INTEGRATIONS_INDEX);
                             WTransportIndexDetectorAction.this.validateRulesAndCreateDetector(
                                     request.getRules(), request, listener);
@@ -164,6 +175,23 @@ public class WTransportIndexDetectorAction
                         listener.onFailure(e);
                     }
                 });
+    }
+
+    /**
+     * Builds the lookup of the integration a detector is built from.
+     *
+     * <p>Detectors are only built for the standard space, and the detector's id is its integration's
+     * {@code document.id}. Titles are only unique within a space, so a user integration titled like a
+     * standard one, promoted to any space, would otherwise be a candidate for the standard detector's
+     * rules.
+     *
+     * @param integrationId the integration's {@code document.id}, which is the detector id
+     * @return a query matching only the standard-space copy of that integration
+     */
+    static QueryBuilder integrationQuery(String integrationId) {
+        return QueryBuilders.boolQuery()
+                .filter(QueryBuilders.termQuery("document.id", integrationId))
+                .filter(QueryBuilders.termQuery("space.name", STANDARD_SPACE));
     }
 
     /**
