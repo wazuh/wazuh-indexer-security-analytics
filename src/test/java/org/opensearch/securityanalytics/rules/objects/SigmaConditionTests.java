@@ -173,4 +173,105 @@ public class SigmaConditionTests extends OpenSearchTestCase {
         ConditionItem notUpperItem = parse("NOT sel1", "sel1");
         assertSame(notItem.getClass(), notUpperItem.getClass());
     }
+
+    // --- Size limits ---
+
+    /** {@code n} copies of {@code operand} joined by {@code operator}: {@code n - 1} operators. */
+    private static String chain(String operand, String operator, int n) {
+        return String.join(" " + operator + " ", java.util.Collections.nCopies(n, operand));
+    }
+
+    /**
+     * The largest condition the limits allow, in the shape that recurses deepest: every level of
+     * parentheses and every operator, with the {@code not}s nested inside the {@code and}s.
+     */
+    static String largestAcceptedCondition(String identifier) {
+        int nesting = SigmaCondition.MAX_CONDITION_NESTING;
+        // k "not x" joined by "and" is 2k - 1 operators; the outer "not" makes it 2k.
+        int nots = SigmaCondition.MAX_CONDITION_OPERATORS / 2;
+        return "(".repeat(nesting - 1)
+                + "not ("
+                + chain("not " + identifier, "and", nots)
+                + ")"
+                + ")".repeat(nesting - 1);
+    }
+
+    public void testConditionAtTheLimitsIsAccepted() throws Exception {
+        String condition = largestAcceptedCondition("sel1");
+        assertTrue(condition.length() <= SigmaCondition.MAX_CONDITION_LENGTH);
+
+        ConditionItem item = parse(condition, "sel1");
+        assertSame(ConditionNOT.class, item.getClass());
+    }
+
+    public void testConditionLongerThanTheLimitIsRefused() {
+        String identifier = "s" + "x".repeat(SigmaCondition.MAX_CONDITION_LENGTH);
+        SigmaConditionError e =
+                assertThrows(SigmaConditionError.class, () -> parse(identifier, identifier));
+        assertTrue(
+                e.getMessage(),
+                e.getMessage()
+                        .contains(
+                                (SigmaCondition.MAX_CONDITION_LENGTH + 1)
+                                        + " characters long, more than the "
+                                        + SigmaCondition.MAX_CONDITION_LENGTH));
+    }
+
+    public void testConditionNestedPastTheLimitIsRefused() {
+        int levels = SigmaCondition.MAX_CONDITION_NESTING + 1;
+        String condition = "(".repeat(levels) + "sel1 and sel2" + ")".repeat(levels);
+        SigmaConditionError e =
+                assertThrows(SigmaConditionError.class, () -> parse(condition, "sel1", "sel2"));
+        assertTrue(
+                e.getMessage(),
+                e.getMessage().contains("more than " + SigmaCondition.MAX_CONDITION_NESTING + " levels"));
+    }
+
+    public void testClosingParenthesesDoNotOffsetTheNesting() {
+        // A stray closing parenthesis must not let the opening ones that follow go uncounted.
+        int levels = SigmaCondition.MAX_CONDITION_NESTING + 1;
+        String condition = ")".repeat(levels) + "(".repeat(levels) + "sel1" + ")".repeat(levels);
+        assertThrows(SigmaConditionError.class, () -> parse(condition, "sel1"));
+    }
+
+    public void testConditionWithTooManyOperatorsIsRefused() {
+        int operators = SigmaCondition.MAX_CONDITION_OPERATORS + 1;
+        String condition = chain("sel1", "or", operators + 1);
+        assertTrue(condition.length() <= SigmaCondition.MAX_CONDITION_LENGTH);
+        SigmaConditionError e = assertThrows(SigmaConditionError.class, () -> parse(condition, "sel1"));
+        assertTrue(
+                e.getMessage(),
+                e.getMessage()
+                        .contains(
+                                operators
+                                        + " logical operators, more than the "
+                                        + SigmaCondition.MAX_CONDITION_OPERATORS));
+    }
+
+    public void testNegationChainPastTheLimitIsRefused() {
+        String condition = "NOT ".repeat(SigmaCondition.MAX_CONDITION_OPERATORS + 1) + "sel1";
+        assertThrows(SigmaConditionError.class, () -> parse(condition, "sel1"));
+    }
+
+    public void testOperatorWordsInsideIdentifiersAreNotCounted() throws Exception {
+        // "and", "or" and "not" inside an identifier are not operators, and must not use up the limit.
+        String condition = chain("sel_and_or_not", "or", SigmaCondition.MAX_CONDITION_OPERATORS + 1);
+        assertNotNull(parse(condition, "sel_and_or_not"));
+    }
+
+    public void testStackOverflowWhileParsingIsReportedAsAConditionError() throws Exception {
+        // A detection lookup that overflows stands in for a parse too deep for the stack: what
+        // reaches the caller must be a condition error, never the StackOverflowError itself.
+        SigmaDetections overflowing =
+                new SigmaDetections(
+                        detections("sel1", "sel2").getDetections(), java.util.List.of("sel1"), null) {
+                    @Override
+                    public Map<String, SigmaDetection> getDetections() {
+                        throw new StackOverflowError();
+                    }
+                };
+        SigmaCondition condition = new SigmaCondition("sel1 and sel2", overflowing);
+        SigmaConditionError e = assertThrows(SigmaConditionError.class, condition::parsed);
+        assertTrue(e.getMessage(), e.getMessage().contains("too deeply nested"));
+    }
 }
