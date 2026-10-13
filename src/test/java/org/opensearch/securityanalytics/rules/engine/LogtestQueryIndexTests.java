@@ -16,12 +16,16 @@
  */
 package org.opensearch.securityanalytics.rules.engine;
 
+import org.opensearch.OpenSearchStatusException;
+import org.opensearch.core.action.ActionListener;
+import org.opensearch.core.rest.RestStatus;
 import org.opensearch.test.OpenSearchTestCase;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 
 /** Covers the naming and mapping-copy rules of the logtest percolator index. */
 public class LogtestQueryIndexTests extends OpenSearchTestCase {
@@ -312,5 +316,81 @@ public class LogtestQueryIndexTests extends OpenSearchTestCase {
 
         assertEquals("keyword", ((Map<?, ?>) properties.get("url")).get("type"));
         assertNull(((Map<?, ?>) properties.get("url")).get("properties"));
+    }
+
+    public void testAForeignSourceIsRefusedBeforeAnyMappingIsRead() {
+        // The collaborators are null on purpose. Preparing the index dereferences all three, so a
+        // clean refusal here is the guarantee that matters: the named index is never resolved and
+        // its mappings are never read.
+        LogtestQueryIndex queryIndex = new LogtestQueryIndex(null, null, null);
+        AtomicReference<Exception> failure = new AtomicReference<>();
+
+        queryIndex.ensureIndex(
+                "apache",
+                List.of(".opendistro_security"),
+                Set.of(),
+                ActionListener.wrap(prepared -> fail("the source should have been refused"), failure::set));
+
+        assertNotNull("the source should have been refused", failure.get());
+        assertTrue(
+                failure.get().getMessage(), failure.get().getMessage().contains(".opendistro_security"));
+        // Unwrapped and 400: a caller input error, reported the way the detector path reports the
+        // same refusal. Wrapping it would log it as a plugin error, with a stack trace, every time.
+        assertEquals(OpenSearchStatusException.class, failure.get().getClass());
+        assertEquals(RestStatus.BAD_REQUEST, ((OpenSearchStatusException) failure.get()).status());
+    }
+
+    public void testAnEmptySourceListIsRefusedBeforeAnyMappingIsRead() {
+        // An empty list is not "no indices" to the resolver: it takes the same branch as `*`
+        // (IndexNameExpressionResolver#isEmptyOrTrivialWildcard) and, under the options this class
+        // uses, expands to every open index in the cluster, hidden ones included. Collaborators are
+        // null so a clean refusal proves nothing was resolved.
+        LogtestQueryIndex queryIndex = new LogtestQueryIndex(null, null, null);
+        AtomicReference<Exception> failure = new AtomicReference<>();
+
+        queryIndex.ensureIndex(
+                "apache",
+                List.of(),
+                Set.of(),
+                ActionListener.wrap(
+                        prepared -> fail("an empty source list should be refused"), failure::set));
+
+        assertNotNull("an empty source list should be refused", failure.get());
+        assertEquals(OpenSearchStatusException.class, failure.get().getClass());
+        assertEquals(RestStatus.BAD_REQUEST, ((OpenSearchStatusException) failure.get()).status());
+    }
+
+    public void testASourceOutsideTheEventDataStreamsIsRefused() {
+        // The source indices arrive from the integration document, which a content author can
+        // write. Reading the mappings of whatever they name would make logtest report whether an
+        // index exists and which fields it declares.
+        assertEquals(
+                List.of(".opendistro_security"),
+                LogtestQueryIndex.unsupportedSources(List.of(".opendistro_security")));
+    }
+
+    public void testTheEventDataStreamsAreAccepted() {
+        assertEquals(
+                List.of(),
+                LogtestQueryIndex.unsupportedSources(
+                        List.of("wazuh-events-v5-security", "wazuh-events-v5-system-activity")));
+    }
+
+    public void testExpressionsThatReachOutsideTheEventDataStreamsAreRefused() {
+        // All three were measured against a running cluster: `*` resolves every index in it, an
+        // exclusion carves that sweep down until its merged mapping fits, and a prefixed wildcard
+        // reaches the system indices. None of them starts inside the event data streams.
+        assertEquals(List.of("*"), LogtestQueryIndex.unsupportedSources(List.of("*")));
+        assertEquals(
+                List.of("-wazuh-events-v5-security"),
+                LogtestQueryIndex.unsupportedSources(List.of("-wazuh-events-v5-security")));
+        assertEquals(
+                List.of(".opendistro*"), LogtestQueryIndex.unsupportedSources(List.of(".opendistro*")));
+    }
+
+    public void testOnlyTheUnsupportedSourcesAreReported() {
+        assertEquals(
+                List.of(".kibana_1"),
+                LogtestQueryIndex.unsupportedSources(List.of("wazuh-events-v5-security", ".kibana_1")));
     }
 }

@@ -56,6 +56,15 @@ public class IndexUtils {
     public static final Integer NO_SCHEMA_VERSION = 0;
     public static final String SCHEMA_VERSION = "schema_version";
 
+    /**
+     * Prefix every WCS event data stream shares. Detection content is written against these and only
+     * these, so an index expression outside them is not something Wazuh evaluates rules on.
+     */
+    public static final String WCS_EVENTS_INDEX_PREFIX = "wazuh-events-v5";
+
+    /** Index pattern matching every WCS event data stream. */
+    public static final String WCS_EVENTS_INDEX_PATTERN = WCS_EVENTS_INDEX_PREFIX + "-*";
+
     public static Boolean detectorIndexUpdated = false;
     public static Boolean customRuleIndexUpdated = false;
     public static Boolean prePackagedRuleIndexUpdated = false;
@@ -69,6 +78,16 @@ public class IndexUtils {
     public static Boolean correlationAlertIndexUpdated = false;
 
     public static Boolean customLogTypeIndexUpdated = false;
+
+    /**
+     * Whether an index expression names a WCS event data stream.
+     *
+     * @param index the index expression to check.
+     * @return {@code true} when the expression is inside the WCS event data streams.
+     */
+    public static boolean isWcsEventsIndex(String index) {
+        return index != null && index.startsWith(WCS_EVENTS_INDEX_PREFIX);
+    }
 
     public static void detectorIndexUpdated() {
         detectorIndexUpdated = true;

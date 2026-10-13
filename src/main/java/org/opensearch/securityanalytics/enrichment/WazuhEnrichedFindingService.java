@@ -18,6 +18,7 @@ package org.opensearch.securityanalytics.enrichment;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.opensearch.ExceptionsHelper;
 import org.opensearch.action.DocWriteRequest;
 import org.opensearch.action.bulk.BulkItemResponse;
 import org.opensearch.action.bulk.BulkRequest;
@@ -33,12 +34,14 @@ import org.opensearch.commons.alerting.model.DocLevelQuery;
 import org.opensearch.commons.alerting.model.Finding;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.rest.RestStatus;
+import org.opensearch.node.NodeClosedException;
 import org.opensearch.securityanalytics.config.monitors.DetectorMonitorConfig;
 import org.opensearch.securityanalytics.model.LOG_CATEGORY;
 import org.opensearch.securityanalytics.model.Rule;
 import org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings;
 import org.opensearch.threadpool.Scheduler;
 import org.opensearch.threadpool.ThreadPool;
+import org.opensearch.transport.ConnectTransportException;
 import org.opensearch.transport.client.Client;
 
 import java.io.Closeable;
@@ -103,6 +106,12 @@ public class WazuhEnrichedFindingService implements Closeable {
      */
     private volatile int flushIntervalSeconds;
 
+    /** Maximum number of times a write that failed for a transient reason is resent. */
+    private volatile int maxRetries;
+
+    /** Maximum number of writes allowed to wait in {@link #retryQueue}. */
+    private volatile int maxPendingRetries;
+
     /** Valid base categories derived from {@link LOG_CATEGORY}. */
     private static final Set<String> VALID_CATEGORIES =
             Arrays.stream(LOG_CATEGORY.values())
@@ -137,6 +146,24 @@ public class WazuhEnrichedFindingService implements Closeable {
     private final AtomicInteger pendingCount = new AtomicInteger(0);
 
     /**
+     * Writes that failed for a transient reason, waiting to be resent. Drained only by the periodic
+     * flush, so the flush interval is the backoff between attempts and a node shedding load is not
+     * hit again by the next size-triggered bulk.
+     */
+    private final ConcurrentLinkedQueue<PendingWrite> retryQueue = new ConcurrentLinkedQueue<>();
+
+    private final AtomicInteger retryQueueSize = new AtomicInteger(0);
+
+    /** Number of writes put back on {@link #retryQueue} after a transient failure. */
+    private final AtomicLong retriedCount = new AtomicLong(0);
+
+    /**
+     * Number of enriched findings given up on: permanent failures, writes out of attempts, and writes
+     * that found {@link #retryQueue} full. Each one is a finding missing from the index.
+     */
+    private final AtomicLong droppedCount = new AtomicLong(0);
+
+    /**
      * Number of replayed enriched findings the deterministic {@code _id} has rejected as duplicates.
      * A non-zero value means deduplication engaged, not that a write failed.
      */
@@ -164,6 +191,11 @@ public class WazuhEnrichedFindingService implements Closeable {
                         clusterService.getSettings());
         this.enrichBatchSize =
                 SecurityAnalyticsSettings.ENRICHED_FINDINGS_ENRICH_BATCH_SIZE.get(
+                        clusterService.getSettings());
+        this.maxRetries =
+                SecurityAnalyticsSettings.ENRICHED_FINDINGS_MAX_RETRIES.get(clusterService.getSettings());
+        this.maxPendingRetries =
+                SecurityAnalyticsSettings.ENRICHED_FINDINGS_MAX_PENDING_RETRIES.get(
                         clusterService.getSettings());
         this.inFlightPermits = new AdjustableSemaphore(this.maxInFlight);
         this.ruleMetadataCache =
@@ -196,6 +228,15 @@ public class WazuhEnrichedFindingService implements Closeable {
                 .addSettingsUpdateConsumer(
                         SecurityAnalyticsSettings.ENRICHED_FINDINGS_ENRICH_BATCH_SIZE,
                         this::setEnrichBatchSize);
+        clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        SecurityAnalyticsSettings.ENRICHED_FINDINGS_MAX_RETRIES, this::setMaxRetries);
+        clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        SecurityAnalyticsSettings.ENRICHED_FINDINGS_MAX_PENDING_RETRIES,
+                        this::setMaxPendingRetries);
     }
 
     public void setEnabled(boolean enabled) {
@@ -208,6 +249,14 @@ public class WazuhEnrichedFindingService implements Closeable {
 
     public void setEnrichBatchSize(int enrichBatchSize) {
         this.enrichBatchSize = enrichBatchSize;
+    }
+
+    public void setMaxRetries(int maxRetries) {
+        this.maxRetries = maxRetries;
+    }
+
+    public void setMaxPendingRetries(int maxPendingRetries) {
+        this.maxPendingRetries = maxPendingRetries;
     }
 
     public synchronized void setMaxInFlight(int newMax) {
@@ -791,9 +840,13 @@ public class WazuhEnrichedFindingService implements Closeable {
     }
 
     /**
-     * Called by the periodic schedule to flush leftover index requests and process queued findings.
+     * Called by the periodic schedule to resend the writes waiting for a retry, flush leftover index
+     * requests, and process queued findings. Retries go first: a bulk can fail inline (a cluster
+     * block is rejected before the request leaves the node), and its writes would otherwise be resent
+     * in the same tick, without waiting a flush interval.
      */
     private void periodicFlush() {
+        this.flushRetries();
         this.drainAndFlush();
         this.processQueue();
     }
@@ -804,31 +857,67 @@ public class WazuhEnrichedFindingService implements Closeable {
      * one caller.
      */
     private void drainAndFlush() {
-        BulkRequest bulk = new BulkRequest().timeout(this.indexTimeout);
+        List<PendingWrite> batch = new ArrayList<>();
         IndexRequest req;
         while ((req = this.pendingRequests.poll()) != null) {
-            bulk.add(req);
+            batch.add(new PendingWrite(req, 0));
         }
-        if (bulk.numberOfActions() == 0) {
+        this.sendBulk(batch);
+    }
+
+    /**
+     * Resends the writes waiting on {@link #retryQueue}, in bulks of at most {@link #bulkBatchSize}
+     * items so a large backlog does not turn into one oversized request. Only writes queued before
+     * this call are sent: a write that fails again lands back on the queue for the next flush.
+     */
+    private void flushRetries() {
+        int remaining = this.retryQueueSize.get();
+        while (remaining > 0) {
+            List<PendingWrite> batch = new ArrayList<>();
+            PendingWrite write;
+            while (batch.size() < this.bulkBatchSize
+                    && batch.size() < remaining
+                    && (write = this.retryQueue.poll()) != null) {
+                this.retryQueueSize.decrementAndGet();
+                batch.add(write);
+            }
+            if (batch.isEmpty()) {
+                return;
+            }
+            remaining -= batch.size();
+            log.debug("Resending {} enriched findings after a transient failure", batch.size());
+            this.sendBulk(batch);
+        }
+    }
+
+    private void sendBulk(List<PendingWrite> batch) {
+        if (batch.isEmpty()) {
             return;
+        }
+        BulkRequest bulk = new BulkRequest().timeout(this.indexTimeout);
+        for (PendingWrite write : batch) {
+            bulk.add(write.request());
         }
         try (ThreadContext.StoredContext ignored = this.threadPool.getThreadContext().stashContext()) {
             log.debug("Flushing {} pending enriched findings", bulk.numberOfActions());
             this.client.bulk(
                     bulk,
                     ActionListener.wrap(
-                            this::handleBulkResponse,
-                            e -> log.warn("Bulk indexing of enriched findings failed", e)));
+                            response -> this.handleBulkResponse(batch, response),
+                            e -> this.handleBulkFailure(batch, e)));
         }
     }
 
     /**
-     * Splits a bulk response into replays the deterministic {@code _id} rejected and failures that
-     * need attention. A duplicate {@code create} comes back as 409: that is deduplication working,
-     * not an error, so it is counted and logged at debug. Everything else is a real failure and is
-     * logged at error, listing only the offending items instead of the whole batch.
+     * Splits a bulk response into replays the deterministic {@code _id} rejected, transient failures
+     * to resend, and failures to give up on. A duplicate {@code create} comes back as 409: that is
+     * deduplication working, not an error, so it is counted and logged at debug. Transient failures
+     * go back on {@link #retryQueue}; the rest are dropped and logged at error, listing only the
+     * offending items instead of the whole batch.
+     *
+     * @param batch the writes the bulk was built from, in request order
      */
-    private void handleBulkResponse(BulkResponse response) {
+    private void handleBulkResponse(List<PendingWrite> batch, BulkResponse response) {
         if (!response.hasFailures()) {
             log.debug("Bulk indexing of enriched findings completed successfully");
             return;
@@ -839,9 +928,11 @@ public class WazuhEnrichedFindingService implements Closeable {
             if (!item.isFailed()) {
                 continue;
             }
-            if (item.getFailure().getStatus() == RestStatus.CONFLICT) {
+            BulkItemResponse.Failure failure = item.getFailure();
+            if (failure.getStatus() == RestStatus.CONFLICT) {
                 deduped++;
-            } else {
+            } else if (!isRetryable(failure.getStatus(), failure.getCause())
+                    || !this.retry(batch.get(item.getItemId()))) {
                 failures.add(item.getId() + ": " + item.getFailureMessage());
             }
         }
@@ -850,7 +941,78 @@ public class WazuhEnrichedFindingService implements Closeable {
             log.debug("Discarded {} replayed enriched findings already indexed", deduped);
         }
         if (!failures.isEmpty()) {
-            log.error("Bulk indexing of enriched findings completed with failures: {}", failures);
+            this.droppedCount.addAndGet(failures.size());
+            log.error(
+                    "Bulk indexing of enriched findings dropped {} findings: {}", failures.size(), failures);
+        }
+    }
+
+    /**
+     * Handles a bulk that failed as a whole, before any item was attempted: every write in it shares
+     * the same cause, so they are all resent or all dropped.
+     */
+    private void handleBulkFailure(List<PendingWrite> batch, Exception e) {
+        Throwable cause = ExceptionsHelper.unwrapCause(e);
+        if (isRetryable(ExceptionsHelper.status(cause), cause)) {
+            int dropped = 0;
+            for (PendingWrite write : batch) {
+                if (!this.retry(write)) {
+                    dropped++;
+                }
+            }
+            if (dropped == 0) {
+                log.warn("Bulk indexing of enriched findings failed, will retry: {}", cause.toString());
+                return;
+            }
+            this.droppedCount.addAndGet(dropped);
+            log.error(
+                    "Bulk indexing of enriched findings failed, dropped {} of {} findings",
+                    dropped,
+                    batch.size(),
+                    e);
+            return;
+        }
+        this.droppedCount.addAndGet(batch.size());
+        log.error("Bulk indexing of enriched findings failed, dropped {} findings", batch.size(), e);
+    }
+
+    /**
+     * Puts a write back on {@link #retryQueue} for the next periodic flush.
+     *
+     * @return {@code false} if the write is out of attempts or the queue is full, in which case the
+     *     caller drops it
+     */
+    private boolean retry(PendingWrite write) {
+        if (write.attempts() >= this.maxRetries) {
+            return false;
+        }
+        if (this.retryQueueSize.incrementAndGet() > this.maxPendingRetries) {
+            this.retryQueueSize.decrementAndGet();
+            return false;
+        }
+        this.retryQueue.add(new PendingWrite(write.request(), write.attempts() + 1));
+        this.retriedCount.incrementAndGet();
+        return true;
+    }
+
+    /**
+     * Whether a failed write may succeed if sent again unchanged. Load shedding (429), unavailable or
+     * timed-out shards (503, 504), and blocks the cluster lifts on its own (the flood-stage disk
+     * block is a 429, a cluster without a cluster-manager a 503) all clear up; a mapping error, a 403
+     * write block, or a missing index do not. Lost connections to the node holding the shard report a
+     * 500, so they are recognized by type.
+     */
+    static boolean isRetryable(RestStatus status, Throwable cause) {
+        switch (status) {
+            case TOO_MANY_REQUESTS:
+            case SERVICE_UNAVAILABLE:
+            case BAD_GATEWAY:
+            case GATEWAY_TIMEOUT:
+                return true;
+            default:
+                return ExceptionsHelper.unwrap(
+                                cause, NodeClosedException.class, ConnectTransportException.class)
+                        != null;
         }
     }
 
@@ -861,4 +1023,17 @@ public class WazuhEnrichedFindingService implements Closeable {
     public long getDedupedCount() {
         return this.dedupedCount.get();
     }
+
+    /** Number of writes put back on the retry queue after a transient failure. */
+    public long getRetriedCount() {
+        return this.retriedCount.get();
+    }
+
+    /** Number of enriched findings given up on, accumulated over this service instance's lifetime. */
+    public long getDroppedCount() {
+        return this.droppedCount.get();
+    }
+
+    /** An index request together with the number of times it has already been resent. */
+    private record PendingWrite(IndexRequest request, int attempts) {}
 }
