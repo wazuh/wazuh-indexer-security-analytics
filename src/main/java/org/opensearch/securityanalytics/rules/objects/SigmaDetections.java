@@ -1,6 +1,18 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.rules.objects;
 
@@ -25,7 +37,9 @@ public class SigmaDetections {
 
     private List<SigmaCondition> parsedCondition;
 
-    public SigmaDetections(Map<String, SigmaDetection> detections, List<String> condition, String timeframe) throws SigmaDetectionError {
+    public SigmaDetections(
+            Map<String, SigmaDetection> detections, List<String> condition, String timeframe)
+            throws SigmaDetectionError, SigmaConditionError {
         this.detections = detections;
         this.condition = condition;
         this.timeframe = timeframe;
@@ -35,13 +49,18 @@ public class SigmaDetections {
         }
 
         this.parsedCondition = new ArrayList<>();
-        for (String cond: this.condition) {
+        for (String cond : this.condition) {
             this.parsedCondition.add(new SigmaCondition(cond, this));
         }
     }
 
     @SuppressWarnings("unchecked")
-    protected static SigmaDetections fromDict(Map<String, Object> detectionMap) throws SigmaConditionError, SigmaDetectionError, SigmaModifierError, SigmaValueError, SigmaRegularExpressionError {
+    protected static SigmaDetections fromDict(Map<String, Object> detectionMap)
+            throws SigmaConditionError,
+                    SigmaDetectionError,
+                    SigmaModifierError,
+                    SigmaValueError,
+                    SigmaRegularExpressionError {
         List<String> conditionList = new ArrayList<>();
         if (detectionMap.containsKey("condition") && detectionMap.get("condition") instanceof List) {
             conditionList.addAll((List<String>) detectionMap.get("condition"));
@@ -52,7 +71,7 @@ public class SigmaDetections {
         }
 
         Map<String, SigmaDetection> detections = new HashMap<>();
-        for (Map.Entry<String, Object> detection: detectionMap.entrySet()) {
+        for (Map.Entry<String, Object> detection : detectionMap.entrySet()) {
             if (!"condition".equals(detection.getKey())) {
                 detections.put(detection.getKey(), SigmaDetection.fromDefinition(detection.getValue()));
             }
