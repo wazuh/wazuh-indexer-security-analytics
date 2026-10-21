@@ -268,6 +268,7 @@ public class VectorEmbeddingsEngine {
         client.search(searchRequest, ActionListener.wrap(response -> {
             if (response.isTimedOut()) {
                 onFailure(new OpenSearchStatusException("Search request timed out", RestStatus.REQUEST_TIMEOUT));
+                return;
             }
 
             try {
@@ -395,6 +396,7 @@ public class VectorEmbeddingsEngine {
                         client.search(request, ActionListener.wrap(searchResponse -> {
                             if (searchResponse.isTimedOut()) {
                                 onFailure(new OpenSearchStatusException("Search request timed out", RestStatus.REQUEST_TIMEOUT));
+                                return;
                             }
 
                             long totalHits = searchResponse.getHits().getHits().length;

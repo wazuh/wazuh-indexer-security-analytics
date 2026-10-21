@@ -456,6 +456,7 @@ public class RuleIndices {
                                             listener.onFailure(
                                                     new OpenSearchStatusException(
                                                             "Search request timed out", RestStatus.REQUEST_TIMEOUT));
+                                            return;
                                         }
                                         try {
                                             SearchHit[] hits = response.getHits().getHits();
