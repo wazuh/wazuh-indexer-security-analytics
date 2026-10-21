@@ -2413,6 +2413,7 @@ public class TransportIndexDetectorAction
                                     AsyncIndexDetectorsAction.this.onFailures(
                                             new OpenSearchStatusException(
                                                     "Search request timed out", RestStatus.REQUEST_TIMEOUT));
+                                    return;
                                 }
 
                                 long count = response.getHits().getTotalHits().value();
@@ -2498,6 +2499,7 @@ public class TransportIndexDetectorAction
                                 AsyncIndexDetectorsAction.this.onFailures(
                                         new OpenSearchStatusException(
                                                 "Search request timed out", RestStatus.REQUEST_TIMEOUT));
+                                return;
                             }
                             TransportIndexDetectorAction.this.logger.debug("prepackaged rules fetch success");
 
@@ -2667,6 +2669,7 @@ public class TransportIndexDetectorAction
                                 AsyncIndexDetectorsAction.this.onFailures(
                                         new OpenSearchStatusException(
                                                 "Search request timed out", RestStatus.REQUEST_TIMEOUT));
+                                return;
                             }
                             TransportIndexDetectorAction.this.logger.debug("custom rules fetch successful");
                             SearchHits hits = response.getHits();

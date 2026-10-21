@@ -323,6 +323,7 @@ public class TransportIndexCustomLogTypeAction
                                                                 "Log Type with id %s cannot be updated because space is sigma",
                                                                 logTypeId),
                                                         RestStatus.BAD_REQUEST));
+                                        return;
                                     }
                                 }
                                 if (!existingLogType.getName().equals(request.getCustomLogType().getName())) {

@@ -310,6 +310,7 @@ public class JoinEngine {
                                 this.onFailure(
                                         new OpenSearchStatusException(
                                                 "Search request timed out", RestStatus.REQUEST_TIMEOUT));
+                                return;
                             }
 
                             Iterator<SearchHit> hits = response.getHits().iterator();
