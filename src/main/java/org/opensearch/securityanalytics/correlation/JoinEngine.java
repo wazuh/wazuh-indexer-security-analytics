@@ -19,6 +19,7 @@ package org.opensearch.securityanalytics.correlation;
 import org.apache.commons.lang3.tuple.Pair;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.join.ScoreMode;
 import org.opensearch.OpenSearchStatusException;
 import org.opensearch.action.search.MultiSearchRequest;
@@ -309,6 +310,7 @@ public class JoinEngine {
                                 this.onFailure(
                                         new OpenSearchStatusException(
                                                 "Search request timed out", RestStatus.REQUEST_TIMEOUT));
+                                return;
                             }
 
                             Iterator<SearchHit> hits = response.getHits().iterator();
@@ -447,7 +449,7 @@ public class JoinEngine {
                                             StringBuilder qb = new StringBuilder(query.getField()).append(":(");
                                             for (int i = 0; i < hits.length; ++i) {
                                                 String value = hits[i].field(rule.field).getValue();
-                                                qb.append(value);
+                                                qb.append(queryStringValue(value));
                                                 if (i < hits.length - 1) {
                                                     qb.append(" OR ");
                                                 } else {
@@ -778,6 +780,21 @@ public class JoinEngine {
 
     private void onFailure(Exception e) {
         this.correlateFindingAction.onFailures(e);
+    }
+
+    /**
+     * Turns a field value read from an event into a literal for the join's {@code query_string}.
+     *
+     * <p>The value comes from logged data, so whoever writes the event controls it. Unescaped, its
+     * operators, wildcards and parentheses become part of the query: {@code *} matches every event,
+     * and an unbalanced parenthesis fails the whole search. Escaped and quoted, it can only match
+     * itself, whitespace and words like {@code OR} included.
+     *
+     * @param value the event field value
+     * @return the value as a quoted, escaped {@code query_string} literal
+     */
+    static String queryStringValue(String value) {
+        return "\"" + QueryParser.escape(value) + "\"";
     }
 
     static class DocSearchCriteria {

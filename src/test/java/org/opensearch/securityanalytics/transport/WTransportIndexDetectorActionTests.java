@@ -16,6 +16,9 @@
  */
 package org.opensearch.securityanalytics.transport;
 
+import org.opensearch.index.query.BoolQueryBuilder;
+import org.opensearch.index.query.QueryBuilder;
+import org.opensearch.index.query.TermQueryBuilder;
 import org.opensearch.securityanalytics.model.Rule;
 import org.opensearch.securityanalytics.transport.WTransportIndexDetectorAction.RuleClassificationResult;
 import org.opensearch.securityanalytics.transport.WTransportIndexDetectorAction.RuleHit;
@@ -23,6 +26,8 @@ import org.opensearch.test.OpenSearchTestCase;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 public class WTransportIndexDetectorActionTests extends OpenSearchTestCase {
 
@@ -248,5 +253,32 @@ public class WTransportIndexDetectorActionTests extends OpenSearchTestCase {
                                 new RuleHit(Rule.CUSTOM_RULES_INDEX, "r2", "custom")));
 
         assertNull(WTransportIndexDetectorAction.validateClassificationResult(result, "test"));
+    }
+
+    // -----------------------------------------------------------------------
+    // integrationQuery tests
+    // -----------------------------------------------------------------------
+
+    public void testIntegrationQuery_matchesTheStandardCopyById() {
+        QueryBuilder query = WTransportIndexDetectorAction.integrationQuery("integration-id");
+
+        assertTrue(query instanceof BoolQueryBuilder);
+        BoolQueryBuilder bool = (BoolQueryBuilder) query;
+        assertTrue(bool.must().isEmpty());
+        assertTrue(bool.should().isEmpty());
+        assertTrue(bool.mustNot().isEmpty());
+        Map<String, Object> filters =
+                bool.filter().stream()
+                        .map(TermQueryBuilder.class::cast)
+                        .collect(Collectors.toMap(TermQueryBuilder::fieldName, TermQueryBuilder::value));
+        assertEquals(Map.of("document.id", "integration-id", "space.name", "standard"), filters);
+    }
+
+    public void testIntegrationQuery_ignoresTheTitle() {
+        // A user integration may share the standard one's title in any space; the title must not
+        // take part in the lookup at all.
+        String query = WTransportIndexDetectorAction.integrationQuery("integration-id").toString();
+
+        assertFalse(query.contains("title"));
     }
 }

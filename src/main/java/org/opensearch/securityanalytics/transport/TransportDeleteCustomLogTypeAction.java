@@ -215,6 +215,7 @@ public class TransportDeleteCustomLogTypeAction
                                             "Log Type with id %s cannot be deleted because source is sigma",
                                             logType.getId()),
                                     RestStatus.BAD_REQUEST));
+                    return;
                 }
             }
             if (detectorIndices.detectorIndexExists()) {
