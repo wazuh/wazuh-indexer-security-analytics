@@ -37,12 +37,14 @@ import org.opensearch.common.settings.Settings;
 import org.opensearch.common.unit.TimeValue;
 import org.opensearch.common.util.concurrent.OpenSearchExecutors;
 import org.opensearch.common.util.concurrent.ThreadContext;
+import org.opensearch.commons.alerting.action.IndexMonitorResponse;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.common.io.stream.NamedWriteableRegistry;
 import org.opensearch.core.rest.RestStatus;
 import org.opensearch.core.xcontent.NamedXContentRegistry;
 import org.opensearch.index.IndexNotFoundException;
 import org.opensearch.rest.RestRequest;
+import org.opensearch.search.SearchHits;
 import org.opensearch.securityanalytics.action.IndexDetectorRequest;
 import org.opensearch.securityanalytics.action.IndexDetectorResponse;
 import org.opensearch.securityanalytics.config.monitors.DetectorMonitorConfig;
@@ -59,6 +61,7 @@ import org.opensearch.securityanalytics.util.DetectorIndices;
 import org.opensearch.securityanalytics.util.ExceptionChecker;
 import org.opensearch.securityanalytics.util.RuleIndices;
 import org.opensearch.securityanalytics.util.RuleTopicIndices;
+import org.opensearch.tasks.Task;
 import org.opensearch.test.OpenSearchTestCase;
 import org.opensearch.threadpool.ThreadPool;
 import org.opensearch.transport.RemoteTransportException;
@@ -69,6 +72,7 @@ import org.opensearch.transport.client.ClusterAdminClient;
 
 import java.lang.reflect.Method;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
@@ -557,5 +561,68 @@ public class TransportIndexDetectorActionTests extends OpenSearchTestCase {
 
         assertNotNull(listener.failure);
         assertTrue(listener.failure.getMessage().contains("cluster health timed out"));
+    }
+
+    /** A client whose every search comes back timed out, carrying no hits. */
+    @SuppressWarnings("unchecked")
+    private static Client clientWithTimedOutSearch(SearchResponse searchResponse) {
+        Client client = mock(Client.class);
+        when(searchResponse.isTimedOut()).thenReturn(true);
+        when(searchResponse.getHits()).thenReturn(SearchHits.empty());
+        doAnswer(
+                        invocation -> {
+                            invocation.<ActionListener<SearchResponse>>getArgument(1).onResponse(searchResponse);
+                            return null;
+                        })
+                .when(client)
+                .search(any(SearchRequest.class), any(ActionListener.class));
+        return client;
+    }
+
+    /**
+     * A timed-out rule search fails the request. Its partial hits must not go on to build the monitor
+     * queries, or the detector would be created with fewer rules than were asked for while the user
+     * is told the request failed.
+     */
+    @SuppressWarnings("unchecked")
+    public void testImportRules_searchTimedOut_failsWithoutReadingHits() {
+        SearchResponse searchResponse = mock(SearchResponse.class);
+        TransportIndexDetectorAction action = createAction(clientWithTimedOutSearch(searchResponse));
+        IndexDetectorRequest request = requestWithIndices("wazuh-events-v5-test");
+        CapturingListener listener = new CapturingListener();
+        ActionListener<List<IndexMonitorResponse>> monitorListener = mock(ActionListener.class);
+
+        action.new AsyncIndexDetectorsAction(null, mock(Task.class), request, listener)
+                .importRules(request, monitorListener);
+
+        assertTimedOut(listener.failure);
+        verify(searchResponse, never()).getHits();
+        verify(monitorListener, never()).onResponse(any());
+    }
+
+    /**
+     * Same as {@link #testImportRules_searchTimedOut_failsWithoutReadingHits()}, for custom rules.
+     */
+    @SuppressWarnings("unchecked")
+    public void testImportCustomRules_searchTimedOut_failsWithoutReadingHits() {
+        SearchResponse searchResponse = mock(SearchResponse.class);
+        TransportIndexDetectorAction action = createAction(clientWithTimedOutSearch(searchResponse));
+        IndexDetectorRequest request = requestWithIndices("wazuh-events-v5-test");
+        Detector detector = request.getDetector();
+        CapturingListener listener = new CapturingListener();
+        ActionListener<List<IndexMonitorResponse>> monitorListener = mock(ActionListener.class);
+
+        action.new AsyncIndexDetectorsAction(null, mock(Task.class), request, listener)
+                .importCustomRules(
+                        detector, detector.getInputs().get(0), new ArrayList<>(), monitorListener);
+
+        assertTimedOut(listener.failure);
+        verify(searchResponse, never()).getHits();
+        verify(monitorListener, never()).onResponse(any());
+    }
+
+    private static void assertTimedOut(Exception failure) {
+        assertTrue(failure instanceof OpenSearchStatusException);
+        assertEquals(RestStatus.REQUEST_TIMEOUT, ((OpenSearchStatusException) failure).status());
     }
 }

@@ -350,18 +350,20 @@ public class TransportCorrelateFindingAction
      * AsyncCorrelateFindingAction#onFailures(Exception)}) release the permit.
      */
     private void scheduleCorrelation(AsyncCorrelateFindingAction action) {
-        if (pendingCount.get() >= maxPendingFindings) {
+        // Check and reserve in one atomic step, so concurrent callers cannot all see room and push
+        // the backlog past the limit.
+        int max = maxPendingFindings;
+        if (pendingCount.getAndUpdate(pending -> pending < max ? pending + 1 : pending) >= max) {
             long n = droppedFindings.incrementAndGet();
             if (n == 1 || n % 10000 == 0) {
                 log.warn(
                         "Correlation queue capacity reached ({} pending). Dropping correlation and enrichment for the current finding. Total dropped so far: {}",
-                        maxPendingFindings,
+                        max,
                         n);
             }
             action.dropForBackpressure();
             return;
         }
-        pendingCount.incrementAndGet();
         pendingStarts.add(action);
         evaluateBackpressure();
         drainPending();
@@ -752,6 +754,7 @@ public class TransportCorrelateFindingAction
                                     onFailures(
                                             new OpenSearchStatusException(
                                                     "Search request timed out", RestStatus.REQUEST_TIMEOUT));
+                                    return;
                                 }
 
                                 SearchHits hits = response.getHits();
