@@ -1,26 +1,38 @@
 /*
- * Copyright OpenSearch Contributors
- * SPDX-License-Identifier: Apache-2.0
+ * Copyright (C) 2026, Wazuh Inc.
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 package org.opensearch.securityanalytics.transport;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.opensearch.OpenSearchStatusException;
-import org.opensearch.cluster.routing.Preference;
-import org.opensearch.core.action.ActionListener;
 import org.opensearch.action.ActionRunnable;
 import org.opensearch.action.search.SearchRequest;
 import org.opensearch.action.search.SearchResponse;
 import org.opensearch.action.support.ActionFilters;
 import org.opensearch.action.support.HandledTransportAction;
+import org.opensearch.cluster.routing.Preference;
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.inject.Inject;
 import org.opensearch.common.settings.Settings;
+import org.opensearch.core.action.ActionListener;
+import org.opensearch.core.rest.RestStatus;
 import org.opensearch.core.xcontent.NamedXContentRegistry;
 import org.opensearch.index.query.BoolQueryBuilder;
 import org.opensearch.index.query.QueryBuilders;
-import org.opensearch.core.rest.RestStatus;
 import org.opensearch.search.SearchHit;
 import org.opensearch.search.builder.SearchSourceBuilder;
 import org.opensearch.securityanalytics.action.ListCorrelationsAction;
@@ -42,7 +54,9 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
-public class TransportListCorrelationAction extends HandledTransportAction<ListCorrelationsRequest, ListCorrelationsResponse> implements SecureTransportAction {
+public class TransportListCorrelationAction
+        extends HandledTransportAction<ListCorrelationsRequest, ListCorrelationsResponse>
+        implements SecureTransportAction {
 
     private static final Logger log = LogManager.getLogger(TransportListCorrelationAction.class);
 
@@ -57,13 +71,15 @@ public class TransportListCorrelationAction extends HandledTransportAction<ListC
     private final ThreadPool threadPool;
 
     @Inject
-    public TransportListCorrelationAction(TransportService transportService,
-                                          Client client,
-                                          NamedXContentRegistry xContentRegistry,
-                                          ClusterService clusterService,
-                                          Settings settings,
-                                          ActionFilters actionFilters) {
-        super(ListCorrelationsAction.NAME, transportService, actionFilters, ListCorrelationsRequest::new);
+    public TransportListCorrelationAction(
+            TransportService transportService,
+            Client client,
+            NamedXContentRegistry xContentRegistry,
+            ClusterService clusterService,
+            Settings settings,
+            ActionFilters actionFilters) {
+        super(
+                ListCorrelationsAction.NAME, transportService, actionFilters, ListCorrelationsRequest::new);
         this.client = client;
         this.xContentRegistry = xContentRegistry;
         this.clusterService = clusterService;
@@ -72,8 +88,12 @@ public class TransportListCorrelationAction extends HandledTransportAction<ListC
     }
 
     @Override
-    protected void doExecute(Task task, ListCorrelationsRequest request, ActionListener<ListCorrelationsResponse> actionListener) {
-        AsyncListCorrelationAction asyncAction = new AsyncListCorrelationAction(task, request, actionListener);
+    protected void doExecute(
+            Task task,
+            ListCorrelationsRequest request,
+            ActionListener<ListCorrelationsResponse> actionListener) {
+        AsyncListCorrelationAction asyncAction =
+                new AsyncListCorrelationAction(task, request, actionListener);
         asyncAction.start();
     }
 
@@ -85,12 +105,15 @@ public class TransportListCorrelationAction extends HandledTransportAction<ListC
         private final AtomicBoolean counter = new AtomicBoolean();
         private final Task task;
 
-        AsyncListCorrelationAction(Task task, ListCorrelationsRequest request, ActionListener<ListCorrelationsResponse> listener) {
+        AsyncListCorrelationAction(
+                Task task,
+                ListCorrelationsRequest request,
+                ActionListener<ListCorrelationsResponse> listener) {
             this.task = task;
             this.request = request;
             this.listener = listener;
 
-            this.response =new AtomicReference<>();
+            this.response = new AtomicReference<>();
         }
 
         @SuppressWarnings("unchecked")
@@ -98,14 +121,11 @@ public class TransportListCorrelationAction extends HandledTransportAction<ListC
             Long startTimestamp = request.getStartTimestamp();
             Long endTimestamp = request.getEndTimestamp();
 
-            BoolQueryBuilder queryBuilder = QueryBuilders.boolQuery()
-                    .mustNot(QueryBuilders.matchQuery(
-                            "finding1", ""
-                    )).mustNot(QueryBuilders.matchQuery(
-                            "finding2", ""
-                    )).filter(QueryBuilders.rangeQuery("timestamp")
-                            .gte(startTimestamp)
-                            .lte(endTimestamp));
+            BoolQueryBuilder queryBuilder =
+                    QueryBuilders.boolQuery()
+                            .mustNot(QueryBuilders.matchQuery("finding1", ""))
+                            .mustNot(QueryBuilders.matchQuery("finding2", ""))
+                            .filter(QueryBuilders.rangeQuery("timestamp").gte(startTimestamp).lte(endTimestamp));
             SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
             searchSourceBuilder.query(queryBuilder);
             searchSourceBuilder.fetchSource(true);
@@ -115,35 +135,44 @@ public class TransportListCorrelationAction extends HandledTransportAction<ListC
             searchRequest.source(searchSourceBuilder);
             searchRequest.preference(Preference.PRIMARY_FIRST.type());
 
-            client.search(searchRequest, new ActionListener<>() {
-                @Override
-                public void onResponse(SearchResponse response) {
-                    if (response.isTimedOut()) {
-                        onFailures(new OpenSearchStatusException("Search request timed out", RestStatus.REQUEST_TIMEOUT));
-                    }
+            client.search(
+                    searchRequest,
+                    new ActionListener<>() {
+                        @Override
+                        public void onResponse(SearchResponse response) {
+                            if (response.isTimedOut()) {
+                                onFailures(
+                                        new OpenSearchStatusException(
+                                                "Search request timed out", RestStatus.REQUEST_TIMEOUT));
+                                return;
+                            }
 
-                    Map<String, CorrelatedFinding> correlatedFindings = new HashMap<>();
-                    Iterator<SearchHit> hits = response.getHits().iterator();
-                    while (hits.hasNext()) {
-                        SearchHit hit = hits.next();
-                        Map<String, Object> source = hit.getSourceAsMap();
+                            Map<String, CorrelatedFinding> correlatedFindings = new HashMap<>();
+                            Iterator<SearchHit> hits = response.getHits().iterator();
+                            while (hits.hasNext()) {
+                                SearchHit hit = hits.next();
+                                Map<String, Object> source = hit.getSourceAsMap();
 
-                        CorrelatedFinding correlatedFinding = new CorrelatedFinding(
-                                source.get("finding1").toString(),
-                                source.get("logType").toString().split("-")[0],
-                                source.get("finding2").toString(),
-                                source.get("logType").toString().split("-")[1],
-                                (List<String>) source.get("corrRules"));
-                        correlatedFindings.put(source.get("finding1").toString() + ":" + source.get("finding2").toString(), correlatedFinding);
-                    }
-                    onOperation(new ListCorrelationsResponse(new ArrayList<>(correlatedFindings.values())));
-                }
+                                CorrelatedFinding correlatedFinding =
+                                        new CorrelatedFinding(
+                                                source.get("finding1").toString(),
+                                                source.get("logType").toString().split("-")[0],
+                                                source.get("finding2").toString(),
+                                                source.get("logType").toString().split("-")[1],
+                                                (List<String>) source.get("corrRules"));
+                                correlatedFindings.put(
+                                        source.get("finding1").toString() + ":" + source.get("finding2").toString(),
+                                        correlatedFinding);
+                            }
+                            onOperation(
+                                    new ListCorrelationsResponse(new ArrayList<>(correlatedFindings.values())));
+                        }
 
-                @Override
-                public void onFailure(Exception e) {
-                    onFailures(e);
-                }
-            });
+                        @Override
+                        public void onFailure(Exception e) {
+                            onFailures(e);
+                        }
+                    });
         }
 
         private void onOperation(ListCorrelationsResponse response) {
@@ -160,16 +189,21 @@ public class TransportListCorrelationAction extends HandledTransportAction<ListC
         }
 
         private void finishHim(ListCorrelationsResponse response, Exception t) {
-            threadPool.executor(ThreadPool.Names.GENERIC).execute(ActionRunnable.supply(listener, () -> {
-                if (t != null) {
-                    if (t instanceof OpenSearchStatusException) {
-                        throw t;
-                    }
-                    throw SecurityAnalyticsException.wrap(t);
-                } else {
-                    return response;
-                }
-            }));
+            threadPool
+                    .executor(ThreadPool.Names.GENERIC)
+                    .execute(
+                            ActionRunnable.supply(
+                                    listener,
+                                    () -> {
+                                        if (t != null) {
+                                            if (t instanceof OpenSearchStatusException) {
+                                                throw t;
+                                            }
+                                            throw SecurityAnalyticsException.wrap(t);
+                                        } else {
+                                            return response;
+                                        }
+                                    }));
         }
     }
 }
