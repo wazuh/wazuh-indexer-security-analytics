@@ -363,6 +363,34 @@ public class TransportCorrelateFindingActionTests extends OpenSearchTestCase {
     }
 
     @SuppressWarnings("unchecked")
+    public void testDoStart_detectorLookupTimedOut_failsWithoutReadingHits() throws Exception {
+        TestSetup s = buildTestSetup();
+        ActionListener<SubscribeFindingsResponse> listener = mock(ActionListener.class);
+        TransportCorrelateFindingAction.AsyncCorrelateFindingAction asyncAction =
+                buildAsyncAction(s, listener);
+
+        when(s.detectorIndices.detectorIndexExists()).thenReturn(true);
+        SearchResponse response = mock(SearchResponse.class);
+        when(response.isTimedOut()).thenReturn(true);
+        when(response.getHits()).thenReturn(SearchHits.empty());
+        doAnswer(
+                        inv -> {
+                            ((ActionListener<SearchResponse>) inv.getArgument(1)).onResponse(response);
+                            return null;
+                        })
+                .when(s.client)
+                .search(any(), any());
+
+        asyncAction.doStart();
+
+        verify(listener).onFailure(any());
+        verify(listener, never()).onResponse(any());
+        // The hits of a timed-out lookup must not drive enrichment or correlation once the
+        // request has already been failed.
+        verify(response, never()).getHits();
+    }
+
+    @SuppressWarnings("unchecked")
     public void testGetTimestampFeature_metadataIndexNotAcknowledged_skipsCorrelationGracefully()
             throws Exception {
         TestSetup s = buildTestSetup();
