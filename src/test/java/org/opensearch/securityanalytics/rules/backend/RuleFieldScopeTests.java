@@ -17,9 +17,12 @@
 package org.opensearch.securityanalytics.rules.backend;
 
 import org.opensearch.securityanalytics.model.Rule;
+import org.opensearch.securityanalytics.model.RuleMetadata;
+import org.opensearch.securityanalytics.model.Value;
 import org.opensearch.securityanalytics.rules.objects.SigmaRule;
 import org.opensearch.test.OpenSearchTestCase;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -74,13 +77,35 @@ public class RuleFieldScopeTests extends OpenSearchTestCase {
         assertEquals(List.of(), RuleFieldScope.monitorQueryFieldNames(rule, DETECTOR_FIELDS));
     }
 
-    public void testAKeywordWithAFieldConditionKeepsTheDetectorFieldNames() throws Exception {
-        // Alerting needs the names to rewrite a clause on a field the events index does not map yet;
-        // with none, the percolator rejects the query and the rule never fires.
+    public void testAKeywordWithAFieldConditionGetsNoMonitorFieldNames() throws Exception {
+        // Its keyword can match any field; alerting reads the fields of the condition from the query.
         Rule rule =
                 stored(
                         "    keywords:\n        - DataError\n    f:\n        process.title: nope\n"
                                 + "    condition: keywords and not f");
+        assertEquals(List.of(), RuleFieldScope.monitorQueryFieldNames(rule, DETECTOR_FIELDS));
+    }
+
+    public void testARuleThatCannotBeReadKeepsTheDetectorFieldNames() {
+        Rule rule =
+                new Rule(
+                        "rule-1",
+                        1L,
+                        "test",
+                        "test",
+                        Collections.<Value>emptyList(),
+                        Collections.<Value>emptyList(),
+                        "high",
+                        Collections.<Value>emptyList(),
+                        "test",
+                        Instant.now(),
+                        List.of(new Value("event.kind: \"event\"")),
+                        List.of(new Value("event.kind")),
+                        "not: [a, sigma, rule",
+                        Collections.<Value>emptyList(),
+                        Collections.emptyMap(),
+                        Collections.emptyMap(),
+                        RuleMetadata.empty());
         assertEquals(DETECTOR_FIELDS, RuleFieldScope.monitorQueryFieldNames(rule, DETECTOR_FIELDS));
     }
 

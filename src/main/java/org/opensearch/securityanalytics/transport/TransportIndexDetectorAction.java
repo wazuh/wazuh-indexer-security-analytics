@@ -1354,8 +1354,8 @@ public class TransportIndexDetectorAction
             tags.add(rule.getCategory());
             tags.addAll(rule.getTags().stream().map(Value::getValue).collect(Collectors.toList()));
 
-            // Wazuh: a rule that names no field (a Sigma keywords list) gets no field names, so that
-            // alerting reads the whole event for it (wazuh/wazuh-indexer-plugins#1747).
+            // Wazuh: a rule holding a Sigma keyword gets no field names, so that alerting reads the
+            // whole event for it (wazuh/wazuh-indexer-plugins#1747).
             DocLevelQuery docLevelQuery =
                     new DocLevelQuery(
                             id,
