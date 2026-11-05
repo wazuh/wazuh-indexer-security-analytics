@@ -16,8 +16,6 @@
  */
 package org.opensearch.securityanalytics.rules.backend;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.opensearch.securityanalytics.model.Rule;
 import org.opensearch.securityanalytics.rules.condition.ConditionValueExpression;
 import org.opensearch.securityanalytics.rules.exceptions.SigmaConditionError;
@@ -33,53 +31,37 @@ import java.util.List;
  *
  * <p>A rule's {@code query_field_names} lists the fields its conditions name. A Sigma {@code
  * keywords} list names none: it compiles to a query term with no field qualifier, which the
- * percolator evaluates against every field of the event. A rule holding such a condition cannot be
- * scoped to its field names.
+ * percolator evaluates against every field of the event. A rule that also names fields ({@code
+ * keywords and selection}) has non-empty field names, so only its compiled conditions reveal the
+ * keyword: {@link Backend} records it while compiling.
  */
 public final class RuleFieldScope {
-
-    private static final Logger log = LogManager.getLogger(RuleFieldScope.class);
 
     private RuleFieldScope() {}
 
     /**
-     * Tells whether a stored rule holds a condition that names no field, and so can match a value in
-     * any field of the event.
+     * Gives the field names a detector's doc-level query carries for a rule.
      *
-     * <p>A rule naming no field at all is made only of such conditions. A rule naming some fields may
-     * still combine them with a keyword ({@code keywords and selection}), which only its compiled
-     * conditions reveal, so it is compiled again. That happens when a detector is created or updated,
-     * never per event.
+     * <p>Alerting reads only the fields the queries of a monitor name, unless one of them names none,
+     * and then it reads the whole event. A rule that names no field (a Sigma {@code keywords} list)
+     * gets no field names, so that its keywords are matched against every field of the event and not
+     * only the fields the other rules happen to name.
      *
-     * @param rule the stored rule.
-     * @return {@code true} when the rule can match a value in any field; {@code false} when it only
-     *     matches the fields it names, or when its body cannot be compiled to tell.
+     * <p>A rule that names some field keeps the detector's list, also when it holds a keyword too.
+     * Alerting uses the list to rewrite the clauses on fields the events index does not map yet
+     * (wazuh/wazuh-indexer-plugins#1518); without it the percolator rejects the query and the rule is
+     * never evaluated. Its keywords then reach the whole event only when the detector also holds a
+     * rule that names no field.
+     *
+     * @param rule the rule the query is built from.
+     * @param detectorFieldNames the fields named by all the rules of the detector.
+     * @return an empty list for a rule that names no field, {@code detectorFieldNames} otherwise.
      */
-    public static boolean matchesAnyField(Rule rule) {
+    public static List<String> monitorQueryFieldNames(Rule rule, List<String> detectorFieldNames) {
         if (rule.getQueryFieldNames() == null || rule.getQueryFieldNames().isEmpty()) {
-            return true;
+            return Collections.emptyList();
         }
-        String body = rule.getRule();
-        if (body == null || body.isBlank()) {
-            return false;
-        }
-        try {
-            SigmaRule parsed = SigmaRule.fromYaml(body, true);
-            if (parsed.getErrors() != null && !parsed.getErrors().getErrors().isEmpty()) {
-                return false;
-            }
-            Backend backend = new Backend();
-            backend.convertRule(parsed);
-            return backend.matchesAnyField();
-        } catch (Exception e) {
-            // The rule was compiled when it was stored, so this is not expected. Keeping its field names
-            // is what the detector did before this check existed.
-            log.debug(
-                    "Could not tell whether rule [{}] names every field it matches: {}",
-                    rule.getId(),
-                    e.getMessage());
-            return false;
-        }
+        return detectorFieldNames;
     }
 
     /**

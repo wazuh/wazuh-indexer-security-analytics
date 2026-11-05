@@ -1354,14 +1354,16 @@ public class TransportIndexDetectorAction
             tags.add(rule.getCategory());
             tags.addAll(rule.getTags().stream().map(Value::getValue).collect(Collectors.toList()));
 
-            // Alerting reads only the fields the queries name, unless one of them names none. A rule with
-            // a condition that names no field (a Sigma keyword) is matched against every field of the
-            // event, so its query must not carry the detector's field list: otherwise the keyword only
-            // ever sees the fields the other rules happen to name.
-            List<String> fieldNames =
-                    RuleFieldScope.matchesAnyField(rule) ? Collections.emptyList() : queryFieldNames;
+            // Wazuh: a rule that names no field (a Sigma keywords list) gets no field names, so that
+            // alerting reads the whole event for it (wazuh/wazuh-indexer-plugins#1747).
             DocLevelQuery docLevelQuery =
-                    new DocLevelQuery(id, name, Collections.emptyList(), actualQuery, tags, fieldNames);
+                    new DocLevelQuery(
+                            id,
+                            name,
+                            Collections.emptyList(),
+                            actualQuery,
+                            tags,
+                            RuleFieldScope.monitorQueryFieldNames(rule, queryFieldNames));
             docLevelQueries.add(docLevelQuery);
         }
         docLevelQueries.addAll(threatIntelQueries);

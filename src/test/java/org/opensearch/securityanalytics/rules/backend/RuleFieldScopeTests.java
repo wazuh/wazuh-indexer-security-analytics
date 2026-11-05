@@ -17,12 +17,9 @@
 package org.opensearch.securityanalytics.rules.backend;
 
 import org.opensearch.securityanalytics.model.Rule;
-import org.opensearch.securityanalytics.model.RuleMetadata;
-import org.opensearch.securityanalytics.model.Value;
 import org.opensearch.securityanalytics.rules.objects.SigmaRule;
 import org.opensearch.test.OpenSearchTestCase;
 
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -47,6 +44,13 @@ public class RuleFieldScopeTests extends OpenSearchTestCase {
                 "    date: '2026-09-04'");
     }
 
+    /** Compiles a rule the way rule upload does and tells whether it can match any field. */
+    private static boolean matchesAnyField(String detection) throws Exception {
+        RuleFieldScope.Backend backend = new RuleFieldScope.Backend();
+        backend.convertRule(SigmaRule.fromYaml(yaml(detection), true));
+        return backend.matchesAnyField();
+    }
+
     /** Stores a rule the way rule upload does, with the field names its compilation records. */
     private static Rule stored(String detection) throws Exception {
         String body = yaml(detection);
@@ -63,60 +67,57 @@ public class RuleFieldScopeTests extends OpenSearchTestCase {
                 body);
     }
 
+    private static final List<String> DETECTOR_FIELDS = List.of("user.name", "message");
+
+    public void testAKeywordsOnlyRuleGetsNoMonitorFieldNames() throws Exception {
+        Rule rule = stored("    keywords:\n        - DataError\n    condition: keywords");
+        assertEquals(List.of(), RuleFieldScope.monitorQueryFieldNames(rule, DETECTOR_FIELDS));
+    }
+
+    public void testAKeywordWithAFieldConditionKeepsTheDetectorFieldNames() throws Exception {
+        // Alerting needs the names to rewrite a clause on a field the events index does not map yet;
+        // with none, the percolator rejects the query and the rule never fires.
+        Rule rule =
+                stored(
+                        "    keywords:\n        - DataError\n    f:\n        process.title: nope\n"
+                                + "    condition: keywords and not f");
+        assertEquals(DETECTOR_FIELDS, RuleFieldScope.monitorQueryFieldNames(rule, DETECTOR_FIELDS));
+    }
+
+    public void testAFieldRuleKeepsTheDetectorFieldNames() throws Exception {
+        Rule rule = stored("    selection:\n        event.kind: event\n    condition: selection");
+        assertEquals(DETECTOR_FIELDS, RuleFieldScope.monitorQueryFieldNames(rule, DETECTOR_FIELDS));
+    }
+
     public void testAKeywordsListMatchesAnyField() throws Exception {
         assertTrue(
-                RuleFieldScope.matchesAnyField(
-                        stored(
-                                "    keywords:\n        - DataError\n        - '*Timeout*'\n    condition: keywords")));
+                matchesAnyField(
+                        "    keywords:\n        - DataError\n        - '*Timeout*'\n    condition: keywords"));
     }
 
     public void testAKeywordCombinedWithASelectionMatchesAnyField() throws Exception {
         // The rule names a field, so its field names alone do not reveal the keyword.
-        Rule rule =
-                stored(
-                        "    keywords:\n        - DataError\n    selection:\n        event.kind: event\n"
-                                + "    condition: keywords and selection");
-        assertFalse("the selection's field is recorded", rule.getQueryFieldNames().isEmpty());
-        assertTrue(RuleFieldScope.matchesAnyField(rule));
+        String detection =
+                "    keywords:\n        - DataError\n    selection:\n        event.kind: event\n"
+                        + "    condition: keywords and selection";
+        RuleFieldScope.Backend backend = new RuleFieldScope.Backend();
+        backend.convertRule(SigmaRule.fromYaml(yaml(detection), true));
+        assertFalse("the selection's field is recorded", backend.getQueryFields().isEmpty());
+        assertTrue(backend.matchesAnyField());
     }
 
     public void testANegatedKeywordStillMatchesAnyField() throws Exception {
         assertTrue(
-                RuleFieldScope.matchesAnyField(
-                        stored(
-                                "    keywords:\n        - DataError\n    selection:\n        event.kind: event\n"
-                                        + "    condition: selection and not keywords")));
+                matchesAnyField(
+                        "    keywords:\n        - DataError\n    selection:\n        event.kind: event\n"
+                                + "    condition: selection and not keywords"));
     }
 
     public void testASelectionOnlyMatchesTheFieldsItNames() throws Exception {
         assertFalse(
-                RuleFieldScope.matchesAnyField(
-                        stored(
-                                "    selection:\n        event.kind: event\n        message|contains: fatal\n"
-                                        + "    condition: selection")));
-    }
-
-    public void testARuleThatCannotBeReadKeepsItsFieldNames() {
-        Rule rule =
-                new Rule(
-                        "rule-1",
-                        1L,
-                        "test",
-                        "test",
-                        Collections.<Value>emptyList(),
-                        Collections.<Value>emptyList(),
-                        "high",
-                        Collections.<Value>emptyList(),
-                        "test",
-                        Instant.now(),
-                        List.of(new Value("event.kind: \"event\"")),
-                        List.of(new Value("event.kind")),
-                        "not: [a, sigma, rule",
-                        Collections.<Value>emptyList(),
-                        Collections.emptyMap(),
-                        Collections.emptyMap(),
-                        RuleMetadata.empty());
-        assertFalse(RuleFieldScope.matchesAnyField(rule));
+                matchesAnyField(
+                        "    selection:\n        event.kind: event\n        message|contains: fatal\n"
+                                + "    condition: selection"));
     }
 
     public void testTheBackendForgetsThePreviousRule() throws Exception {
