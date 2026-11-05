@@ -39,6 +39,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
@@ -103,11 +104,22 @@ public class PercolateRuleEvaluatorTests extends OpenSearchTestCase {
 
     /** A query index that reports itself ready, so the evaluator proceeds to store queries. */
     private LogtestQueryIndex readyQueryIndex() {
+        return readyQueryIndex(1L, new AtomicReference<>());
+    }
+
+    /**
+     * A query index that reports itself ready at the given mapping version, recording the fields the
+     * evaluator asked it to map.
+     */
+    private LogtestQueryIndex readyQueryIndex(
+            long mappingVersion, AtomicReference<Set<String>> requested) {
         LogtestQueryIndex queryIndex = mock(LogtestQueryIndex.class);
         doAnswer(
                         invocation -> {
+                            requested.set(Set.copyOf(invocation.<Set<String>>getArgument(2)));
                             ActionListener<LogtestQueryIndex.PreparedIndex> listener = invocation.getArgument(3);
-                            listener.onResponse(new LogtestQueryIndex.PreparedIndex("query-index", null));
+                            listener.onResponse(
+                                    new LogtestQueryIndex.PreparedIndex("query-index", null, mappingVersion));
                             return null;
                         })
                 .when(queryIndex)
@@ -117,13 +129,19 @@ public class PercolateRuleEvaluatorTests extends OpenSearchTestCase {
 
     /** Captures the bulk request the evaluator builds, without completing the call. */
     private BulkRequest captureStoredQueries(List<PercolateRuleEvaluator.ParsedRule> rules) {
+        return captureStoredQueries(rules, EVENT, readyQueryIndex());
+    }
+
+    /** Captures the bulk request built for an event against a given query index. */
+    private BulkRequest captureStoredQueries(
+            List<PercolateRuleEvaluator.ParsedRule> rules, String event, LogtestQueryIndex queryIndex) {
         Client client = mock(Client.class);
         ArgumentCaptor<BulkRequest> captor = ArgumentCaptor.forClass(BulkRequest.class);
         doAnswer(invocation -> null).when(client).bulk(captor.capture(), any());
 
-        new PercolateRuleEvaluator(client, readyQueryIndex())
+        new PercolateRuleEvaluator(client, queryIndex)
                 .evaluate(
-                        EVENT,
+                        event,
                         rules,
                         INTEGRATION_ID,
                         "test",
@@ -238,6 +256,64 @@ public class PercolateRuleEvaluatorTests extends OpenSearchTestCase {
         assertEquals(
                 "11111111-1111-1111-1111-111111111111",
                 request.sourceAsMap().get(LogtestQueryIndex.RULE_ID_FIELD));
+    }
+
+    private static final String KEYWORDS =
+            "    keywords:\n        - cmd.exe\n    condition: keywords";
+    private static final String SELECTION =
+            "    selection:\n        process.name: cmd.exe\n    condition: selection";
+    private static final String NESTED_EVENT =
+            "{\"process\": {\"name\": \"cmd.exe\", \"args\": [\"/c\", \"dir\"]},"
+                    + " \"host\": {\"ip\": [\"10.0.0.1\"], \"name\": null},"
+                    + " \"related\": {\"hosts\": [{\"name\": \"a\"}]}}";
+
+    public void testDocumentIdsFollowTheMappingVersion() throws Exception {
+        // The percolator extracts a stored query's terms when the document is written, so a keyword
+        // query stored before a field was mapped never searches that field. A new mapping version has
+        // to store the query again, under a new id.
+        // A parsed rule drives a one-shot condition parser, so each evaluation gets its own.
+        String atOne = keywordDocIdAt(1L);
+        String atTwo = keywordDocIdAt(2L);
+
+        assertNotEquals("a new mapping version must store the query again", atOne, atTwo);
+        assertEquals("the same mapping version must reuse the stored query", atOne, keywordDocIdAt(1L));
+    }
+
+    private String keywordDocIdAt(long mappingVersion) throws Exception {
+        return captureStoredQueries(
+                        List.of(parsed("Keyword", KEYWORDS)),
+                        EVENT,
+                        readyQueryIndex(mappingVersion, new AtomicReference<>()))
+                .requests()
+                .get(0)
+                .id();
+    }
+
+    public void testAKeywordRuleHasTheEventFieldsMapped() throws Exception {
+        AtomicReference<Set<String>> requested = new AtomicReference<>();
+        captureStoredQueries(
+                List.of(parsed("Keyword", KEYWORDS), parsed("Field", SELECTION)),
+                NESTED_EVENT,
+                readyQueryIndex(1L, requested));
+
+        assertEquals(
+                "every value of the event is reachable by a keyword, once it is mapped",
+                Set.of("process.name", "process.args", "host.ip", "related.hosts.name"),
+                requested.get());
+    }
+
+    public void testFieldRulesOnlyHaveTheirOwnFieldsMapped() throws Exception {
+        AtomicReference<Set<String>> requested = new AtomicReference<>();
+        captureStoredQueries(
+                List.of(parsed("Field", SELECTION)), NESTED_EVENT, readyQueryIndex(1L, requested));
+
+        assertEquals(Set.of("process.name"), requested.get());
+    }
+
+    public void testEventFieldsAreTheLeafPathsOfTheEvent() {
+        assertEquals(
+                List.of("process.name", "process.args", "host.ip", "related.hosts.name"),
+                List.copyOf(PercolateRuleEvaluator.eventFields(NESTED_EVENT)));
     }
 
     public void testAnEventThatIsNotAJsonObjectIsRejectedBeforeAnythingIsWritten() throws Exception {

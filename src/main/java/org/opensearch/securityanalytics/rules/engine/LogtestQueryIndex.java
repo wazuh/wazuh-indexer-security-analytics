@@ -354,7 +354,7 @@ public class LogtestQueryIndex {
                         new ActionListener<>() {
                             @Override
                             public void onResponse(CreateIndexResponse createIndexResponse) {
-                                listener.onResponse(new PreparedIndex(indexName, null));
+                                listener.onResponse(prepared(indexName, null));
                             }
 
                             @Override
@@ -390,13 +390,13 @@ public class LogtestQueryIndex {
                 .putMapping(
                         new PutMappingRequest(indexName).source(Map.of(PROPERTIES, mappingProperties)),
                         ActionListener.wrap(
-                                acknowledgedResponse -> listener.onResponse(new PreparedIndex(indexName, null)),
+                                acknowledgedResponse -> listener.onResponse(prepared(indexName, null)),
                                 e -> {
                                     log.warn(
                                             "Could not update mappings of logtest query index [{}]: {}",
                                             indexName,
                                             e.getMessage());
-                                    listener.onResponse(new PreparedIndex(indexName, e.getMessage()));
+                                    listener.onResponse(prepared(indexName, e.getMessage()));
                                 }));
     }
 
@@ -685,8 +685,28 @@ public class LogtestQueryIndex {
      *     when they are current. A non-null value means a query rejected by the percolator may be the
      *     fault of this index rather than of the source mapping, and must not be reported as "no
      *     detector could match it either".
+     * @param mappingVersion the version of the index's mappings. A stored query is only valid for the
+     *     version it was stored under: a query naming no field is bound, when it is stored, to the
+     *     fields mapped at that moment, and fields mapped later never reach it.
      */
-    public record PreparedIndex(String indexName, String mappingFailure) {}
+    public record PreparedIndex(String indexName, String mappingFailure, long mappingVersion) {}
+
+    /**
+     * Describes the index as it stands once its mappings have been brought up to date.
+     *
+     * <p>The mapping version is read from this node's cluster state, which the create or put-mapping
+     * call just acknowledged has already applied. An index this node cannot see yet reports {@code
+     * 0}; the next call reads the real version.
+     *
+     * @param indexName the percolator index.
+     * @param mappingFailure why the mappings could not be brought up to date, or {@code null}.
+     * @return the prepared index.
+     */
+    private PreparedIndex prepared(String indexName, String mappingFailure) {
+        IndexMetadata metadata = clusterService.state().metadata().index(indexName);
+        return new PreparedIndex(
+                indexName, mappingFailure, metadata == null ? 0L : metadata.getMappingVersion());
+    }
 
     /**
      * Copies a mapping subtree so the merged tree can be rewritten without touching cluster state.

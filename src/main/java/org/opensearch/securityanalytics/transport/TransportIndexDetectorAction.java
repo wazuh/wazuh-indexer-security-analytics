@@ -109,6 +109,7 @@ import org.opensearch.securityanalytics.rules.aggregation.AggregationItem;
 import org.opensearch.securityanalytics.rules.backend.OSQueryBackend;
 import org.opensearch.securityanalytics.rules.backend.OSQueryBackend.AggregationQueries;
 import org.opensearch.securityanalytics.rules.backend.QueryBackend;
+import org.opensearch.securityanalytics.rules.backend.RuleFieldScope;
 import org.opensearch.securityanalytics.rules.exceptions.SigmaConditionError;
 import org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings;
 import org.opensearch.securityanalytics.util.DetectorIndices;
@@ -1353,8 +1354,14 @@ public class TransportIndexDetectorAction
             tags.add(rule.getCategory());
             tags.addAll(rule.getTags().stream().map(Value::getValue).collect(Collectors.toList()));
 
+            // Alerting reads only the fields the queries name, unless one of them names none. A rule with
+            // a condition that names no field (a Sigma keyword) is matched against every field of the
+            // event, so its query must not carry the detector's field list: otherwise the keyword only
+            // ever sees the fields the other rules happen to name.
+            List<String> fieldNames =
+                    RuleFieldScope.matchesAnyField(rule) ? Collections.emptyList() : queryFieldNames;
             DocLevelQuery docLevelQuery =
-                    new DocLevelQuery(id, name, Collections.emptyList(), actualQuery, tags, queryFieldNames);
+                    new DocLevelQuery(id, name, Collections.emptyList(), actualQuery, tags, fieldNames);
             docLevelQueries.add(docLevelQuery);
         }
         docLevelQueries.addAll(threatIntelQueries);
