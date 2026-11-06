@@ -398,6 +398,39 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
                 rule.containsKey("sigma_id"));
     }
 
+    // ── Rule title interpolation ────────────────────────────────────────────
+
+    /**
+     * A title placeholder that points to an array field renders the elements joined with a space, so
+     * a rule titled after {@code process.args} names the command that matched instead of ending in an
+     * empty suffix.
+     */
+    @SuppressWarnings("unchecked")
+    public void testBuildAndIndex_titleRendersArrayPlaceholder() throws Exception {
+        Map<String, Object> eventSource = new HashMap<>();
+        eventSource.put("@timestamp", "2026-05-20T10:00:00.000Z");
+        eventSource.put("wazuh", Map.of("integration", Map.of("category", "system-activity")));
+        eventSource.put(
+                "process", Map.of("args", List.of("/usr/bin/tar", "-czf", "/tmp/out.tgz", "/srv")));
+
+        DocLevelQuery query =
+                new DocLevelQuery(
+                        "rule-1",
+                        "Archive created via tar - {{ process.args }}",
+                        Collections.emptyList(),
+                        "process.name: \"tar\"",
+                        List.of("low"));
+        Finding finding = finding("finding-1", "doc-1", ".ds-wazuh-events-v5-system-activity-000001");
+
+        Map<String, Object> doc =
+                invokeBuildAndIndex(finding, "system-activity", eventSource, "doc-1", query);
+
+        Map<String, Object> rule =
+                (Map<String, Object>) ((Map<String, Object>) doc.get("wazuh")).get("rule");
+        assertEquals(
+                "Archive created via tar - /usr/bin/tar -czf /tmp/out.tgz /srv", rule.get("title"));
+    }
+
     // ── Deterministic document id ───────────────────────────────────────────
 
     /**
