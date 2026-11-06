@@ -66,9 +66,26 @@ public class TemplateInterpolatorTests extends OpenSearchTestCase {
         assertEquals("", TemplateInterpolator.interpolate("{{ obj }}", source));
     }
 
-    public void testNonScalarList() {
-        Map<String, Object> source = Map.of("arr", List.of("a", "b"));
-        assertEquals("", TemplateInterpolator.interpolate("{{ arr }}", source));
+    public void testListJoinedWithSpace() {
+        Map<String, Object> source =
+                Map.of(
+                        "process",
+                        Map.of("args", List.of("/usr/bin/find", "/srv", "-name", "*.pem", "-name", "*.key")));
+        // Repeated elements are kept: the join renders the arguments in order, it does not dedup.
+        assertEquals(
+                "Key search - /usr/bin/find /srv -name *.pem -name *.key",
+                TemplateInterpolator.interpolate("Key search - {{ process.args }}", source));
+    }
+
+    public void testListSkipsEmptyAndNonScalarElements() {
+        Map<String, Object> source =
+                Map.of("arr", Arrays.asList("a", null, "", Map.of("k", "v"), List.of("nested"), 7, true));
+        assertEquals("a 7 true", TemplateInterpolator.interpolate("{{ arr }}", source));
+    }
+
+    public void testEmptyList() {
+        Map<String, Object> source = Map.of("arr", List.of());
+        assertEquals("Run - ", TemplateInterpolator.interpolate("Run - {{ arr }}", source));
     }
 
     public void testWhitespaceTrimming() {
@@ -128,6 +145,15 @@ public class TemplateInterpolatorTests extends OpenSearchTestCase {
         List<String> result =
                 TemplateInterpolator.interpolateList(Arrays.asList("tag-{{ name }}"), source);
         assertEquals(List.of("tag-web"), result);
+    }
+
+    public void testListMixedTextJoinsArray() {
+        // Only a pure placeholder expands into separate elements; mixed with text, the array is
+        // joined into the one element it belongs to.
+        Map<String, Object> source = Map.of("arr", List.of("a", "b"));
+        List<String> result =
+                TemplateInterpolator.interpolateList(Arrays.asList("tag-{{ arr }}"), source);
+        assertEquals(List.of("tag-a b"), result);
     }
 
     public void testListMixedTextDropsEmpty() {
