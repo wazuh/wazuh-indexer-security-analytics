@@ -46,5 +46,6 @@
 | [#282](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/282) | Fix duplicated log type initialization errors at node startup |
 | [#1583](https://github.com/wazuh/wazuh-indexer/issues/1583) | Fix ANTLR version mismatch warnings logged at startup |
 | [#313](https://github.com/wazuh/wazuh-indexer-security-analytics/issues/313) | Fix Sigma rule conversion errors and invalid CIDR prefixes not being reported |
+| [#1747](https://github.com/wazuh/wazuh-indexer-plugins/issues/1747) | Fix Sigma `keywords` rules not searching every field of the event, in detectors and in log test |
 
 ## Prior versions
