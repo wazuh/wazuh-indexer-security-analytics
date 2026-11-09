@@ -20,6 +20,8 @@ import org.opensearch.action.DocWriteRequest;
 import org.opensearch.action.bulk.BulkItemResponse;
 import org.opensearch.action.bulk.BulkRequest;
 import org.opensearch.action.bulk.BulkResponse;
+import org.opensearch.action.get.MultiGetRequest;
+import org.opensearch.action.get.MultiGetResponse;
 import org.opensearch.action.index.IndexRequest;
 import org.opensearch.cluster.block.ClusterBlockException;
 import org.opensearch.cluster.metadata.IndexMetadata;
@@ -68,6 +70,11 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
 
     private record SentBulk(BulkRequest request, ActionListener<BulkResponse> listener) {}
 
+    /** Source-event MultiGets the service sent, in order, with the listener waiting for each one. */
+    private final List<SentMultiGet> sentMultiGets = new ArrayList<>();
+
+    private record SentMultiGet(MultiGetRequest request, ActionListener<MultiGetResponse> listener) {}
+
     /**
      * When set, every bulk fails with it before {@code client.bulk} returns, the way a cluster block
      * rejects a request on the sending node.
@@ -93,6 +100,16 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
                         })
                 .when(client)
                 .bulk(any(BulkRequest.class), any(ActionListener.class));
+        doAnswer(
+                        invocation -> {
+                            sentMultiGets.add(
+                                    new SentMultiGet(
+                                            invocation.getArgument(0),
+                                            (ActionListener<MultiGetResponse>) invocation.getArgument(1)));
+                            return null;
+                        })
+                .when(client)
+                .multiGet(any(MultiGetRequest.class), any(ActionListener.class));
         ThreadPool threadPool = mock(ThreadPool.class);
         when(threadPool.getThreadContext()).thenReturn(new ThreadContext(Settings.EMPTY));
         Scheduler.Cancellable cancellable = mock(Scheduler.Cancellable.class);
@@ -105,6 +122,7 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
         settingsSet.add(SecurityAnalyticsSettings.ENRICHED_FINDINGS_ENRICH_BATCH_SIZE);
         settingsSet.add(SecurityAnalyticsSettings.ENRICHED_FINDINGS_MAX_RETRIES);
         settingsSet.add(SecurityAnalyticsSettings.ENRICHED_FINDINGS_MAX_PENDING_RETRIES);
+        settingsSet.add(SecurityAnalyticsSettings.ENRICHED_FINDINGS_MAX_PENDING);
         ClusterSettings clusterSettings = new ClusterSettings(Settings.EMPTY, settingsSet);
         ClusterService clusterService = mock(ClusterService.class);
         when(clusterService.getSettings()).thenReturn(Settings.EMPTY);
@@ -936,6 +954,62 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
 
         service.setMaxInFlight(2);
         assertEquals(2, field.get(service));
+    }
+
+    public void testSetMaxPending_updatesField() throws Exception {
+        Field field = WazuhEnrichedFindingService.class.getDeclaredField("maxPending");
+        field.setAccessible(true);
+
+        service.setMaxPending(500);
+        assertEquals(500, field.get(service));
+
+        service.setMaxPending(1);
+        assertEquals(1, field.get(service));
+    }
+
+    /**
+     * The findings queue holds at most {@code enriched_findings_max_pending} findings. Past that, a
+     * finding is refused and counted instead of queued: it never reaches {@code wazuh-findings-v5-*},
+     * so the count is what makes the loss visible. A place frees up as soon as a waiting finding is
+     * taken into a batch.
+     */
+    public void testFindingsQueueFull_refusesAndCountsOverflow() {
+        service.setMaxInFlight(1);
+        service.setMaxPending(2);
+
+        for (int i = 1; i <= 5; i++) {
+            service.enrich(finding("finding-" + i, "doc-" + i, "wazuh-events-v5-test"));
+        }
+
+        assertEquals(
+                "finding-1 is in flight, 2 and 3 wait, 4 and 5 are refused",
+                2L,
+                service.getRejectedCount());
+        assertEquals(1, sentMultiGets.size());
+
+        sentMultiGets.get(0).listener().onFailure(new RuntimeException("source lookup failed"));
+        assertEquals("the waiting findings leave the queue in one batch", 2, sentMultiGets.size());
+        assertEquals(List.of("doc-2", "doc-3"), docIds(sentMultiGets.get(1)));
+
+        service.enrich(finding("finding-6", "doc-6", "wazuh-events-v5-test"));
+        assertEquals("the queue has room again", 2L, service.getRejectedCount());
+    }
+
+    /** A disabled pipeline queues nothing, so it refuses nothing either. */
+    public void testDisabled_neitherQueuesNorRefuses() {
+        service.setEnabled(false);
+        service.setMaxPending(1);
+
+        for (int i = 1; i <= 3; i++) {
+            service.enrich(finding("finding-" + i, "doc-" + i, "wazuh-events-v5-test"));
+        }
+
+        assertEquals(0L, service.getRejectedCount());
+        assertTrue(sentMultiGets.isEmpty());
+    }
+
+    private static List<String> docIds(SentMultiGet multiGet) {
+        return multiGet.request().getItems().stream().map(MultiGetRequest.Item::id).toList();
     }
 
     public void testSetFlushInterval_reschedulesTask() {

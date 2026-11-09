@@ -112,6 +112,9 @@ public class WazuhEnrichedFindingService implements Closeable {
     /** Maximum number of writes allowed to wait in {@link #retryQueue}. */
     private volatile int maxPendingRetries;
 
+    /** Maximum number of findings allowed to wait in {@link #findingsQueue}. */
+    private volatile int maxPending;
+
     /** Valid base categories derived from {@link LOG_CATEGORY}. */
     private static final Set<String> VALID_CATEGORIES =
             Arrays.stream(LOG_CATEGORY.values())
@@ -134,6 +137,18 @@ public class WazuhEnrichedFindingService implements Closeable {
 
     /** Findings waiting to be enriched, processed when an in-flight slot becomes available. */
     private final ConcurrentLinkedQueue<Finding> findingsQueue = new ConcurrentLinkedQueue<>();
+
+    /**
+     * Size of {@link #findingsQueue}, reserved before a finding is added and released when it is
+     * taken into a batch.
+     */
+    private final AtomicInteger findingsQueueSize = new AtomicInteger(0);
+
+    /**
+     * Number of findings refused because {@link #findingsQueue} was full. Each one is a finding
+     * missing from the index.
+     */
+    private final AtomicLong rejectedCount = new AtomicLong(0);
 
     /** Limits the number of concurrent async enrichment chains to avoid transport-layer overload. */
     private final Semaphore inFlightPermits;
@@ -197,6 +212,8 @@ public class WazuhEnrichedFindingService implements Closeable {
         this.maxPendingRetries =
                 SecurityAnalyticsSettings.ENRICHED_FINDINGS_MAX_PENDING_RETRIES.get(
                         clusterService.getSettings());
+        this.maxPending =
+                SecurityAnalyticsSettings.ENRICHED_FINDINGS_MAX_PENDING.get(clusterService.getSettings());
         this.inFlightPermits = new AdjustableSemaphore(this.maxInFlight);
         this.ruleMetadataCache =
                 Collections.synchronizedMap(
@@ -237,6 +254,10 @@ public class WazuhEnrichedFindingService implements Closeable {
                 .addSettingsUpdateConsumer(
                         SecurityAnalyticsSettings.ENRICHED_FINDINGS_MAX_PENDING_RETRIES,
                         this::setMaxPendingRetries);
+        clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        SecurityAnalyticsSettings.ENRICHED_FINDINGS_MAX_PENDING, this::setMaxPending);
     }
 
     public void setEnabled(boolean enabled) {
@@ -257,6 +278,10 @@ public class WazuhEnrichedFindingService implements Closeable {
 
     public void setMaxPendingRetries(int maxPendingRetries) {
         this.maxPendingRetries = maxPendingRetries;
+    }
+
+    public void setMaxPending(int maxPending) {
+        this.maxPending = maxPending;
     }
 
     public synchronized void setMaxInFlight(int newMax) {
@@ -297,6 +322,21 @@ public class WazuhEnrichedFindingService implements Closeable {
             return;
         }
 
+        // Check and reserve in one atomic step, so concurrent callers cannot all see room and push
+        // the queue past the limit.
+        int max = this.maxPending;
+        if (this.findingsQueueSize.getAndUpdate(size -> size < max ? size + 1 : size) >= max) {
+            long rejected = this.rejectedCount.incrementAndGet();
+            if (rejected == 1 || rejected % 10000 == 0) {
+                log.error(
+                        "Enrichment queue capacity reached ({} pending). Finding {} of monitor {} is not written to the findings index. Total findings lost so far: {}",
+                        max,
+                        finding.getId(),
+                        finding.getMonitorId(),
+                        rejected);
+            }
+            return;
+        }
         this.findingsQueue.add(finding);
         this.processQueue();
     }
@@ -312,6 +352,7 @@ public class WazuhEnrichedFindingService implements Closeable {
             List<Finding> batch = new ArrayList<>(batchSize);
             Finding finding;
             while (batch.size() < batchSize && (finding = this.findingsQueue.poll()) != null) {
+                this.findingsQueueSize.decrementAndGet();
                 batch.add(finding);
             }
             if (batch.isEmpty()) {
@@ -1032,6 +1073,14 @@ public class WazuhEnrichedFindingService implements Closeable {
     /** Number of enriched findings given up on, accumulated over this service instance's lifetime. */
     public long getDroppedCount() {
         return this.droppedCount.get();
+    }
+
+    /**
+     * Number of findings refused because the enrichment queue was full, accumulated over this service
+     * instance's lifetime.
+     */
+    public long getRejectedCount() {
+        return this.rejectedCount.get();
     }
 
     /** An index request together with the number of times it has already been resent. */

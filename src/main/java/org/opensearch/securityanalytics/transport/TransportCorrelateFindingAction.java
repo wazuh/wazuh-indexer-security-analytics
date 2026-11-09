@@ -38,6 +38,8 @@ import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.inject.Inject;
 import org.opensearch.common.settings.Settings;
 import org.opensearch.common.unit.TimeValue;
+import org.opensearch.common.util.concurrent.ListenableFuture;
+import org.opensearch.common.util.concurrent.OpenSearchExecutors;
 import org.opensearch.common.xcontent.LoggingDeprecationHandler;
 import org.opensearch.common.xcontent.XContentFactory;
 import org.opensearch.common.xcontent.XContentType;
@@ -88,6 +90,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -157,14 +160,26 @@ public class TransportCorrelateFindingAction
     private final AtomicInteger pendingCount = new AtomicInteger();
 
     /**
-     * Maximum allowed correlation backlog. When {@link #pendingCount} reaches this, new findings are
-     * shed instead of growing the queue {@code
-     * plugins.security_analytics.correlation.max_pending_findings}.
+     * Maximum allowed correlation backlog. When {@link #pendingCount} reaches this, new findings skip
+     * correlation instead of growing the queue {@code
+     * plugins.security_analytics.correlation.max_pending_findings}. They are still enriched.
      */
     private volatile int maxPendingFindings;
 
-    /** Count of findings shed due to a full correlation backlog (for an occasional WARN log). */
-    private final AtomicLong droppedFindings = new AtomicLong();
+    /**
+     * Count of findings that skipped correlation due to a full correlation backlog (for an occasional
+     * WARN log).
+     */
+    private final AtomicLong skippedCorrelations = new AtomicLong();
+
+    /**
+     * Detector lookups against the detectors index currently running, by monitor id. A detector run
+     * publishes all its findings at once, so with a cold {@link #detectorLookupCache} every finding
+     * of the run would send the same search; instead the first one searches and the others wait for
+     * its answer.
+     */
+    private final ConcurrentHashMap<String, ListenableFuture<Optional<Detector>>> detectorLookups =
+            new ConcurrentHashMap<>();
 
     /** Tracks the current configured permit count to compute deltas on dynamic updates. */
     private volatile int currentMaxInFlight;
@@ -347,21 +362,23 @@ public class TransportCorrelateFindingAction
     /**
      * Adds {@code action} to the in-flight queue and starts as many queued pipelines as permits
      * allow. The terminal callbacks ({@link AsyncCorrelateFindingAction#onOperation()}, {@link
-     * AsyncCorrelateFindingAction#onFailures(Exception)}) release the permit.
+     * AsyncCorrelateFindingAction#onFailures(Exception)}) release the permit. When the backlog is
+     * full, the finding skips correlation instead; it was already dispatched to enrichment by {@link
+     * AsyncCorrelateFindingAction#start()}.
      */
     private void scheduleCorrelation(AsyncCorrelateFindingAction action) {
         // Check and reserve in one atomic step, so concurrent callers cannot all see room and push
         // the backlog past the limit.
         int max = maxPendingFindings;
         if (pendingCount.getAndUpdate(pending -> pending < max ? pending + 1 : pending) >= max) {
-            long n = droppedFindings.incrementAndGet();
+            long n = skippedCorrelations.incrementAndGet();
             if (n == 1 || n % 10000 == 0) {
                 log.warn(
-                        "Correlation queue capacity reached ({} pending). Dropping correlation and enrichment for the current finding. Total dropped so far: {}",
+                        "Correlation queue capacity reached ({} pending). Skipping correlation for the current finding, which is still enriched. Total correlations skipped so far: {}",
                         max,
                         n);
             }
-            action.dropForBackpressure();
+            action.skipCorrelationForBackpressure();
             return;
         }
         pendingStarts.add(action);
@@ -466,6 +483,93 @@ public class TransportCorrelateFindingAction
         currentMaxInFlight = newMax;
     }
 
+    /**
+     * Resolves the detector that owns {@code monitorId}: from {@link #detectorLookupCache} when it
+     * holds a fresh entry, otherwise from the detectors index, through a single search shared by
+     * every finding of that monitor that asks while it runs. Answers {@link Optional#empty()} when no
+     * detector owns the monitor.
+     */
+    private void resolveDetector(String monitorId, ActionListener<Optional<Detector>> listener) {
+        Optional<Detector> cached = detectorLookupCache.get(monitorId);
+        if (cached.isPresent()) {
+            listener.onResponse(cached);
+            return;
+        }
+        ListenableFuture<Optional<Detector>> lookup = new ListenableFuture<>();
+        ListenableFuture<Optional<Detector>> running = detectorLookups.putIfAbsent(monitorId, lookup);
+        if (running != null) {
+            running.addListener(listener, OpenSearchExecutors.newDirectExecutorService());
+            return;
+        }
+        lookup.addListener(listener, OpenSearchExecutors.newDirectExecutorService());
+        // Unregister before answering, so a finding arriving after the answer starts a new lookup
+        // instead of joining one that is over.
+        searchDetector(
+                monitorId,
+                ActionListener.runBefore(lookup, () -> detectorLookups.remove(monitorId, lookup)));
+    }
+
+    /**
+     * Searches the detectors index for the detector that owns {@code monitorId} and caches it. Every
+     * outcome reaches {@code listener}, including a synchronous failure to send the search: an
+     * unanswered lookup would leave every later finding of the monitor waiting on it.
+     */
+    private void searchDetector(String monitorId, ActionListener<Optional<Detector>> listener) {
+        NestedQueryBuilder queryBuilder =
+                QueryBuilders.nestedQuery(
+                        "detector", QueryBuilders.matchQuery("detector.monitor_id", monitorId), ScoreMode.None);
+
+        SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
+        searchSourceBuilder.query(queryBuilder);
+        searchSourceBuilder.fetchSource(true);
+        searchSourceBuilder.size(1);
+        SearchRequest searchRequest = new SearchRequest();
+        searchRequest.indices(Detector.DETECTORS_INDEX);
+        searchRequest.source(searchSourceBuilder);
+        searchRequest.preference(Preference.PRIMARY_FIRST.type());
+        searchRequest.setCancelAfterTimeInterval(TimeValue.timeValueSeconds(30L));
+
+        try {
+            client.search(
+                    searchRequest,
+                    ActionListener.wrap(
+                            response -> {
+                                if (response.isTimedOut()) {
+                                    listener.onFailure(
+                                            new OpenSearchStatusException(
+                                                    "Search request timed out", RestStatus.REQUEST_TIMEOUT));
+                                    return;
+                                }
+                                SearchHits hits = response.getHits();
+                                if (hits.getHits().length == 0) {
+                                    listener.onResponse(Optional.empty());
+                                    return;
+                                }
+                                Detector detector;
+                                try {
+                                    SearchHit hit = hits.getAt(0);
+                                    XContentParser xcp =
+                                            XContentType.JSON
+                                                    .xContent()
+                                                    .createParser(
+                                                            xContentRegistry,
+                                                            LoggingDeprecationHandler.INSTANCE,
+                                                            hit.getSourceAsString());
+                                    detector = Detector.docParse(xcp, hit.getId(), hit.getVersion());
+                                } catch (Exception e) {
+                                    log.error("Exception for request {}", searchRequest, e);
+                                    listener.onFailure(e);
+                                    return;
+                                }
+                                detectorLookupCache.put(monitorId, detector);
+                                listener.onResponse(Optional.of(detector));
+                            },
+                            listener::onFailure));
+        } catch (Exception e) {
+            listener.onFailure(e);
+        }
+    }
+
     /** Exposes {@link Semaphore#reducePermits(int)} so the dynamic setting can shrink the cap. */
     private static final class AdjustableSemaphore extends Semaphore {
         AdjustableSemaphore(int permits) {
@@ -484,11 +588,11 @@ public class TransportCorrelateFindingAction
         try {
             PublishFindingsRequest transformedRequest = transformRequest(request);
 
-            // Enrichment is dispatched later, inside AsyncCorrelateFindingAction.doStart(),
-            // only after the finding's monitor is confirmed to belong to a SAP threat detector.
-            // This prevents non-detector monitors (e.g. user-created doc-level monitors that
-            // watch wazuh-findings-v5*, or Active Response monitors) from re-entering the
-            // enrichment pipeline and producing an infinite loop.
+            // Enrichment is dispatched later, by AsyncCorrelateFindingAction.start(), only after
+            // the finding's monitor is confirmed to belong to a SAP threat detector. This prevents
+            // non-detector monitors (e.g. user-created doc-level monitors that watch
+            // wazuh-findings-v5*, or Active Response monitors) from re-entering the enrichment
+            // pipeline and producing an infinite loop.
 
             AsyncCorrelateFindingAction correlateFindingAction =
                     new AsyncCorrelateFindingAction(
@@ -639,11 +743,22 @@ public class TransportCorrelateFindingAction
         private volatile boolean permitAcquired = false;
 
         /**
-         * Set when correlation bootstrap failed before {@link #doStart()} ever ran. The pipeline is
-         * still queued and started, but only to resolve the detector and dispatch enrichment; it stops
-         * before handing the finding to {@link JoinEngine}. See {@link #skipCorrelation}.
+         * Set when correlation bootstrap failed before {@link #doStart()} ever ran. The pipeline still
+         * resolves the detector and dispatches enrichment in {@link #start()}, but it stops before
+         * handing the finding to {@link JoinEngine}. See {@link #skipCorrelation}.
          */
         private volatile boolean correlationSkipped = false;
+
+        /**
+         * Set by the first {@link #start()}. Bootstrap can call {@link #skipCorrelation} for a pipeline
+         * that already started (the alert index is created alongside the metadata check), and starting
+         * it again would enrich the finding twice and queue it twice, leaking the correlation slot of
+         * the second run.
+         */
+        private final AtomicBoolean started = new AtomicBoolean();
+
+        /** The detector that owns the finding's monitor, resolved by {@link #start()}. */
+        private volatile Detector detector;
 
         AsyncCorrelateFindingAction(
                 Task task,
@@ -673,10 +788,55 @@ public class TransportCorrelateFindingAction
         }
 
         /**
-         * Public entry point. Hands the pipeline to the outer transport action, which queues it until
-         * an in-flight permit is available; once acquired, {@link #doStart()} runs.
+         * Public entry point. Resolves the detector that owns the finding's monitor and dispatches
+         * enrichment, then hands the pipeline to the outer transport action, which queues it until an
+         * in-flight permit is available; once acquired, {@link #doStart()} runs.
+         *
+         * <p>Enrichment is what writes the finding to {@code wazuh-findings-v5-*}, so it is dispatched
+         * before the finding competes for a correlation slot: a full correlation backlog or a
+         * correlation bootstrap failure skips the correlation of a finding, never the finding itself.
+         * Findings of a monitor that no detector owns complete here, without taking a slot.
          */
         void start() {
+            if (!started.compareAndSet(false, true)) {
+                return;
+            }
+            // The detector lookup reads a system index. Like doStart(), it runs without the caller's
+            // user.
+            TransportCorrelateFindingAction.this.threadPool.getThreadContext().stashContext();
+            if (!detectorIndices.detectorIndexExists()) {
+                onFailures(
+                        new SecurityAnalyticsException(
+                                String.format(
+                                        Locale.getDefault(),
+                                        "Detector index %s doesnt exist",
+                                        Detector.DETECTORS_INDEX),
+                                RestStatus.INTERNAL_SERVER_ERROR,
+                                new RuntimeException()));
+                return;
+            }
+            resolveDetector(
+                    request.getMonitorId(), ActionListener.wrap(this::onDetectorResolved, this::onFailures));
+        }
+
+        private void onDetectorResolved(Optional<Detector> resolved) {
+            if (resolved.isEmpty()) {
+                // Finding's monitor is not owned by a SAP threat detector (e.g. user-created
+                // doc-level monitor, Active Response monitor). Correlation and enrichment are
+                // SAP-only concerns, so this is a legitimate no-op rather than an error: complete the
+                // request successfully.
+                log.debug(
+                        "No detector found for monitor id {}; skipping correlation and enrichment",
+                        request.getMonitorId());
+                onOperation();
+                return;
+            }
+            this.detector = resolved.get();
+            dispatchEnrichment(request.getFinding());
+            if (correlationSkipped) {
+                onOperation();
+                return;
+            }
             scheduleCorrelation(this);
         }
 
@@ -697,103 +857,23 @@ public class TransportCorrelateFindingAction
             }
         }
 
-        /** Body of {@code start()}; only invoked once a permit has been acquired. */
+        /**
+         * Correlates the finding against the detector resolved by {@link #start()}; only invoked once a
+         * permit has been acquired.
+         */
         void doStart() {
             TransportCorrelateFindingAction.this.threadPool.getThreadContext().stashContext();
-            String monitorId = request.getMonitorId();
-            Finding finding = request.getFinding();
-
-            if (!detectorIndices.detectorIndexExists()) {
-                onFailures(
-                        new SecurityAnalyticsException(
-                                String.format(
-                                        Locale.getDefault(),
-                                        "Detector index %s doesnt exist",
-                                        Detector.DETECTORS_INDEX),
-                                RestStatus.INTERNAL_SERVER_ERROR,
-                                new RuntimeException()));
+            if (correlationSkipped) {
+                // Correlation bootstrap failed while this pipeline waited for a slot. The finding was
+                // already enriched; complete and release the slot.
+                onOperation();
                 return;
             }
-
-            Optional<Detector> cached = detectorLookupCache.get(monitorId);
-            if (cached.isPresent()) {
-                dispatchEnrichment(finding);
-                if (correlationSkipped) {
-                    onOperation();
-                    return;
-                }
-                try {
-                    joinEngine.onSearchDetectorResponse(cached.get(), finding);
-                } catch (Exception e) {
-                    onFailures(e);
-                }
-                return;
+            try {
+                joinEngine.onSearchDetectorResponse(detector, request.getFinding());
+            } catch (Exception e) {
+                onFailures(e);
             }
-
-            NestedQueryBuilder queryBuilder =
-                    QueryBuilders.nestedQuery(
-                            "detector",
-                            QueryBuilders.matchQuery("detector.monitor_id", monitorId),
-                            ScoreMode.None);
-
-            SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
-            searchSourceBuilder.query(queryBuilder);
-            searchSourceBuilder.fetchSource(true);
-            searchSourceBuilder.size(1);
-            SearchRequest searchRequest = new SearchRequest();
-            searchRequest.indices(Detector.DETECTORS_INDEX);
-            searchRequest.source(searchSourceBuilder);
-            searchRequest.preference(Preference.PRIMARY_FIRST.type());
-            searchRequest.setCancelAfterTimeInterval(TimeValue.timeValueSeconds(30L));
-
-            client.search(
-                    searchRequest,
-                    ActionListener.wrap(
-                            response -> {
-                                if (response.isTimedOut()) {
-                                    onFailures(
-                                            new OpenSearchStatusException(
-                                                    "Search request timed out", RestStatus.REQUEST_TIMEOUT));
-                                    return;
-                                }
-
-                                SearchHits hits = response.getHits();
-                                if (hits.getHits().length > 0) {
-                                    try {
-                                        SearchHit hit = hits.getAt(0);
-
-                                        XContentParser xcp =
-                                                XContentType.JSON
-                                                        .xContent()
-                                                        .createParser(
-                                                                xContentRegistry,
-                                                                LoggingDeprecationHandler.INSTANCE,
-                                                                hit.getSourceAsString());
-                                        Detector detector = Detector.docParse(xcp, hit.getId(), hit.getVersion());
-                                        detectorLookupCache.put(monitorId, detector);
-                                        dispatchEnrichment(finding);
-                                        if (correlationSkipped) {
-                                            onOperation();
-                                            return;
-                                        }
-                                        joinEngine.onSearchDetectorResponse(detector, finding);
-                                    } catch (Exception e) {
-                                        log.error("Exception for request {}", searchRequest, e);
-                                        onFailures(e);
-                                    }
-                                } else {
-                                    // Finding's monitor is not owned by a SAP threat detector
-                                    // (e.g. user-created doc-level monitor, Active Response monitor).
-                                    // Correlation and enrichment are SAP-only concerns, so this is a
-                                    // legitimate no-op rather than an error: complete the request
-                                    // successfully and release the in-flight permit.
-                                    log.debug(
-                                            "No detector found for monitor id {}; skipping correlation and enrichment",
-                                            request.getMonitorId());
-                                    onOperation();
-                                }
-                            },
-                            this::onFailures));
         }
 
         public void initCorrelationIndex(
@@ -1143,12 +1223,12 @@ public class TransportCorrelateFindingAction
         }
 
         /**
-         * Completes this finding without correlation or enrichment because the correlation backlog is
-         * full (H-11 load shedding). No permit was acquired, so none is released. Responds success —
-         * the finding itself was already produced; only the optional downstream work is skipped.
-         * Completed inline (no thread-pool hop) so shedding stays cheap under overload.
+         * Completes this finding without correlation because the correlation backlog is full (H-11 load
+         * shedding). {@link #start()} already dispatched the finding to enrichment, which writes it to
+         * {@code wazuh-findings-v5-*}, so only correlation is skipped. No permit was acquired, so none
+         * is released. Completed inline (no thread-pool hop) so shedding stays cheap under overload.
          */
-        void dropForBackpressure() {
+        void skipCorrelationForBackpressure() {
             if (counter.compareAndSet(false, true)) {
                 listener.onResponse(new SubscribeFindingsResponse(RestStatus.OK));
             }
@@ -1159,12 +1239,12 @@ public class TransportCorrelateFindingAction
          * of the correlation index/metadata/alert indices did not succeed for a reason other than
          * "already exists" (e.g. transient cluster-state contention right after a clean install, while
          * many other Security Analytics config indices are being created at the same time). The finding
-         * itself was already indexed by the monitor before correlation ever ran; only this optional
-         * enrichment step is skipped, and it is retried automatically on the next finding once the
-         * cluster settles and the bootstrap succeeds. This is also reached from {@link
-         * #initCorrelationIndex} / {@link #getTimestampFeature}, i.e. after {@link #start} already
-         * acquired a permit, so the permit must be released here too when that happened — otherwise the
-         * in-flight semaphore leaks a permit every time bootstrap fails on that later path.
+         * is still enriched, which is what writes it to {@code wazuh-findings-v5-*}; only correlation
+         * is skipped, and it is retried automatically on the next finding once the cluster settles and
+         * the bootstrap succeeds. This is also reached from {@link #initCorrelationIndex} / {@link
+         * #getTimestampFeature}, i.e. after {@link #start} already acquired a permit, so the permit
+         * must be released here too when that happened — otherwise the in-flight semaphore leaks a
+         * permit every time bootstrap fails on that later path.
          */
         void skipCorrelation(String reason, Exception cause) {
             log.warn(
@@ -1174,6 +1254,8 @@ public class TransportCorrelateFindingAction
                     reason,
                     cause);
             if (!permitAcquired) {
+                // start() enriches the finding and completes without queueing it. If it already ran
+                // and the pipeline waits for a slot, doStart() completes it instead.
                 correlationSkipped = true;
                 start();
                 return;

@@ -16,6 +16,7 @@
  */
 package org.opensearch.securityanalytics.transport;
 
+import org.apache.lucene.search.TotalHits;
 import org.opensearch.ResourceAlreadyExistsException;
 import org.opensearch.action.admin.indices.create.CreateIndexResponse;
 import org.opensearch.action.search.SearchRequest;
@@ -28,12 +29,17 @@ import org.opensearch.common.settings.ClusterSettings;
 import org.opensearch.common.settings.Settings;
 import org.opensearch.common.unit.TimeValue;
 import org.opensearch.common.util.concurrent.ThreadContext;
+import org.opensearch.common.xcontent.XContentFactory;
 import org.opensearch.commons.alerting.action.PublishFindingsRequest;
 import org.opensearch.commons.alerting.action.SubscribeFindingsResponse;
 import org.opensearch.commons.alerting.model.Finding;
 import org.opensearch.core.action.ActionListener;
-import org.opensearch.core.xcontent.NamedXContentRegistry;
+import org.opensearch.core.common.bytes.BytesReference;
+import org.opensearch.core.xcontent.ToXContent;
+import org.opensearch.core.xcontent.XContentBuilder;
+import org.opensearch.search.SearchHit;
 import org.opensearch.search.SearchHits;
+import org.opensearch.securityanalytics.TestHelpers;
 import org.opensearch.securityanalytics.correlation.CorrelationRulesCache;
 import org.opensearch.securityanalytics.correlation.DetectorLookupCache;
 import org.opensearch.securityanalytics.correlation.LogTypeListCache;
@@ -55,16 +61,20 @@ import org.opensearch.transport.client.Client;
 
 import java.lang.reflect.Field;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Semaphore;
+import java.util.stream.Collectors;
 
 import org.mockito.ArgumentCaptor;
+import org.mockito.Mockito;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -139,15 +149,21 @@ public class TransportCorrelateFindingActionTests extends OpenSearchTestCase {
         CorrelationIndices correlationIndices;
         DetectorIndices detectorIndices;
         ThreadPool threadPool;
+        WazuhEnrichedFindingService enrichedFindingService;
         TransportCorrelateFindingAction transportAction;
     }
 
     private TestSetup buildTestSetup() {
+        return buildTestSetup(Settings.EMPTY, new DetectorLookupCache(TimeValue.ZERO));
+    }
+
+    private TestSetup buildTestSetup(Settings settings, DetectorLookupCache detectorLookupCache) {
         TestSetup s = new TestSetup();
         s.client = mock(Client.class);
         s.correlationIndices = mock(CorrelationIndices.class);
         s.detectorIndices = mock(DetectorIndices.class);
         s.threadPool = mock(ThreadPool.class);
+        s.enrichedFindingService = mock(WazuhEnrichedFindingService.class);
 
         ClusterService clusterService = mock(ClusterService.class);
         ClusterSettings clusterSettings =
@@ -188,17 +204,17 @@ public class TransportCorrelateFindingActionTests extends OpenSearchTestCase {
                 new TransportCorrelateFindingAction(
                         transportService,
                         s.client,
-                        mock(NamedXContentRegistry.class),
+                        TestHelpers.xContentRegistry(),
                         s.detectorIndices,
                         s.correlationIndices,
                         mock(LogTypeService.class),
                         clusterService,
-                        Settings.EMPTY,
+                        settings,
                         new ActionFilters(Collections.emptySet()),
                         mock(CorrelationAlertService.class),
                         mock(NotificationService.class),
-                        mock(WazuhEnrichedFindingService.class),
-                        new DetectorLookupCache(TimeValue.ZERO),
+                        s.enrichedFindingService,
+                        detectorLookupCache,
                         new LogTypeListCache(TimeValue.ZERO),
                         new CorrelationRulesCache(TimeValue.ZERO));
         return s;
@@ -206,11 +222,16 @@ public class TransportCorrelateFindingActionTests extends OpenSearchTestCase {
 
     private TransportCorrelateFindingAction.AsyncCorrelateFindingAction buildAsyncAction(
             TestSetup s, ActionListener<SubscribeFindingsResponse> listener) {
+        return buildAsyncAction(s, "finding-1", listener);
+    }
+
+    private TransportCorrelateFindingAction.AsyncCorrelateFindingAction buildAsyncAction(
+            TestSetup s, String findingId, ActionListener<SubscribeFindingsResponse> listener) {
         Finding finding =
                 new Finding(
-                        "finding-1",
-                        List.of("doc-1"),
-                        List.of("doc-1"),
+                        findingId,
+                        List.of("doc-" + findingId),
+                        List.of("doc-" + findingId),
                         "monitor-1",
                         "monitor-name",
                         "test-index",
@@ -224,10 +245,238 @@ public class TransportCorrelateFindingActionTests extends OpenSearchTestCase {
     }
 
     /**
-     * Stubs the detector lookup that {@code doStart()} issues, answering with no hits. The pipeline
+     * Settings of a node whose correlation backlog fills with the second finding of a burst: one
+     * correlation slot, one place in the backlog, and no events write block (whose cluster-settings
+     * update the mocked client cannot answer).
+     */
+    private static Settings singleSlotBacklogSettings() {
+        return Settings.builder()
+                .put(SecurityAnalyticsSettings.CORRELATION_MAX_IN_FLIGHT_FINDINGS.getKey(), 1)
+                .put(SecurityAnalyticsSettings.CORRELATION_MAX_PENDING_FINDINGS.getKey(), 1)
+                .put(SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_ENABLED.getKey(), false)
+                .build();
+    }
+
+    /**
+     * Records the searches against the detectors index without answering them, so the test decides
+     * when and how each lookup completes. Every other search is left unanswered.
+     */
+    @SuppressWarnings("unchecked")
+    private static List<ActionListener<SearchResponse>> holdDetectorLookups(TestSetup s) {
+        List<ActionListener<SearchResponse>> lookups = new ArrayList<>();
+        doAnswer(
+                        inv -> {
+                            SearchRequest request = inv.getArgument(0);
+                            if (Arrays.asList(request.indices()).contains(Detector.DETECTORS_INDEX)) {
+                                lookups.add((ActionListener<SearchResponse>) inv.getArgument(1));
+                            }
+                            return null;
+                        })
+                .when(s.client)
+                .search(any(), any());
+        return lookups;
+    }
+
+    /** A detectors-index search response holding {@code detector} as its only hit. */
+    private static SearchResponse detectorHit(Detector detector) throws Exception {
+        XContentBuilder source =
+                detector.toXContentWithUser(
+                        XContentFactory.jsonBuilder(), new ToXContent.MapParams(Map.of("with_type", "true")));
+        SearchHit hit = new SearchHit(0, "detector-1", Map.of(), Map.of());
+        hit.sourceRef(BytesReference.bytes(source));
+        SearchResponse response = mock(SearchResponse.class);
+        when(response.isTimedOut()).thenReturn(false);
+        when(response.getHits())
+                .thenReturn(
+                        new SearchHits(
+                                new SearchHit[] {hit}, new TotalHits(1, TotalHits.Relation.EQUAL_TO), 1.0f));
+        return response;
+    }
+
+    /** Ids of every finding handed to the enrichment service, in dispatch order. */
+    private static List<String> enrichedFindingIds(TestSetup s) {
+        ArgumentCaptor<Finding> captor = ArgumentCaptor.forClass(Finding.class);
+        verify(s.enrichedFindingService, Mockito.atLeast(0)).enrich(captor.capture());
+        return captor.getAllValues().stream().map(Finding::getId).collect(Collectors.toList());
+    }
+
+    /**
+     * A detector run publishes all its findings at once. Once the correlation backlog is full, the
+     * findings that do not fit must still reach enrichment, because enrichment is what writes the
+     * finding to {@code wazuh-findings-v5-*}: only correlation may be shed.
+     */
+    @SuppressWarnings("unchecked")
+    public void testBurstOverBacklog_everyFindingReachesEnrichment() throws Exception {
+        DetectorLookupCache cache = new DetectorLookupCache(TimeValue.timeValueMinutes(5));
+        cache.put("monitor-1", TestHelpers.randomDetector(List.of()));
+        TestSetup s = buildTestSetup(singleSlotBacklogSettings(), cache);
+        when(s.detectorIndices.detectorIndexExists()).thenReturn(true);
+
+        // The mocked client never answers a search, so a correlation that reaches its first search
+        // keeps its slot until the test ends it.
+        int burst = 20;
+        Set<String> published = new HashSet<>();
+        List<TransportCorrelateFindingAction.AsyncCorrelateFindingAction> pipelines = new ArrayList<>();
+        for (int i = 0; i < burst; i++) {
+            String findingId = "finding-" + i;
+            published.add(findingId);
+            TransportCorrelateFindingAction.AsyncCorrelateFindingAction pipeline =
+                    buildAsyncAction(s, findingId, mock(ActionListener.class));
+            pipelines.add(pipeline);
+            pipeline.start();
+        }
+
+        // The first finding holds the only slot, the second waits in the backlog, and the other 18
+        // arrive with the backlog full. Ending the first correlation lets the waiting one start.
+        pipelines.get(0).onFailures(new RuntimeException("correlation search failed"));
+
+        List<String> enriched = enrichedFindingIds(s);
+        assertEquals(
+                "every finding of the burst must be enriched exactly once", burst, enriched.size());
+        assertEquals(published, new HashSet<>(enriched));
+    }
+
+    /**
+     * The findings that arrive with the backlog full skip correlation only: each one is answered with
+     * success, takes no correlation slot, and does not grow the backlog.
+     */
+    @SuppressWarnings("unchecked")
+    public void testBurstOverBacklog_overflowSkipsCorrelationWithoutTakingASlot() throws Exception {
+        DetectorLookupCache cache = new DetectorLookupCache(TimeValue.timeValueMinutes(5));
+        cache.put("monitor-1", TestHelpers.randomDetector(List.of()));
+        TestSetup s = buildTestSetup(singleSlotBacklogSettings(), cache);
+        when(s.detectorIndices.detectorIndexExists()).thenReturn(true);
+
+        List<ActionListener<SubscribeFindingsResponse>> listeners = new ArrayList<>();
+        for (int i = 0; i < 10; i++) {
+            ActionListener<SubscribeFindingsResponse> listener = mock(ActionListener.class);
+            listeners.add(listener);
+            buildAsyncAction(s, "finding-" + i, listener).start();
+        }
+
+        assertEquals(
+                "the first finding holds the only slot", 0, correlationPermits(s).availablePermits());
+        for (ActionListener<SubscribeFindingsResponse> inFlightOrQueued : listeners.subList(0, 2)) {
+            verify(inFlightOrQueued, never()).onResponse(any());
+            verify(inFlightOrQueued, never()).onFailure(any());
+        }
+        for (ActionListener<SubscribeFindingsResponse> overflow : listeners.subList(2, 10)) {
+            ArgumentCaptor<SubscribeFindingsResponse> response =
+                    ArgumentCaptor.forClass(SubscribeFindingsResponse.class);
+            verify(overflow).onResponse(response.capture());
+            assertEquals(org.opensearch.core.rest.RestStatus.OK, response.getValue().getStatus());
+            verify(overflow, never()).onFailure(any());
+        }
+    }
+
+    /**
+     * With a cold detector cache, the findings of one monitor that arrive together share a single
+     * lookup against the detectors index instead of one search each, and all of them are enriched
+     * once it answers.
+     */
+    @SuppressWarnings("unchecked")
+    public void testColdDetectorCache_burstSharesOneDetectorLookup() throws Exception {
+        TestSetup s =
+                buildTestSetup(
+                        Settings.builder()
+                                .put(SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_ENABLED.getKey(), false)
+                                .build(),
+                        new DetectorLookupCache(TimeValue.timeValueMinutes(5)));
+        when(s.detectorIndices.detectorIndexExists()).thenReturn(true);
+        List<ActionListener<SearchResponse>> detectorLookups = holdDetectorLookups(s);
+
+        int burst = 10;
+        for (int i = 0; i < burst; i++) {
+            buildAsyncAction(s, "finding-" + i, mock(ActionListener.class)).start();
+        }
+
+        assertEquals("one lookup for the whole burst", 1, detectorLookups.size());
+        detectorLookups.get(0).onResponse(detectorHit(TestHelpers.randomDetector(List.of())));
+
+        assertEquals(burst, enrichedFindingIds(s).size());
+        assertEquals("the answer is cached, no further lookups", 1, detectorLookups.size());
+    }
+
+    /**
+     * Findings of a monitor that no detector owns (a user doc-level monitor, an Active Response
+     * monitor) are neither enriched nor correlated, and complete without taking a correlation slot.
+     */
+    @SuppressWarnings("unchecked")
+    public void testMonitorWithoutDetector_completesWithoutEnrichmentOrSlot() throws Exception {
+        TestSetup s =
+                buildTestSetup(
+                        Settings.builder()
+                                .put(SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_ENABLED.getKey(), false)
+                                .build(),
+                        new DetectorLookupCache(TimeValue.timeValueMinutes(5)));
+        when(s.detectorIndices.detectorIndexExists()).thenReturn(true);
+        List<ActionListener<SearchResponse>> detectorLookups = holdDetectorLookups(s);
+        int freeSlots = correlationPermits(s).availablePermits();
+
+        List<ActionListener<SubscribeFindingsResponse>> listeners = new ArrayList<>();
+        for (int i = 0; i < 5; i++) {
+            ActionListener<SubscribeFindingsResponse> listener = mock(ActionListener.class);
+            listeners.add(listener);
+            buildAsyncAction(s, "finding-" + i, listener).start();
+        }
+        assertEquals(
+                "no slot is taken while the lookup runs",
+                freeSlots,
+                correlationPermits(s).availablePermits());
+
+        SearchResponse noHits = mock(SearchResponse.class);
+        when(noHits.isTimedOut()).thenReturn(false);
+        when(noHits.getHits()).thenReturn(SearchHits.empty());
+        detectorLookups.get(0).onResponse(noHits);
+
+        assertEquals(1, detectorLookups.size());
+        assertTrue(enrichedFindingIds(s).isEmpty());
+        for (ActionListener<SubscribeFindingsResponse> listener : listeners) {
+            verify(listener).onResponse(any());
+        }
+        assertEquals(freeSlots, correlationPermits(s).availablePermits());
+    }
+
+    /**
+     * Correlation bootstrap can report a failure for a finding whose pipeline has already started and
+     * is waiting in the backlog (the alert index creation runs alongside the metadata check). The
+     * pipeline must still run once: it is enriched once, and the slot it takes when it leaves the
+     * backlog is released.
+     */
+    @SuppressWarnings("unchecked")
+    public void testSkipCorrelationWhileQueued_runsOnceAndReleasesItsSlot() throws Exception {
+        DetectorLookupCache cache = new DetectorLookupCache(TimeValue.timeValueMinutes(5));
+        cache.put("monitor-1", TestHelpers.randomDetector(List.of()));
+        TestSetup s =
+                buildTestSetup(
+                        Settings.builder()
+                                .put(SecurityAnalyticsSettings.CORRELATION_MAX_IN_FLIGHT_FINDINGS.getKey(), 1)
+                                .put(SecurityAnalyticsSettings.EVENTS_BACKPRESSURE_ENABLED.getKey(), false)
+                                .build(),
+                        cache);
+        when(s.detectorIndices.detectorIndexExists()).thenReturn(true);
+
+        TransportCorrelateFindingAction.AsyncCorrelateFindingAction inFlight =
+                buildAsyncAction(s, "finding-0", mock(ActionListener.class));
+        inFlight.start();
+        ActionListener<SubscribeFindingsResponse> queuedListener = mock(ActionListener.class);
+        TransportCorrelateFindingAction.AsyncCorrelateFindingAction queued =
+                buildAsyncAction(s, "finding-1", queuedListener);
+        queued.start();
+
+        queued.skipCorrelation("failed to create correlation alert index", new RuntimeException());
+        inFlight.onFailures(new RuntimeException("correlation search failed"));
+
+        verify(queuedListener).onResponse(any());
+        assertEquals(List.of("finding-0", "finding-1"), enrichedFindingIds(s));
+        assertEquals("every slot is free again", 1, correlationPermits(s).availablePermits());
+    }
+
+    /**
+     * Stubs the detector lookup that {@code start()} issues, answering with no hits. The pipeline
      * then treats the finding as not owned by a SAP detector and completes successfully. Enough to
-     * assert that an enrichment-only restart reached {@code doStart()}, without having to build a
-     * parseable Detector document.
+     * assert that a pipeline whose correlation was skipped still reached the detector lookup that
+     * gates enrichment, without having to build a parseable Detector document.
      */
     @SuppressWarnings("unchecked")
     private static void stubDetectorLookupWithNoHits(TestSetup s) {
@@ -363,7 +612,7 @@ public class TransportCorrelateFindingActionTests extends OpenSearchTestCase {
     }
 
     @SuppressWarnings("unchecked")
-    public void testDoStart_detectorLookupTimedOut_failsWithoutReadingHits() throws Exception {
+    public void testStart_detectorLookupTimedOut_failsWithoutReadingHits() throws Exception {
         TestSetup s = buildTestSetup();
         ActionListener<SubscribeFindingsResponse> listener = mock(ActionListener.class);
         TransportCorrelateFindingAction.AsyncCorrelateFindingAction asyncAction =
@@ -381,7 +630,7 @@ public class TransportCorrelateFindingActionTests extends OpenSearchTestCase {
                 .when(s.client)
                 .search(any(), any());
 
-        asyncAction.doStart();
+        asyncAction.start();
 
         verify(listener).onFailure(any());
         verify(listener, never()).onResponse(any());
@@ -499,12 +748,12 @@ public class TransportCorrelateFindingActionTests extends OpenSearchTestCase {
         verify(listener).onResponse(responseCaptor.capture());
         assertEquals(org.opensearch.core.rest.RestStatus.OK, responseCaptor.getValue().getStatus());
         verify(listener, never()).onFailure(any());
-        // Bootstrap failed before start(), so the pipeline is restarted in enrichment-only mode
-        // instead of completing here: enrichment is what produces the wazuh-findings-v5-* document,
-        // and skipping it would drop the finding. doStart() must therefore be reached.
+        // Bootstrap failed before start(), so the pipeline still starts, to resolve the detector
+        // and enrich, instead of completing here: enrichment is what produces the
+        // wazuh-findings-v5-* document, and skipping it would drop the finding.
         verify(s.detectorIndices).detectorIndexExists();
-        // That restart acquires a permit and releases it again on completion, so the semaphore must
-        // be back where it started — no leak, no over-release.
+        // Correlation is skipped, so no permit is taken: the semaphore must be where it started —
+        // no leak, no over-release.
         assertEquals(permitsBefore, permits.availablePermits());
     }
 
@@ -594,7 +843,7 @@ public class TransportCorrelateFindingActionTests extends OpenSearchTestCase {
         verify(listener).onResponse(responseCaptor.capture());
         assertEquals(org.opensearch.core.rest.RestStatus.OK, responseCaptor.getValue().getStatus());
         verify(listener, never()).onFailure(any());
-        // Correlation is skipped, but the pipeline still runs doStart() so enrichment can produce
+        // Correlation is skipped, but the pipeline still runs start() so enrichment can produce
         // the finding document.
         verify(s.detectorIndices).detectorIndexExists();
     }
@@ -635,8 +884,8 @@ public class TransportCorrelateFindingActionTests extends OpenSearchTestCase {
         s.transportAction.execute(mock(Task.class), findingsRequest, listener);
 
         // A concurrent creator won the race (ResourceAlreadyExistsException): the pipeline must
-        // still proceed to start()/doStart() instead of skipping, proven by the detector-index
-        // check that only doStart() performs.
+        // still proceed to start() instead of skipping, proven by the detector-index check that
+        // only start() performs.
         verify(s.detectorIndices).detectorIndexExists();
         verify(listener, never()).onFailure(any());
     }
