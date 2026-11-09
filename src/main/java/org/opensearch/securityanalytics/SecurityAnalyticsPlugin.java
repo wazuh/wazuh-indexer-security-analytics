@@ -306,8 +306,13 @@ public class SecurityAnalyticsPlugin extends Plugin
                 new CorrelationRulesCache(
                         SecurityAnalyticsSettings.CORRELATION_METADATA_CACHE_TTL.get(environment.settings()));
 
-        // Initialize WCS field validator from cluster index mappings
-        SecurityAnalyticsPlugin.initWCSFieldValidator(clusterService);
+        // Keep the WCS field validator in line with the events index template
+        clusterService.addListener(
+                event -> {
+                    if (event.metadataChanged()) {
+                        WCSFieldValidator.initFromMetadata(event.state().metadata());
+                    }
+                });
 
         return List.of(
                 this.detectorIndices,
@@ -325,35 +330,6 @@ public class SecurityAnalyticsPlugin extends Plugin
                 detectorLookupCache,
                 logTypeListCache,
                 correlationRulesCache);
-    }
-
-    /**
-     * Initializes the WCS field validator by resolving fields from the first available {@code
-     * wazuh-events-*} index mapping. Registers a cluster state listener to perform this once the
-     * cluster state becomes available.
-     */
-    private static void initWCSFieldValidator(ClusterService clusterService) {
-        final String WCS_INDEX_PREFIX = ".ds-wazuh-events-";
-
-        clusterService.addListener(
-                event -> {
-                    if (!WCSFieldValidator.isInitialized()) {
-                        SecurityAnalyticsPlugin.tryInitWCSFromClusterState(event.state(), WCS_INDEX_PREFIX);
-                    }
-                });
-    }
-
-    private static void tryInitWCSFromClusterState(ClusterState state, String indexPrefix) {
-        try {
-            for (var cursor : state.metadata().indices().entrySet()) {
-                if (cursor.getKey().startsWith(indexPrefix)) {
-                    WCSFieldValidator.initFromIndexMetadata(cursor.getValue());
-                    return;
-                }
-            }
-        } catch (Exception e) {
-            log.warn("Failed to initialize WCS field validator from cluster state", e);
-        }
     }
 
     @Override
