@@ -203,12 +203,16 @@ public class SecurityAnalyticsSettings {
                     0,
                     Setting.Property.NodeScope);
 
-    public static final int DEFAULT_MAX_RULES_PER_DETECTOR = 50;
+    public static final int DEFAULT_MAX_RULES_PER_DETECTOR = 500;
     private static final int MINIMUM_MAX_RULES_PER_DETECTOR = 0;
 
     /**
      * Maximum number of rules allowed per detector input. Requests that would exceed this limit are
      * rejected with a 400 error.
+     *
+     * <p>It applies to standard detectors too, which the Content Manager creates from the CTI content
+     * shipped to every deployment with this default, so the default must hold the largest standard
+     * integration.
      */
     public static final Setting<Integer> MAX_RULES_PER_DETECTOR =
             Setting.intSetting(
