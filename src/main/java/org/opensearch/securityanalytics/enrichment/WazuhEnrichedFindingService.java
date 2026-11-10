@@ -60,6 +60,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
@@ -149,6 +150,15 @@ public class WazuhEnrichedFindingService implements Closeable {
      * missing from the index.
      */
     private final AtomicLong rejectedCount = new AtomicLong(0);
+
+    /** Findings refused since the last report; see {@link #reportRejections()}. */
+    private final AtomicLong unreportedRejections = new AtomicLong(0);
+
+    /** Monitor of the most recently refused finding, named in the next report. */
+    private volatile String lastRejectedMonitorId;
+
+    /** Set by the first {@link #close()}, so the findings it discards are reported once. */
+    private final AtomicBoolean closed = new AtomicBoolean(false);
 
     /** Limits the number of concurrent async enrichment chains to avoid transport-layer overload. */
     private final Semaphore inFlightPermits;
@@ -297,14 +307,37 @@ public class WazuhEnrichedFindingService implements Closeable {
     public synchronized void setFlushInterval(int seconds) {
         this.flushIntervalSeconds = seconds;
         this.flushSchedule.cancel();
+        if (this.closed.get()) {
+            return;
+        }
         this.flushSchedule =
                 this.threadPool.scheduleWithFixedDelay(
                         this::periodicFlush, TimeValue.timeValueSeconds(seconds), ThreadPool.Names.GENERIC);
     }
 
+    /**
+     * Stops the periodic flush. Whatever the service still holds is not written: the refusals no
+     * flush has reported yet are reported, and the findings waiting for enrichment, the enriched
+     * findings waiting to be written and the writes waiting for a retry are counted in one WARN line,
+     * so a node that stops mid-burst says what it discarded.
+     */
     @Override
-    public void close() {
+    public synchronized void close() {
+        if (!this.closed.compareAndSet(false, true)) {
+            return;
+        }
         this.flushSchedule.cancel();
+        this.reportRejections();
+        int queued = this.findingsQueueSize.get();
+        int unwritten = this.pendingRequests.size();
+        int retrying = this.retryQueueSize.get();
+        if (queued > 0 || unwritten > 0 || retrying > 0) {
+            log.warn(
+                    "Enrichment service closed with findings not written to the findings index: {} waiting for enrichment, {} enriched and waiting to be written, {} waiting for a retry",
+                    queued,
+                    unwritten,
+                    retrying);
+        }
     }
 
     /**
@@ -326,15 +359,14 @@ public class WazuhEnrichedFindingService implements Closeable {
         // the queue past the limit.
         int max = this.maxPending;
         if (this.findingsQueueSize.getAndUpdate(size -> size < max ? size + 1 : size) >= max) {
-            long rejected = this.rejectedCount.incrementAndGet();
-            if (rejected == 1 || rejected % 10000 == 0) {
-                log.error(
-                        "Enrichment queue capacity reached ({} pending). Finding {} of monitor {} is not written to the findings index. Total findings lost so far: {}",
-                        max,
-                        finding.getId(),
-                        finding.getMonitorId(),
-                        rejected);
-            }
+            // Reported by the next periodic flush, with every other refusal since the last report.
+            this.lastRejectedMonitorId = finding.getMonitorId();
+            this.rejectedCount.incrementAndGet();
+            this.unreportedRejections.incrementAndGet();
+            log.debug(
+                    "Enrichment queue full, refused finding {} of monitor {}",
+                    finding.getId(),
+                    finding.getMonitorId());
             return;
         }
         this.findingsQueue.add(finding);
@@ -887,9 +919,28 @@ public class WazuhEnrichedFindingService implements Closeable {
      * in the same tick, without waiting a flush interval.
      */
     private void periodicFlush() {
+        this.reportRejections();
         this.flushRetries();
         this.drainAndFlush();
         this.processQueue();
+    }
+
+    /**
+     * Logs the findings refused since the previous report, if any. Every periodic flush calls it, so
+     * each refusal is reported within one flush interval, one line per interval however many findings
+     * it refused, and a node that refuses nothing logs nothing.
+     */
+    private void reportRejections() {
+        long refused = this.unreportedRejections.getAndSet(0);
+        if (refused == 0) {
+            return;
+        }
+        log.error(
+                "Enrichment queue capacity reached ({} pending). Findings refused since the last report: {}, the latest of monitor {}. They are not written to the findings index. Total findings lost so far: {}",
+                this.maxPending,
+                refused,
+                this.lastRejectedMonitorId,
+                this.rejectedCount.get());
     }
 
     /**

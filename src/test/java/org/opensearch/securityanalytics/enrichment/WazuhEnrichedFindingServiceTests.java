@@ -16,6 +16,9 @@
  */
 package org.opensearch.securityanalytics.enrichment;
 
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.LogEvent;
 import org.opensearch.action.DocWriteRequest;
 import org.opensearch.action.bulk.BulkItemResponse;
 import org.opensearch.action.bulk.BulkRequest;
@@ -39,6 +42,7 @@ import org.opensearch.core.concurrency.OpenSearchRejectedExecutionException;
 import org.opensearch.core.rest.RestStatus;
 import org.opensearch.node.NodeClosedException;
 import org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings;
+import org.opensearch.test.MockLogAppender;
 import org.opensearch.test.OpenSearchTestCase;
 import org.opensearch.threadpool.Scheduler;
 import org.opensearch.threadpool.ThreadPool;
@@ -55,7 +59,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CopyOnWriteArrayList;
 
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
@@ -1006,6 +1012,95 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
 
         assertEquals(0L, service.getRejectedCount());
         assertTrue(sentMultiGets.isEmpty());
+    }
+
+    /**
+     * Records the formatted messages the enrichment service logs at one level, so a test can assert
+     * how many lines a loss produced and what each one says.
+     */
+    private static final class LoggedLines implements MockLogAppender.LoggingExpectation {
+        private final Level level;
+        private final List<String> lines = new CopyOnWriteArrayList<>();
+
+        LoggedLines(Level level) {
+            this.level = level;
+        }
+
+        @Override
+        public void match(LogEvent event) {
+            if (event.getLevel().equals(this.level)
+                    && event.getLoggerName().equals(WazuhEnrichedFindingService.class.getName())) {
+                this.lines.add(event.getMessage().getFormattedMessage());
+            }
+        }
+
+        @Override
+        public void assertMatched() {}
+    }
+
+    /**
+     * Refused findings are reported by the periodic flush: one ERROR per flush that follows a
+     * refusal, carrying the number refused since the previous report and the running total. Every
+     * refusal is reported, however many follow the first one, and a flush with nothing new to report
+     * logs nothing.
+     */
+    public void testRefusals_reportedByEachFlushWithTheCountSinceTheLastReport() throws Exception {
+        try (MockLogAppender appender =
+                MockLogAppender.createForLoggers(LogManager.getLogger(WazuhEnrichedFindingService.class))) {
+            LoggedLines errors = new LoggedLines(Level.ERROR);
+            appender.addExpectation(errors);
+            service.setMaxInFlight(1);
+            service.setMaxPending(2);
+
+            // finding-1 is in flight, 2 and 3 wait, 4 to 6 are refused.
+            for (int i = 1; i <= 6; i++) {
+                service.enrich(finding("finding-" + i, "doc-" + i, "wazuh-events-v5-test"));
+            }
+            invokePrivate("periodicFlush");
+            assertEquals(1, errors.lines.size());
+            assertThat(errors.lines.get(0), containsString("Findings refused since the last report: 3"));
+            assertThat(errors.lines.get(0), containsString("Total findings lost so far: 3"));
+
+            invokePrivate("periodicFlush");
+            assertEquals("a flush with no new refusal logs nothing", 1, errors.lines.size());
+
+            for (int i = 7; i <= 8; i++) {
+                service.enrich(finding("finding-" + i, "doc-" + i, "wazuh-events-v5-test"));
+            }
+            invokePrivate("periodicFlush");
+            assertEquals(2, errors.lines.size());
+            assertThat(errors.lines.get(1), containsString("Findings refused since the last report: 2"));
+            assertThat(errors.lines.get(1), containsString("Total findings lost so far: 5"));
+        }
+    }
+
+    /**
+     * A node that stops while findings still wait for enrichment discards them. Closing the service
+     * reports the refusals no flush has reported yet and the findings it discards, and a second close
+     * reports nothing more.
+     */
+    public void testClose_reportsUnreportedRefusalsAndDiscardedFindings() throws Exception {
+        try (MockLogAppender appender =
+                MockLogAppender.createForLoggers(LogManager.getLogger(WazuhEnrichedFindingService.class))) {
+            LoggedLines errors = new LoggedLines(Level.ERROR);
+            LoggedLines warnings = new LoggedLines(Level.WARN);
+            appender.addExpectation(errors);
+            appender.addExpectation(warnings);
+            service.setMaxInFlight(1);
+            service.setMaxPending(2);
+
+            // finding-1 is in flight, 2 and 3 wait, 4 is refused.
+            for (int i = 1; i <= 4; i++) {
+                service.enrich(finding("finding-" + i, "doc-" + i, "wazuh-events-v5-test"));
+            }
+            service.close();
+            service.close();
+
+            assertEquals(1, errors.lines.size());
+            assertThat(errors.lines.get(0), containsString("Findings refused since the last report: 1"));
+            assertEquals(1, warnings.lines.size());
+            assertThat(warnings.lines.get(0), containsString("2 waiting for enrichment"));
+        }
     }
 
     private static List<String> docIds(SentMultiGet multiGet) {
