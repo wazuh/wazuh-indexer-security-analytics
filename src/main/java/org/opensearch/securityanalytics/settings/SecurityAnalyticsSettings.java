@@ -412,6 +412,22 @@ public class SecurityAnalyticsSettings {
                     Setting.Property.Dynamic);
 
     /**
+     * Maximum number of findings allowed to wait for enrichment in {@code
+     * WazuhEnrichedFindingService}. A detector run publishes all its findings at once and every one
+     * of them is enriched, so the queue absorbs whole runs; this bound only protects the heap when
+     * findings keep arriving faster than they are enriched. Past it, findings are refused and
+     * counted: each one is a finding missing from {@code wazuh-findings-v5-*}.
+     */
+    public static final Setting<Integer> ENRICHED_FINDINGS_MAX_PENDING =
+            Setting.intSetting(
+                    "plugins.security_analytics.enriched_findings_max_pending",
+                    100000,
+                    1,
+                    1000000,
+                    Setting.Property.NodeScope,
+                    Setting.Property.Dynamic);
+
+    /**
      * Maximum number of findings that can be updated in a single request to {@code
      * RestUpdateFindingsAction}. A value of 0 disables the case management bulk update endpoint.
      */

@@ -155,6 +155,7 @@ import org.opensearch.transport.client.Client;
 import org.opensearch.transport.client.node.NodeClient;
 import org.opensearch.watcher.ResourceWatcherService;
 
+import java.io.IOException;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -239,6 +240,8 @@ public class SecurityAnalyticsPlugin extends Plugin
 
     private ClusterService clusterService;
 
+    private WazuhEnrichedFindingService enrichedFindingService;
+
     @Override
     public Collection<SystemIndexDescriptor> getSystemIndexDescriptors(Settings settings) {
         List<SystemIndexDescriptor> descriptors =
@@ -296,6 +299,7 @@ public class SecurityAnalyticsPlugin extends Plugin
                         SecurityAnalyticsSettings.ENRICHED_FINDINGS_RULE_CACHE_MAX_SIZE.get(
                                 environment.settings()),
                         clusterService);
+        this.enrichedFindingService = enrichedFindingService;
         DetectorLookupCache detectorLookupCache =
                 new DetectorLookupCache(
                         SecurityAnalyticsSettings.CORRELATION_DETECTOR_CACHE_TTL.get(environment.settings()));
@@ -330,6 +334,19 @@ public class SecurityAnalyticsPlugin extends Plugin
                 detectorLookupCache,
                 logTypeListCache,
                 correlationRulesCache);
+    }
+
+    /**
+     * Closes the enrichment service when the node stops. The node closes plugins, not the components
+     * they create, so without this the findings the service still holds would be discarded without a
+     * trace.
+     */
+    @Override
+    public void close() throws IOException {
+        if (this.enrichedFindingService != null) {
+            this.enrichedFindingService.close();
+        }
+        super.close();
     }
 
     @Override
@@ -447,6 +464,7 @@ public class SecurityAnalyticsPlugin extends Plugin
                 SecurityAnalyticsSettings.ENRICHED_FINDINGS_ENRICH_BATCH_SIZE,
                 SecurityAnalyticsSettings.ENRICHED_FINDINGS_MAX_RETRIES,
                 SecurityAnalyticsSettings.ENRICHED_FINDINGS_MAX_PENDING_RETRIES,
+                SecurityAnalyticsSettings.ENRICHED_FINDINGS_MAX_PENDING,
                 SecurityAnalyticsSettings.CORRELATION_DETECTOR_CACHE_TTL,
                 SecurityAnalyticsSettings.CORRELATION_MAX_IN_FLIGHT_FINDINGS,
                 SecurityAnalyticsSettings.CORRELATION_MAX_PENDING_FINDINGS,
