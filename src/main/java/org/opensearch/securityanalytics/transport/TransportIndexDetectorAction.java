@@ -109,6 +109,7 @@ import org.opensearch.securityanalytics.rules.aggregation.AggregationItem;
 import org.opensearch.securityanalytics.rules.backend.OSQueryBackend;
 import org.opensearch.securityanalytics.rules.backend.OSQueryBackend.AggregationQueries;
 import org.opensearch.securityanalytics.rules.backend.QueryBackend;
+import org.opensearch.securityanalytics.rules.backend.RuleFieldScope;
 import org.opensearch.securityanalytics.rules.exceptions.SigmaConditionError;
 import org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings;
 import org.opensearch.securityanalytics.util.DetectorIndices;
@@ -1353,8 +1354,16 @@ public class TransportIndexDetectorAction
             tags.add(rule.getCategory());
             tags.addAll(rule.getTags().stream().map(Value::getValue).collect(Collectors.toList()));
 
+            // Wazuh: a rule holding a Sigma keyword gets no field names, so that alerting reads the
+            // whole event for it (wazuh/wazuh-indexer-plugins#1747).
             DocLevelQuery docLevelQuery =
-                    new DocLevelQuery(id, name, Collections.emptyList(), actualQuery, tags, queryFieldNames);
+                    new DocLevelQuery(
+                            id,
+                            name,
+                            Collections.emptyList(),
+                            actualQuery,
+                            tags,
+                            RuleFieldScope.monitorQueryFieldNames(rule, queryFieldNames));
             docLevelQueries.add(docLevelQuery);
         }
         docLevelQueries.addAll(threatIntelQueries);
