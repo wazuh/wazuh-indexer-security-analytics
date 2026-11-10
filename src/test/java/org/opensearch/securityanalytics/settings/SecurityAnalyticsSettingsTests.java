@@ -25,7 +25,7 @@ public class SecurityAnalyticsSettingsTests extends OpenSearchTestCase {
     /** The resource limit settings fall back to their documented defaults. */
     public void testResourceLimitDefaults() {
         assertEquals(10, (int) SecurityAnalyticsSettings.MAX_DETECTORS.get(Settings.EMPTY));
-        assertEquals(500, (int) SecurityAnalyticsSettings.MAX_RULES_PER_DETECTOR.get(Settings.EMPTY));
+        assertEquals(50, (int) SecurityAnalyticsSettings.MAX_RULES_PER_DETECTOR.get(Settings.EMPTY));
     }
 
     /** The resource limit settings have no upper bound. */
