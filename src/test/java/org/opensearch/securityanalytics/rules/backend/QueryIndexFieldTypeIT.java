@@ -24,6 +24,8 @@ import org.opensearch.securityanalytics.rules.objects.SigmaRule;
 import org.opensearch.securityanalytics.util.RuleTopicIndices;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -155,6 +157,66 @@ public class QueryIndexFieldTypeIT extends SecurityAnalyticsRestTestCase {
     }
 
     /**
+     * A value too long for one Lucene term must not fail the percolate search of its batch.
+     *
+     * <p>{@code rule_analyzer} keeps a {@code text} or {@code match_only_text} value whole, and
+     * Lucene refuses a term over 32766 bytes. Without a bound, one such document made the percolate
+     * search fail for every document percolated with it, and the detector gave up the whole batch.
+     * Several documents are percolated in one search here because that is what a detector does.
+     */
+    public void testAValueTooLongForOneTermDoesNotFailTheBatch() throws Exception {
+        String query = compile(FIELD + "|contains: \"urlcache\"");
+
+        for (String type : STRING_TYPES) {
+            assertEquals(
+                    "the " + type + " batch must be evaluated despite its 40000-character value",
+                    List.of(1),
+                    percolateBatch(type, query, List.of("A".repeat(40000), COMMAND_LINE)));
+        }
+    }
+
+    /**
+     * The bound holds for multibyte values too, including one truncated inside a surrogate pair.
+     *
+     * <p>The truncation counts UTF-16 code units, and Lucene counts UTF-8 bytes. The euro sign takes
+     * 3 bytes, the most any code unit takes, so it reaches the limit exactly. An emoji is a surrogate
+     * pair of 4 bytes, and the leading {@code a} makes the cut fall between its two halves.
+     */
+    public void testAMultibyteValueStaysWithinTheTermLimit() throws Exception {
+        String query = compile(FIELD + "|contains: \"urlcache\"");
+        String emoji = new String(Character.toChars(0x1F600));
+        List<String> values =
+                List.of("€".repeat(20000), emoji.repeat(20000), "a" + emoji.repeat(20000), COMMAND_LINE);
+
+        for (String type : List.of("match_only_text", "text")) {
+            assertEquals(
+                    "the " + type + " batch must be evaluated despite its multibyte values",
+                    List.of(3),
+                    percolateBatch(type, query, values));
+        }
+    }
+
+    /**
+     * The cost of the bound: a rule only sees the start of a very long value.
+     *
+     * <p>The value is truncated, not dropped, so a match within the first characters is still found.
+     * Past them it is not, as with {@code ignore_above} before, which dropped the whole value. This
+     * pins the trade-off so that changing it is a decision.
+     */
+    public void testOnlyTheStartOfAVeryLongValueIsMatched() throws Exception {
+        String query = compile(FIELD + "|contains: \"urlcache\"");
+        String padding = "A".repeat(40000);
+
+        assertEquals(
+                "a match at the start of a long value is found, one past the limit is not",
+                List.of(0),
+                percolateBatch(
+                        "match_only_text",
+                        query,
+                        List.of(COMMAND_LINE + " " + padding, padding + " " + COMMAND_LINE)));
+    }
+
+    /**
      * A negative control, so the assertions above cannot pass vacuously.
      *
      * <p>Every failure this test guards against looks like "the percolator returned nothing". If a
@@ -211,8 +273,21 @@ public class QueryIndexFieldTypeIT extends SecurityAnalyticsRestTestCase {
      * @param value the value of {@link #FIELD} in the percolated document.
      * @return how many stored queries the document satisfied: 1 when the rule matches, 0 when not.
      */
-    @SuppressWarnings("unchecked")
     private long percolate(String type, String query, String value) throws IOException {
+        return percolateBatch(type, query, List.of(value)).size();
+    }
+
+    /**
+     * Percolates several documents in one search, as a detector percolates a batch.
+     *
+     * @param type the source field's mapping type, before the analysis overlay.
+     * @param query the compiled query string.
+     * @param values the value of {@link #FIELD} in each percolated document.
+     * @return the positions in {@code values} of the documents the rule matched, in order.
+     */
+    @SuppressWarnings("unchecked")
+    private List<Integer> percolateBatch(String type, String query, List<String> values)
+            throws IOException {
         String index =
                 String.format(
                         Locale.ROOT,
@@ -222,20 +297,32 @@ public class QueryIndexFieldTypeIT extends SecurityAnalyticsRestTestCase {
         createQueryIndex(index, type);
         storeQuery(index, query);
 
+        StringBuilder documents = new StringBuilder();
+        for (String value : values) {
+            documents.append(documents.length() == 0 ? "" : ",");
+            documents.append("{\"process\":{\"command_line\":").append(quote(value)).append("}}");
+        }
         Request search = new Request("GET", "/" + index + "/_search");
         search.setJsonEntity(
                 "{\"query\":{\"percolate\":{\"field\":\""
                         + PERCOLATOR_FIELD
-                        + "\",\"document\":{\"process\":{\"command_line\":"
-                        + quote(value)
-                        + "}}}}}");
+                        + "\",\"documents\":["
+                        + documents
+                        + "]}}}");
         Response response = client().performRequest(search);
 
         Map<String, Object> hits = (Map<String, Object>) entityAsMap(response).get("hits");
-        Map<String, Object> total = (Map<String, Object>) hits.get("total");
-        long matched = ((Number) total.get("value")).longValue();
-        logger.info("[{}] query [{}] matched {} stored queries", type, query, matched);
-        return matched;
+        List<Map<String, Object>> matched = (List<Map<String, Object>>) hits.get("hits");
+        List<Integer> slots = new ArrayList<>();
+        for (Map<String, Object> hit : matched) {
+            Map<String, Object> fields = (Map<String, Object>) hit.get("fields");
+            for (Object slot : (List<Object>) fields.get("_percolator_document_slot")) {
+                slots.add(((Number) slot).intValue());
+            }
+        }
+        Collections.sort(slots);
+        logger.info("[{}] query [{}] matched documents {} of {}", type, query, slots, values.size());
+        return slots;
     }
 
     /**

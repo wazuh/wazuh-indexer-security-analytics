@@ -8,6 +8,9 @@
         "tokenizer": "keyword",
         "char_filter": [
           "rule_ws_filter"
+        ],
+        "filter": [
+          "rule_term_limit_filter"
         ]
       }
     },
@@ -17,6 +20,12 @@
         "char_filter": [
           "rule_ws_filter"
         ]
+      }
+    },
+    "filter": {
+      "rule_term_limit_filter": {
+        "type": "truncate",
+        "length": 10922
       }
     },
     "char_filter": {
