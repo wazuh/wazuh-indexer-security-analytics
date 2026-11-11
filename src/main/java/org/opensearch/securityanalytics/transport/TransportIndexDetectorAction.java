@@ -662,9 +662,7 @@ public class TransportIndexDetectorAction
         String ruleCountError =
                 TransportIndexDetectorAction.validateRuleCount(request, this.maxRulesPerDetector);
         if (ruleCountError != null) {
-            listener.onFailure(
-                    SecurityAnalyticsException.wrap(
-                            new OpenSearchStatusException(ruleCountError, RestStatus.BAD_REQUEST)));
+            listener.onFailure(new OpenSearchStatusException(ruleCountError, RestStatus.BAD_REQUEST));
             return;
         }
         String[] detectorIndices =
