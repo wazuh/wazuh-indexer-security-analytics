@@ -40,6 +40,7 @@ import org.opensearch.action.support.WriteRequest.RefreshPolicy;
 import org.opensearch.action.support.clustermanager.AcknowledgedResponse;
 import org.opensearch.cluster.metadata.IndexNameExpressionResolver;
 import org.opensearch.cluster.metadata.MappingMetadata;
+import org.opensearch.cluster.routing.IndexRoutingTable;
 import org.opensearch.cluster.routing.Preference;
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.inject.Inject;
@@ -1997,10 +1998,13 @@ public class TransportIndexDetectorAction
                                                         // detector creates issued before either one's create-index has
                                                         // been applied both decide the index is missing and both try to
                                                         // create it. The loser gets ResourceAlreadyExistsException
+                                                        // and carries on with the index the winner created.
                                                         if (ExceptionsHelper.unwrapCause(e)
                                                                 instanceof ResourceAlreadyExistsException) {
-                                                            AsyncIndexDetectorsAction.this
-                                                                    .resumeAfterConcurrentDetectorIndexCreation();
+                                                            log.debug(
+                                                                    "{} was created concurrently by another request.",
+                                                                    Detector.DETECTORS_INDEX);
+                                                            AsyncIndexDetectorsAction.this.prepareDetectorIndexing();
                                                             return;
                                                         }
                                                         AsyncIndexDetectorsAction.this.onFailures(e);
@@ -2060,40 +2064,33 @@ public class TransportIndexDetectorAction
         }
 
         /**
-         * Resumes a detector create that lost the race to create {@link Detector#DETECTORS_INDEX}.
+         * Indexes the detector once {@link Detector#DETECTORS_INDEX} can serve reads.
          *
-         * <p>The rejection only tells us the index exists at the cluster manager. Its shards may not be
-         * assigned on this node yet and {@link #prepareDetectorIndexing()} reads the index straight
-         * away, so wait for an active shard first or the request dies on "no shard available".
+         * <p>Every branch of {@link #start()} gets here as soon as the index is in the cluster state,
+         * which says nothing about its shards. On the first sync of a cluster, detector requests issued
+         * together get here while the new index's primary is still recovering, and the read in {@link
+         * #updateDetector()} fails with "no shard available". The local cluster state answers the usual
+         * case, an active primary, without a round trip; otherwise wait for one.
          */
-        private void resumeAfterConcurrentDetectorIndexCreation() {
-            log.debug(
-                    "{} was created concurrently by another request; waiting for an active shard.",
-                    Detector.DETECTORS_INDEX);
+        void prepareDetectorIndexing() {
+            IndexRoutingTable routing =
+                    TransportIndexDetectorAction.this
+                            .clusterService
+                            .state()
+                            .routingTable()
+                            .index(Detector.DETECTORS_INDEX);
+            if (routing != null && routing.allPrimaryShardsActive()) {
+                this.createOrUpdateDetector();
+                return;
+            }
+            log.debug("{} has no active primary yet; waiting for one.", Detector.DETECTORS_INDEX);
             IndexUtils.waitForActiveShard(
                     TransportIndexDetectorAction.this.client,
                     Detector.DETECTORS_INDEX,
-                    new ActionListener<>() {
-                        @Override
-                        public void onResponse(Void unused) {
-                            try {
-                                AsyncIndexDetectorsAction.this.prepareDetectorIndexing();
-                            } catch (Exception e) {
-                                log.debug("detector index creation failed", e);
-                                AsyncIndexDetectorsAction.this.onFailures(e);
-                            }
-                        }
-
-                        @Override
-                        public void onFailure(Exception e) {
-                            log.error(
-                                    "Failed waiting for {} shards to become active", Detector.DETECTORS_INDEX, e);
-                            AsyncIndexDetectorsAction.this.onFailures(e);
-                        }
-                    });
+                    ActionListener.wrap(unused -> this.createOrUpdateDetector(), this::onFailures));
         }
 
-        void prepareDetectorIndexing() throws Exception {
+        private void createOrUpdateDetector() {
             if (this.request.getMethod() == RestRequest.Method.POST) {
                 this.createDetector();
             } else if (this.request.getMethod() == RestRequest.Method.PUT) {
