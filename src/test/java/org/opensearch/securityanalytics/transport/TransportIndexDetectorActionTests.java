@@ -323,6 +323,84 @@ public class TransportIndexDetectorActionTests extends OpenSearchTestCase {
                         "more than " + SecurityAnalyticsSettings.DEFAULT_MAX_RULES_PER_DETECTOR + " rules"));
     }
 
+    /** A detector over the limit, from {@code source}, sent by an internal caller or not. */
+    private static IndexDetectorRequest overLimitRequest(String source, boolean internalCaller) {
+        List<DetectorRule> rules =
+                IntStream.rangeClosed(1, SecurityAnalyticsSettings.DEFAULT_MAX_RULES_PER_DETECTOR + 1)
+                        .mapToObj(i -> new DetectorRule("rule-" + i))
+                        .collect(Collectors.toList());
+        DetectorInput input =
+                new DetectorInput(
+                        "test", List.of("wazuh-events-v5-system-activity"), Collections.emptyList(), rules);
+        Detector detector = randomDetectorWithInputs(List.of(input));
+        detector.setSource(source);
+        return new IndexDetectorRequest(
+                "", WriteRequest.RefreshPolicy.IMMEDIATE, RestRequest.Method.PUT, detector, internalCaller);
+    }
+
+    public void testValidateRuleCount_standardDetectorFromContentManager_isNotLimited() {
+        assertNull(
+                TransportIndexDetectorAction.validateRuleCount(
+                        overLimitRequest(Detector.STANDARD_SOURCE, true),
+                        SecurityAnalyticsSettings.DEFAULT_MAX_RULES_PER_DETECTOR));
+    }
+
+    public void testValidateRuleCount_standardDetectorToggledByUser_isNotLimited() {
+        // A user enabling or disabling a standard detector stores the existing standard detector.
+        assertNull(
+                TransportIndexDetectorAction.validateRuleCount(
+                        overLimitRequest(Detector.STANDARD_SOURCE, false),
+                        SecurityAnalyticsSettings.DEFAULT_MAX_RULES_PER_DETECTOR));
+    }
+
+    public void testValidateRuleCount_userDetector_isLimited() {
+        assertNotNull(
+                TransportIndexDetectorAction.validateRuleCount(
+                        overLimitRequest(Detector.DEFAULT_SOURCE, false),
+                        SecurityAnalyticsSettings.DEFAULT_MAX_RULES_PER_DETECTOR));
+    }
+
+    public void testValidateRuleCount_customDetectorFromInternalCaller_isLimited() {
+        assertNotNull(
+                TransportIndexDetectorAction.validateRuleCount(
+                        overLimitRequest(Detector.DEFAULT_SOURCE, true),
+                        SecurityAnalyticsSettings.DEFAULT_MAX_RULES_PER_DETECTOR));
+    }
+
+    public void testCheckIndicesAndExecute_userDetectorOverTheLimit_isRejected() throws Exception {
+        Client client = mock(Client.class);
+        CapturingListener listener = new CapturingListener();
+
+        invokeCheckIndicesAndExecute(
+                createAction(client), overLimitRequest(Detector.DEFAULT_SOURCE, false), listener);
+
+        assertNotNull(listener.failure);
+        String message = listener.failure.getMessage();
+        assertTrue(
+                message,
+                message.contains(
+                        "Detector cannot have more than "
+                                + SecurityAnalyticsSettings.DEFAULT_MAX_RULES_PER_DETECTOR
+                                + " rules"));
+        verify(client, never()).search(any(SearchRequest.class), any(ActionListener.class));
+    }
+
+    @SuppressWarnings("unchecked")
+    public void testCheckIndicesAndExecute_standardDetectorOverTheLimit_goesOn() throws Exception {
+        Client client = mock(Client.class);
+        CapturingListener listener = new CapturingListener();
+
+        invokeCheckIndicesAndExecute(
+                createAction(client), overLimitRequest(Detector.STANDARD_SOURCE, true), listener);
+
+        if (listener.failure != null) {
+            assertFalse(
+                    listener.failure.getMessage(),
+                    String.valueOf(listener.failure.getMessage()).contains("Detector cannot have more than"));
+        }
+        verify(client).search(any(SearchRequest.class), any(ActionListener.class));
+    }
+
     public void testValidateRuleCount_emptyRules_returnsNull() {
         DetectorInput input =
                 new DetectorInput(

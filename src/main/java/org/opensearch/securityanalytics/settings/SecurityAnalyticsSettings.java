@@ -207,8 +207,9 @@ public class SecurityAnalyticsSettings {
     private static final int MINIMUM_MAX_RULES_PER_DETECTOR = 0;
 
     /**
-     * Maximum number of rules allowed per detector input. Requests that would exceed this limit are
-     * rejected with a 400 error.
+     * Maximum number of rules allowed per input of a user-created detector. Requests that would
+     * exceed this limit are rejected with a 400 error. Standard detectors created by the Content
+     * Manager plugin are not limited.
      */
     public static final Setting<Integer> MAX_RULES_PER_DETECTOR =
             Setting.intSetting(

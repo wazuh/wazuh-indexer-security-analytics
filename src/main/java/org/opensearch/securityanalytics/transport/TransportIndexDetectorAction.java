@@ -385,17 +385,6 @@ public class TransportIndexDetectorAction
             return;
         }
 
-        // Prevent detectors from exceeding the configured rules-per-detector limit.
-        String ruleCountError =
-                TransportIndexDetectorAction.validateRuleCount(
-                        request.getDetector(), this.maxRulesPerDetector);
-        if (ruleCountError != null) {
-            listener.onFailure(
-                    SecurityAnalyticsException.wrap(
-                            new OpenSearchStatusException(ruleCountError, RestStatus.BAD_REQUEST)));
-            return;
-        }
-
         // Prevent modification of standard detectors
         // Use the flag from the request object — thread context headers don't survive
         // cross-action client.execute() calls (context is stashed by the transport layer).
@@ -621,6 +610,22 @@ public class TransportIndexDetectorAction
     }
 
     /**
+     * Returns the rule count error of the detector {@code request} stores, or {@code null}.
+     *
+     * <p>Standard detectors, which the Content Manager creates from CTI content, are not limited, as
+     * they do not count towards {@code max_detectors} either: that content reaches every deployment
+     * with the default value, so an integration above it would get no detector at all. By the time
+     * this runs, the detector of a request that is not an internal call is a custom one, unless it is
+     * a standard detector a user enables or disables, which is stored unchanged otherwise.
+     */
+    static String validateRuleCount(IndexDetectorRequest request, int maxRulesPerDetector) {
+        if (request.getDetector().isStandardDetector()) {
+            return null;
+        }
+        return validateRuleCount(request.getDetector(), maxRulesPerDetector);
+    }
+
+    /**
      * Returns an error message if any detector input exceeds the maximum allowed rule count, or
      * {@code null} if all inputs are within the limit.
      */
@@ -651,6 +656,15 @@ public class TransportIndexDetectorAction
             ActionListener<IndexDetectorResponse> listener,
             User user) {
         log.debug("check indices and execute began");
+        // Prevent detectors from exceeding the configured rules-per-detector limit. Checked here, once
+        // the detector to store is known: a user enabling or disabling a standard detector stores the
+        // existing one.
+        String ruleCountError =
+                TransportIndexDetectorAction.validateRuleCount(request, this.maxRulesPerDetector);
+        if (ruleCountError != null) {
+            listener.onFailure(new OpenSearchStatusException(ruleCountError, RestStatus.BAD_REQUEST));
+            return;
+        }
         String[] detectorIndices =
                 request.getDetector().getInputs().stream()
                         .flatMap(detectorInput -> detectorInput.getIndices().stream())
