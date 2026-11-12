@@ -17,6 +17,7 @@
 package org.opensearch.securityanalytics.util;
 
 import org.apache.lucene.tests.mockfile.LeakFS;
+import org.apache.lucene.tests.util.LuceneTestCase;
 import org.opensearch.action.bulk.BulkResponse;
 import org.opensearch.action.support.WriteRequest;
 import org.opensearch.cluster.service.ClusterService;
@@ -38,7 +39,11 @@ import static org.mockito.Mockito.mock;
  * Loading the rules shipped on disk lists the rules directory and every directory under it. Each
  * listing holds its directory open until it is closed, so these tests run the loading over a file
  * system that keeps track of what is open and check that nothing is left behind.
+ *
+ * <p>ExtrasFS is off because, on some seeds, it adds an empty {@code extra0} file to every
+ * directory the setup creates, which the loading would read as three more rules.
  */
+@LuceneTestCase.SuppressFileSystems("ExtrasFS")
 public class RuleIndicesTests extends OpenSearchTestCase {
 
     /** File system that fails {@link LeakFS#onClose()} while any of its handles is still open. */
