@@ -432,8 +432,7 @@ public class TransportCorrelateFindingAction
     /**
      * Fires a single async cluster-settings update to set or clear {@code index.blocks.write} on the
      * events indices. At most one transition is in flight at a time; {@link #eventsBlocked} flips
-     * only after the update is acknowledged, so a failed update is retried on the next backlog
-     * change.
+     * only after the update is applied, so a failed update is retried on the next backlog change.
      */
     private void setEventsWriteBlock(boolean block) {
         if (!blockTransitionInFlight.compareAndSet(false, true)) {

@@ -210,6 +210,7 @@ public class JoinEngine {
                                                     for (MultiSearchResponse.Item item : responses) {
                                                         if (item.isFailure()) {
                                                             log.info(item.getFailureMessage());
+                                                            ++idx;
                                                             continue;
                                                         }
                                                         String logTypeName = logTypeNames.get(idx);
@@ -408,6 +409,7 @@ public class JoinEngine {
                                 for (MultiSearchResponse.Item response : responses) {
                                     if (response.isFailure()) {
                                         log.info(response.getFailureMessage());
+                                        ++idx;
                                         continue;
                                     }
 
@@ -530,6 +532,7 @@ public class JoinEngine {
                                 for (MultiSearchResponse.Item response : responses) {
                                     if (response.isFailure()) {
                                         log.info(response.getFailureMessage());
+                                        ++idx;
                                         continue;
                                     }
 
@@ -623,6 +626,7 @@ public class JoinEngine {
                                 for (MultiSearchResponse.Item response : responses) {
                                     if (response.isFailure()) {
                                         log.info(response.getFailureMessage());
+                                        ++idx;
                                         continue;
                                     }
 

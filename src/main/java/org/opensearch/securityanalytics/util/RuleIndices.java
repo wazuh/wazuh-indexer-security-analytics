@@ -332,7 +332,12 @@ public class RuleIndices {
                 path -> {
                     try {
                         if (Files.isDirectory(path)) {
-                            rules.addAll(getRules(Files.list(path).collect(Collectors.toList())));
+                            // Files.list holds the directory open until its stream is closed.
+                            List<Path> children;
+                            try (Stream<Path> listing = Files.list(path)) {
+                                children = listing.collect(Collectors.toList());
+                            }
+                            rules.addAll(getRules(children));
                         } else {
                             rules.add(Files.readString(path, StandardCharsets.UTF_8));
                         }
@@ -350,8 +355,10 @@ public class RuleIndices {
             TimeValue indexTimeout,
             ActionListener<BulkResponse> listener)
             throws IOException, SigmaError {
-        Stream<Path> folder = Files.list(path);
-        List<Path> folderPaths = folder.collect(Collectors.toList());
+        List<Path> folderPaths;
+        try (Stream<Path> folder = Files.list(path)) {
+            folderPaths = folder.collect(Collectors.toList());
+        }
         Map<String, List<String>> logIndexToRules = new HashMap<>();
         // Disabled pre-packaged rules loading for production builds, enabled only on test environments.
         // Issue: https://github.com/wazuh/internal-devel-requests/issues/3587
