@@ -2004,7 +2004,11 @@ public class TransportIndexDetectorAction
                                                             log.debug(
                                                                     "{} was created concurrently by another request.",
                                                                     Detector.DETECTORS_INDEX);
-                                                            AsyncIndexDetectorsAction.this.prepareDetectorIndexing();
+                                                            try {
+                                                                AsyncIndexDetectorsAction.this.prepareDetectorIndexing();
+                                                            } catch (Exception ex) {
+                                                                AsyncIndexDetectorsAction.this.onFailures(ex);
+                                                            }
                                                             return;
                                                         }
                                                         AsyncIndexDetectorsAction.this.onFailures(e);

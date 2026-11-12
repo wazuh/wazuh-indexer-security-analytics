@@ -91,6 +91,7 @@ import org.mockito.InOrder;
 import static org.opensearch.securityanalytics.TestHelpers.randomDetectorWithInputs;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -657,6 +658,43 @@ public class TransportIndexDetectorActionTests extends OpenSearchTestCase {
         assertTrue(listener.failure.getMessage().contains("cluster health timed out"));
     }
 
+    /**
+     * The create-index answer arrives on another thread once start() has returned, so nothing around
+     * start() catches what its listener throws. When the request that lost the create race finds the
+     * primary already active, it indexes the detector inside that listener, and a failure there must
+     * still reach the request's listener instead of leaving the request without an answer.
+     */
+    @SuppressWarnings("unchecked")
+    public void testStart_lostCreateRaceWithActivePrimary_failureReachesTheListener()
+            throws Exception {
+        DetectorIndices detectorIndices = mock(DetectorIndices.class);
+        when(detectorIndices.detectorIndexExists()).thenReturn(false);
+        Client client = mock(Client.class);
+        doThrow(new IllegalStateException("detector read rejected"))
+                .when(client)
+                .get(any(GetRequest.class), any(ActionListener.class));
+        ClusterState state =
+                ClusterStateCreationUtils.state(Detector.DETECTORS_INDEX, true, ShardRoutingState.STARTED);
+        TransportIndexDetectorAction action =
+                createAction(detectorIndices, logTypeServiceAcceptingEveryType(), client, state);
+        CapturingListener listener = new CapturingListener();
+
+        action.new AsyncIndexDetectorsAction(null, mock(Task.class), updateRequest(), listener).start();
+
+        ArgumentCaptor<ActionListener<CreateIndexResponse>> createIndexListener =
+                ArgumentCaptor.forClass(ActionListener.class);
+        verify(detectorIndices).initDetectorIndex(createIndexListener.capture());
+        createIndexListener
+                .getValue()
+                .onFailure(
+                        new RemoteTransportException(
+                                "[node-1][127.0.0.1:9300][indices:admin/create]",
+                                new ResourceAlreadyExistsException(Detector.DETECTORS_INDEX)));
+
+        assertNotNull(listener.failure);
+        assertTrue(listener.failure.getMessage().contains("detector read rejected"));
+    }
+
     /** An update of a detector with a fixed id, the shape of the requests the CTI sync sends. */
     private static IndexDetectorRequest updateRequest() {
         Detector detector =
@@ -682,30 +720,33 @@ public class TransportIndexDetectorActionTests extends OpenSearchTestCase {
      */
     @SuppressWarnings("unchecked")
     public void testPrepareDetectorIndexing_primaryNotActive_waitsBeforeReadingTheDetector() {
-        ClusterState state =
-                randomFrom(
+        List<ClusterState> statesWithoutActivePrimary =
+                List.of(
                         ClusterState.EMPTY_STATE,
                         ClusterStateCreationUtils.state(
                                 Detector.DETECTORS_INDEX, true, ShardRoutingState.UNASSIGNED),
                         ClusterStateCreationUtils.state(
                                 Detector.DETECTORS_INDEX, true, ShardRoutingState.INITIALIZING));
-        Client client = mock(Client.class);
-        ClusterAdminClient clusterAdminClient = stubClusterHealth(client, null);
-        TransportIndexDetectorAction action =
-                createAction(mock(DetectorIndices.class), mock(LogTypeService.class), client, state);
+        for (ClusterState state : statesWithoutActivePrimary) {
+            Client client = mock(Client.class);
+            ClusterAdminClient clusterAdminClient = stubClusterHealth(client, null);
+            TransportIndexDetectorAction action =
+                    createAction(mock(DetectorIndices.class), mock(LogTypeService.class), client, state);
 
-        action
-                .new AsyncIndexDetectorsAction(
-                        null, mock(Task.class), updateRequest(), new CapturingListener())
-                .prepareDetectorIndexing();
+            action
+                    .new AsyncIndexDetectorsAction(
+                            null, mock(Task.class), updateRequest(), new CapturingListener())
+                    .prepareDetectorIndexing();
 
-        InOrder order = inOrder(clusterAdminClient, client);
-        ArgumentCaptor<ClusterHealthRequest> healthRequest =
-                ArgumentCaptor.forClass(ClusterHealthRequest.class);
-        order.verify(clusterAdminClient).health(healthRequest.capture(), any(ActionListener.class));
-        order.verify(client).get(any(GetRequest.class), any(ActionListener.class));
-        assertArrayEquals(new String[] {Detector.DETECTORS_INDEX}, healthRequest.getValue().indices());
-        assertEquals(ActiveShardCount.ONE, healthRequest.getValue().waitForActiveShards());
+            InOrder order = inOrder(clusterAdminClient, client);
+            ArgumentCaptor<ClusterHealthRequest> healthRequest =
+                    ArgumentCaptor.forClass(ClusterHealthRequest.class);
+            order.verify(clusterAdminClient).health(healthRequest.capture(), any(ActionListener.class));
+            order.verify(client).get(any(GetRequest.class), any(ActionListener.class));
+            assertArrayEquals(
+                    new String[] {Detector.DETECTORS_INDEX}, healthRequest.getValue().indices());
+            assertEquals(ActiveShardCount.ONE, healthRequest.getValue().waitForActiveShards());
+        }
     }
 
     /**
@@ -714,26 +755,26 @@ public class TransportIndexDetectorActionTests extends OpenSearchTestCase {
      */
     @SuppressWarnings("unchecked")
     public void testPrepareDetectorIndexing_primaryActive_readsWithoutWaiting() {
-        ClusterState state =
-                ClusterStateCreationUtils.state(
-                        Detector.DETECTORS_INDEX,
-                        true,
-                        ShardRoutingState.STARTED,
-                        randomFrom(ShardRoutingState.UNASSIGNED, ShardRoutingState.INITIALIZING));
-        Client client = mock(Client.class);
-        TransportIndexDetectorAction action =
-                createAction(mock(DetectorIndices.class), mock(LogTypeService.class), client, state);
+        for (ShardRoutingState replica :
+                List.of(ShardRoutingState.UNASSIGNED, ShardRoutingState.INITIALIZING)) {
+            ClusterState state =
+                    ClusterStateCreationUtils.state(
+                            Detector.DETECTORS_INDEX, true, ShardRoutingState.STARTED, replica);
+            Client client = mock(Client.class);
+            TransportIndexDetectorAction action =
+                    createAction(mock(DetectorIndices.class), mock(LogTypeService.class), client, state);
 
-        action
-                .new AsyncIndexDetectorsAction(
-                        null, mock(Task.class), updateRequest(), new CapturingListener())
-                .prepareDetectorIndexing();
+            action
+                    .new AsyncIndexDetectorsAction(
+                            null, mock(Task.class), updateRequest(), new CapturingListener())
+                    .prepareDetectorIndexing();
 
-        ArgumentCaptor<GetRequest> getRequest = ArgumentCaptor.forClass(GetRequest.class);
-        verify(client).get(getRequest.capture(), any(ActionListener.class));
-        assertEquals(Detector.DETECTORS_INDEX, getRequest.getValue().index());
-        assertEquals("detector-under-test", getRequest.getValue().id());
-        verify(client, never()).admin();
+            ArgumentCaptor<GetRequest> getRequest = ArgumentCaptor.forClass(GetRequest.class);
+            verify(client).get(getRequest.capture(), any(ActionListener.class));
+            assertEquals(Detector.DETECTORS_INDEX, getRequest.getValue().index());
+            assertEquals("detector-under-test", getRequest.getValue().id());
+            verify(client, never()).admin();
+        }
     }
 
     /** A client whose every search comes back timed out, carrying no hits. */
