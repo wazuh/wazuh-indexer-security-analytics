@@ -155,6 +155,7 @@ import org.opensearch.transport.client.Client;
 import org.opensearch.transport.client.node.NodeClient;
 import org.opensearch.watcher.ResourceWatcherService;
 
+import java.io.IOException;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -239,6 +240,8 @@ public class SecurityAnalyticsPlugin extends Plugin
 
     private ClusterService clusterService;
 
+    private WazuhEnrichedFindingService enrichedFindingService;
+
     @Override
     public Collection<SystemIndexDescriptor> getSystemIndexDescriptors(Settings settings) {
         List<SystemIndexDescriptor> descriptors =
@@ -296,6 +299,7 @@ public class SecurityAnalyticsPlugin extends Plugin
                         SecurityAnalyticsSettings.ENRICHED_FINDINGS_RULE_CACHE_MAX_SIZE.get(
                                 environment.settings()),
                         clusterService);
+        this.enrichedFindingService = enrichedFindingService;
         DetectorLookupCache detectorLookupCache =
                 new DetectorLookupCache(
                         SecurityAnalyticsSettings.CORRELATION_DETECTOR_CACHE_TTL.get(environment.settings()));
@@ -306,8 +310,13 @@ public class SecurityAnalyticsPlugin extends Plugin
                 new CorrelationRulesCache(
                         SecurityAnalyticsSettings.CORRELATION_METADATA_CACHE_TTL.get(environment.settings()));
 
-        // Initialize WCS field validator from cluster index mappings
-        SecurityAnalyticsPlugin.initWCSFieldValidator(clusterService);
+        // Keep the WCS field validator in line with the events index template
+        clusterService.addListener(
+                event -> {
+                    if (event.metadataChanged()) {
+                        WCSFieldValidator.initFromMetadata(event.state().metadata());
+                    }
+                });
 
         return List.of(
                 this.detectorIndices,
@@ -328,32 +337,16 @@ public class SecurityAnalyticsPlugin extends Plugin
     }
 
     /**
-     * Initializes the WCS field validator by resolving fields from the first available {@code
-     * wazuh-events-*} index mapping. Registers a cluster state listener to perform this once the
-     * cluster state becomes available.
+     * Closes the enrichment service when the node stops. The node closes plugins, not the components
+     * they create, so without this the findings the service still holds would be discarded without a
+     * trace.
      */
-    private static void initWCSFieldValidator(ClusterService clusterService) {
-        final String WCS_INDEX_PREFIX = ".ds-wazuh-events-";
-
-        clusterService.addListener(
-                event -> {
-                    if (!WCSFieldValidator.isInitialized()) {
-                        SecurityAnalyticsPlugin.tryInitWCSFromClusterState(event.state(), WCS_INDEX_PREFIX);
-                    }
-                });
-    }
-
-    private static void tryInitWCSFromClusterState(ClusterState state, String indexPrefix) {
-        try {
-            for (var cursor : state.metadata().indices().entrySet()) {
-                if (cursor.getKey().startsWith(indexPrefix)) {
-                    WCSFieldValidator.initFromIndexMetadata(cursor.getValue());
-                    return;
-                }
-            }
-        } catch (Exception e) {
-            log.warn("Failed to initialize WCS field validator from cluster state", e);
+    @Override
+    public void close() throws IOException {
+        if (this.enrichedFindingService != null) {
+            this.enrichedFindingService.close();
         }
+        super.close();
     }
 
     @Override
@@ -471,6 +464,7 @@ public class SecurityAnalyticsPlugin extends Plugin
                 SecurityAnalyticsSettings.ENRICHED_FINDINGS_ENRICH_BATCH_SIZE,
                 SecurityAnalyticsSettings.ENRICHED_FINDINGS_MAX_RETRIES,
                 SecurityAnalyticsSettings.ENRICHED_FINDINGS_MAX_PENDING_RETRIES,
+                SecurityAnalyticsSettings.ENRICHED_FINDINGS_MAX_PENDING,
                 SecurityAnalyticsSettings.CORRELATION_DETECTOR_CACHE_TTL,
                 SecurityAnalyticsSettings.CORRELATION_MAX_IN_FLIGHT_FINDINGS,
                 SecurityAnalyticsSettings.CORRELATION_MAX_PENDING_FINDINGS,

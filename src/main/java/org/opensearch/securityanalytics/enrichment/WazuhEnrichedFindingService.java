@@ -60,6 +60,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
@@ -112,6 +113,9 @@ public class WazuhEnrichedFindingService implements Closeable {
     /** Maximum number of writes allowed to wait in {@link #retryQueue}. */
     private volatile int maxPendingRetries;
 
+    /** Maximum number of findings allowed to wait in {@link #findingsQueue}. */
+    private volatile int maxPending;
+
     /** Valid base categories derived from {@link LOG_CATEGORY}. */
     private static final Set<String> VALID_CATEGORIES =
             Arrays.stream(LOG_CATEGORY.values())
@@ -134,6 +138,27 @@ public class WazuhEnrichedFindingService implements Closeable {
 
     /** Findings waiting to be enriched, processed when an in-flight slot becomes available. */
     private final ConcurrentLinkedQueue<Finding> findingsQueue = new ConcurrentLinkedQueue<>();
+
+    /**
+     * Size of {@link #findingsQueue}, reserved before a finding is added and released when it is
+     * taken into a batch.
+     */
+    private final AtomicInteger findingsQueueSize = new AtomicInteger(0);
+
+    /**
+     * Number of findings refused because {@link #findingsQueue} was full. Each one is a finding
+     * missing from the index.
+     */
+    private final AtomicLong rejectedCount = new AtomicLong(0);
+
+    /** Findings refused since the last report; see {@link #reportRejections()}. */
+    private final AtomicLong unreportedRejections = new AtomicLong(0);
+
+    /** Monitor of the most recently refused finding, named in the next report. */
+    private volatile String lastRejectedMonitorId;
+
+    /** Set by the first {@link #close()}, so the findings it discards are reported once. */
+    private final AtomicBoolean closed = new AtomicBoolean(false);
 
     /** Limits the number of concurrent async enrichment chains to avoid transport-layer overload. */
     private final Semaphore inFlightPermits;
@@ -197,6 +222,8 @@ public class WazuhEnrichedFindingService implements Closeable {
         this.maxPendingRetries =
                 SecurityAnalyticsSettings.ENRICHED_FINDINGS_MAX_PENDING_RETRIES.get(
                         clusterService.getSettings());
+        this.maxPending =
+                SecurityAnalyticsSettings.ENRICHED_FINDINGS_MAX_PENDING.get(clusterService.getSettings());
         this.inFlightPermits = new AdjustableSemaphore(this.maxInFlight);
         this.ruleMetadataCache =
                 Collections.synchronizedMap(
@@ -237,6 +264,10 @@ public class WazuhEnrichedFindingService implements Closeable {
                 .addSettingsUpdateConsumer(
                         SecurityAnalyticsSettings.ENRICHED_FINDINGS_MAX_PENDING_RETRIES,
                         this::setMaxPendingRetries);
+        clusterService
+                .getClusterSettings()
+                .addSettingsUpdateConsumer(
+                        SecurityAnalyticsSettings.ENRICHED_FINDINGS_MAX_PENDING, this::setMaxPending);
     }
 
     public void setEnabled(boolean enabled) {
@@ -259,6 +290,10 @@ public class WazuhEnrichedFindingService implements Closeable {
         this.maxPendingRetries = maxPendingRetries;
     }
 
+    public void setMaxPending(int maxPending) {
+        this.maxPending = maxPending;
+    }
+
     public synchronized void setMaxInFlight(int newMax) {
         int permitChange = newMax - this.maxInFlight;
         this.maxInFlight = newMax;
@@ -272,14 +307,37 @@ public class WazuhEnrichedFindingService implements Closeable {
     public synchronized void setFlushInterval(int seconds) {
         this.flushIntervalSeconds = seconds;
         this.flushSchedule.cancel();
+        if (this.closed.get()) {
+            return;
+        }
         this.flushSchedule =
                 this.threadPool.scheduleWithFixedDelay(
                         this::periodicFlush, TimeValue.timeValueSeconds(seconds), ThreadPool.Names.GENERIC);
     }
 
+    /**
+     * Stops the periodic flush. Whatever the service still holds is not written: the refusals no
+     * flush has reported yet are reported, and the findings waiting for enrichment, the enriched
+     * findings waiting to be written and the writes waiting for a retry are counted in one WARN line,
+     * so a node that stops mid-burst says what it discarded.
+     */
     @Override
-    public void close() {
+    public synchronized void close() {
+        if (!this.closed.compareAndSet(false, true)) {
+            return;
+        }
         this.flushSchedule.cancel();
+        this.reportRejections();
+        int queued = this.findingsQueueSize.get();
+        int unwritten = this.pendingRequests.size();
+        int retrying = this.retryQueueSize.get();
+        if (queued > 0 || unwritten > 0 || retrying > 0) {
+            log.warn(
+                    "Enrichment service closed with findings not written to the findings index: {} waiting for enrichment, {} enriched and waiting to be written, {} waiting for a retry",
+                    queued,
+                    unwritten,
+                    retrying);
+        }
     }
 
     /**
@@ -297,6 +355,20 @@ public class WazuhEnrichedFindingService implements Closeable {
             return;
         }
 
+        // Check and reserve in one atomic step, so concurrent callers cannot all see room and push
+        // the queue past the limit.
+        int max = this.maxPending;
+        if (this.findingsQueueSize.getAndUpdate(size -> size < max ? size + 1 : size) >= max) {
+            // Reported by the next periodic flush, with every other refusal since the last report.
+            this.lastRejectedMonitorId = finding.getMonitorId();
+            this.rejectedCount.incrementAndGet();
+            this.unreportedRejections.incrementAndGet();
+            log.debug(
+                    "Enrichment queue full, refused finding {} of monitor {}",
+                    finding.getId(),
+                    finding.getMonitorId());
+            return;
+        }
         this.findingsQueue.add(finding);
         this.processQueue();
     }
@@ -312,6 +384,7 @@ public class WazuhEnrichedFindingService implements Closeable {
             List<Finding> batch = new ArrayList<>(batchSize);
             Finding finding;
             while (batch.size() < batchSize && (finding = this.findingsQueue.poll()) != null) {
+                this.findingsQueueSize.decrementAndGet();
                 batch.add(finding);
             }
             if (batch.isEmpty()) {
@@ -846,9 +919,28 @@ public class WazuhEnrichedFindingService implements Closeable {
      * in the same tick, without waiting a flush interval.
      */
     private void periodicFlush() {
+        this.reportRejections();
         this.flushRetries();
         this.drainAndFlush();
         this.processQueue();
+    }
+
+    /**
+     * Logs the findings refused since the previous report, if any. Every periodic flush calls it, so
+     * each refusal is reported within one flush interval, one line per interval however many findings
+     * it refused, and a node that refuses nothing logs nothing.
+     */
+    private void reportRejections() {
+        long refused = this.unreportedRejections.getAndSet(0);
+        if (refused == 0) {
+            return;
+        }
+        log.error(
+                "Enrichment queue capacity reached ({} pending). Findings refused since the last report: {}, the latest of monitor {}. They are not written to the findings index. Total findings lost so far: {}",
+                this.maxPending,
+                refused,
+                this.lastRejectedMonitorId,
+                this.rejectedCount.get());
     }
 
     /**
@@ -1032,6 +1124,14 @@ public class WazuhEnrichedFindingService implements Closeable {
     /** Number of enriched findings given up on, accumulated over this service instance's lifetime. */
     public long getDroppedCount() {
         return this.droppedCount.get();
+    }
+
+    /**
+     * Number of findings refused because the enrichment queue was full, accumulated over this service
+     * instance's lifetime.
+     */
+    public long getRejectedCount() {
+        return this.rejectedCount.get();
     }
 
     /** An index request together with the number of times it has already been resent. */
