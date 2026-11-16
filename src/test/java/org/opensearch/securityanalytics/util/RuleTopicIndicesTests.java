@@ -16,6 +16,7 @@
  */
 package org.opensearch.securityanalytics.util;
 
+import org.apache.lucene.index.IndexWriter;
 import org.opensearch.common.settings.Settings;
 import org.opensearch.common.xcontent.XContentType;
 import org.opensearch.securityanalytics.config.monitors.DetectorMonitorConfig;
@@ -60,6 +61,23 @@ public class RuleTopicIndicesTests extends OpenSearchTestCase {
                 settings().getAsList("analysis.normalizer.rule_ws_normalizer.char_filter"));
         assertEquals("pattern_replace", settings().get("analysis.char_filter.rule_ws_filter.type"));
         assertEquals(" ", settings().get("analysis.char_filter.rule_ws_filter.replacement"));
+    }
+
+    public void testRuleAnalyzerTermAlwaysFitsInALuceneTerm() throws Exception {
+        // rule_analyzer makes a whole text or match_only_text value one term, and a term over
+        // IndexWriter.MAX_TERM_LENGTH bytes makes the percolate search fail for the whole batch.
+        // truncate counts UTF-16 code units, and none encodes to more than 3 UTF-8 bytes.
+        assertEquals(
+                List.of("rule_term_limit_filter"),
+                settings().getAsList("analysis.analyzer.rule_analyzer.filter"));
+        assertEquals("truncate", settings().get("analysis.filter.rule_term_limit_filter.type"));
+
+        int length = settings().getAsInt("analysis.filter.rule_term_limit_filter.length", -1);
+        assertTrue(
+                "a truncated term must fit in a Lucene term", length * 3 <= IndexWriter.MAX_TERM_LENGTH);
+        assertTrue(
+                "the limit should keep as much of the value as fits",
+                (length + 1) * 3 > IndexWriter.MAX_TERM_LENGTH);
     }
 
     public void testQueryIndexFieldOverridesUseTheAnalysisChains() {

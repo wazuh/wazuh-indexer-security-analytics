@@ -17,6 +17,7 @@
 package org.opensearch.securityanalytics.enrichment;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -31,8 +32,9 @@ import java.util.regex.Pattern;
  * <p>Supported field types:
  *
  * <ul>
- *   <li><b>String</b> ({@link #interpolate}): each placeholder is replaced with the scalar string
- *       representation of the resolved value, or an empty string on miss.
+ *   <li><b>String</b> ({@link #interpolate}): each placeholder is replaced with the string
+ *       representation of the resolved value (array elements joined with a space), or an empty
+ *       string on miss.
  *   <li><b>List&lt;String&gt;</b> ({@link #interpolateList}): pure-placeholder elements may expand
  *       into multiple values when the resolved field is a list; duplicates are removed.
  *   <li><b>Map&lt;String, List&lt;String&gt;&gt;</b> ({@link #interpolateMapOfLists}): applies list
@@ -62,7 +64,10 @@ public final class TemplateInterpolator {
      *
      * <ul>
      *   <li>Scalar resolved value (String, Number, Boolean) -> {@code toString()} substitution.
-     *   <li>Missing, {@code null}, or non-scalar (Map, List) -> empty string.
+     *   <li>List -> its scalar elements joined with a single space, so an argument list such as
+     *       {@code process.args} reads as the command line. Empty and non-scalar elements are
+     *       skipped.
+     *   <li>Missing, {@code null}, or Map -> empty string.
      * </ul>
      *
      * @param template the template string, may be {@code null}
@@ -81,7 +86,7 @@ public final class TemplateInterpolator {
         do {
             String path = matcher.group(1);
             Object value = resolvePath(path, source);
-            String replacement = scalarToString(value);
+            String replacement = valueToString(value);
             matcher.appendReplacement(sb, Matcher.quoteReplacement(replacement));
         } while (matcher.find());
         matcher.appendTail(sb);
@@ -243,21 +248,27 @@ public final class TemplateInterpolator {
     // Helpers
 
     /**
-     * Returns the string representation of a scalar value, or an empty string for {@code null},
-     * {@code Map}, or {@code List} values.
+     * Returns the string representation of a resolved value: a scalar's {@code toString()}, a list's
+     * scalar elements joined with a single space, or an empty string for {@code null} and {@code Map}
+     * values.
      */
-    private static String scalarToString(Object value) {
-        if (value == null || value instanceof Map || value instanceof List) {
+    private static String valueToString(Object value) {
+        if (value instanceof List) {
+            List<String> elements = new ArrayList<>();
+            expandValue(value, elements);
+            return String.join(" ", elements);
+        }
+        if (value == null || value instanceof Map) {
             return "";
         }
         return value.toString();
     }
 
     /**
-     * Expands a resolved value into the result set. Scalars are added as single elements; lists have
+     * Expands a resolved value into {@code result}. Scalars are added as single elements; lists have
      * each scalar element added individually; nulls, Maps, and empty results are skipped.
      */
-    private static void expandValue(Object value, LinkedHashSet<String> result) {
+    private static void expandValue(Object value, Collection<String> result) {
         if (value == null || value instanceof Map) {
             return;
         }

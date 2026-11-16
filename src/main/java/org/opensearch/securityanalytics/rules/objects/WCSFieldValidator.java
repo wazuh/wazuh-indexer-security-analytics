@@ -18,8 +18,11 @@ package org.opensearch.securityanalytics.rules.objects;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.opensearch.cluster.metadata.IndexMetadata;
-import org.opensearch.cluster.metadata.MappingMetadata;
+import org.opensearch.cluster.metadata.Metadata;
+import org.opensearch.common.compress.CompressedXContent;
+import org.opensearch.common.xcontent.XContentHelper;
+import org.opensearch.core.xcontent.MediaTypeRegistry;
+import org.opensearch.index.mapper.MapperService;
 import org.opensearch.securityanalytics.rules.exceptions.SigmaError;
 
 import java.util.Collections;
@@ -33,10 +36,8 @@ import java.util.stream.Collectors;
 /**
  * Validates that detection fields belong to the Wazuh Common Schema (WCS).
  *
- * <p>WCS fields are resolved dynamically from the OpenSearch index mapping at plugin startup (or on
- * cluster state changes) via {@link #initFromIndexMetadata(IndexMetadata)}. A supplementary set of
- * Sigma-native field names (e.g. Windows Sysmon conventions) is loaded from a bundled resource
- * file.
+ * <p>WCS fields are resolved from the mapping of the events index template, and refreshed whenever
+ * that mapping changes, via {@link #initFromMetadata(Metadata)}.
  *
  * <p>If the validator has not been initialized (no index mapping available yet), all fields are
  * accepted to avoid blocking rule ingestion during cluster bootstrap.
@@ -45,30 +46,59 @@ public class WCSFieldValidator {
 
     private static final Logger log = LogManager.getLogger(WCSFieldValidator.class);
 
+    /**
+     * Name prefix of the events index templates: the setup plugin installs one {@code
+     * wazuh-events-v5-<category>-template} per category, all with the same mapping. The raw events
+     * template ({@code wazuh-events-raw-v5-template}) does not match it.
+     */
+    private static final String EVENTS_TEMPLATE_PREFIX = "wazuh-events-v5-";
+
     /** WCS fields resolved from the index mapping. */
     private static final AtomicReference<Set<String>> wcsFields =
             new AtomicReference<>(Collections.emptySet());
 
     /**
-     * Initialize (or refresh) the WCS field set from an OpenSearch index metadata mapping. Typically
-     * called once at plugin startup and optionally on cluster state changes.
-     *
-     * @param indexMetadata metadata for any {@code wazuh-events-*} index (all share the same mapping)
+     * Mapping of the last load attempt, so an unchanged template is neither reparsed nor, if it
+     * cannot be parsed, reported again.
      */
-    public static void initFromIndexMetadata(IndexMetadata indexMetadata) {
-        if (indexMetadata == null) {
-            log.warn("Cannot initialize WCS fields: null index metadata");
-            return;
-        }
+    private static final AtomicReference<CompressedXContent> loadedMapping = new AtomicReference<>();
 
-        MappingMetadata mapping = indexMetadata.mapping();
-        if (mapping == null) {
-            log.warn("Cannot initialize WCS fields: no mapping in index metadata");
+    /**
+     * Initialize (or refresh) the WCS field set from the events index template in the cluster
+     * metadata. Called on every cluster metadata change; it does nothing when no events template
+     * exists yet or when its mapping is the one already loaded.
+     *
+     * @param metadata the cluster metadata
+     */
+    public static void initFromMetadata(Metadata metadata) {
+        try {
+            metadata.templatesV2().entrySet().stream()
+                    .filter(e -> e.getKey().startsWith(EVENTS_TEMPLATE_PREFIX))
+                    .filter(e -> e.getValue().template() != null)
+                    .filter(e -> e.getValue().template().mappings() != null)
+                    // the templates share one mapping: pick by name so the choice never varies
+                    .min(Map.Entry.comparingByKey())
+                    .ifPresent(e -> initFromMapping(e.getKey(), e.getValue().template().mappings()));
+        } catch (Exception e) {
+            log.warn("Failed to initialize WCS field validator from cluster state", e);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static void initFromMapping(String templateName, CompressedXContent mapping) {
+        if (mapping.equals(loadedMapping.getAndSet(mapping))) {
             return;
         }
 
         Set<String> fields = new HashSet<>();
-        Map<String, Object> sourceMap = mapping.sourceAsMap();
+        Map<String, Object> sourceMap =
+                XContentHelper.convertToMap(mapping.compressedReference(), true, MediaTypeRegistry.JSON)
+                        .v2();
+        // A template mapping may be stored wrapped in its type
+        if (sourceMap.size() == 1
+                && sourceMap.get(MapperService.SINGLE_MAPPING_NAME) instanceof Map<?, ?> typed) {
+            sourceMap = (Map<String, Object>) typed;
+        }
 
         // Extract from dynamic_templates
         Object dynTemplates = sourceMap.get("dynamic_templates");
@@ -95,7 +125,10 @@ public class WCSFieldValidator {
 
         wcsFields.set(Collections.unmodifiableSet(fields));
 
-        log.debug("WCS field validator initialized with {} fields", fields.size());
+        log.info(
+                "WCS field validator initialized with {} fields from index template [{}]",
+                fields.size(),
+                templateName);
     }
 
     /**
@@ -105,11 +138,13 @@ public class WCSFieldValidator {
      */
     public static void initFromFieldSet(Set<String> fields) {
         wcsFields.set(Collections.unmodifiableSet(new HashSet<>(fields)));
+        loadedMapping.set(null);
     }
 
     /** Reset the validator to uninitialized state (for testing). */
     public static void reset() {
         wcsFields.set(Collections.emptySet());
+        loadedMapping.set(null);
     }
 
     /**
