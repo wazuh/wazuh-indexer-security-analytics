@@ -224,7 +224,14 @@ public class IndexUtils {
                         ActionListener.wrap(
                                 (ClusterHealthResponse response) -> {
                                     if (response.getStatus() == ClusterHealthStatus.RED) {
-                                        log.warn("{} health is RED after waiting for shards", index);
+                                        log.warn(
+                                                "{} health is RED after waiting for shards (timed out: {}, active"
+                                                        + " primaries: {}, initializing: {}, unassigned: {})",
+                                                index,
+                                                response.isTimedOut(),
+                                                response.getActivePrimaryShards(),
+                                                response.getInitializingShards(),
+                                                response.getUnassignedShards());
                                     }
                                     listener.onResponse(null);
                                 },

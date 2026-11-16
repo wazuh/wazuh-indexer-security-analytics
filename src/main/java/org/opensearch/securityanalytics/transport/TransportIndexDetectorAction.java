@@ -40,6 +40,7 @@ import org.opensearch.action.support.WriteRequest.RefreshPolicy;
 import org.opensearch.action.support.clustermanager.AcknowledgedResponse;
 import org.opensearch.cluster.metadata.IndexNameExpressionResolver;
 import org.opensearch.cluster.metadata.MappingMetadata;
+import org.opensearch.cluster.routing.IndexRoutingTable;
 import org.opensearch.cluster.routing.Preference;
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.inject.Inject;
@@ -109,6 +110,7 @@ import org.opensearch.securityanalytics.rules.aggregation.AggregationItem;
 import org.opensearch.securityanalytics.rules.backend.OSQueryBackend;
 import org.opensearch.securityanalytics.rules.backend.OSQueryBackend.AggregationQueries;
 import org.opensearch.securityanalytics.rules.backend.QueryBackend;
+import org.opensearch.securityanalytics.rules.backend.RuleFieldScope;
 import org.opensearch.securityanalytics.rules.exceptions.SigmaConditionError;
 import org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings;
 import org.opensearch.securityanalytics.util.DetectorIndices;
@@ -384,17 +386,6 @@ public class TransportIndexDetectorAction
             return;
         }
 
-        // Prevent detectors from exceeding the configured rules-per-detector limit.
-        String ruleCountError =
-                TransportIndexDetectorAction.validateRuleCount(
-                        request.getDetector(), this.maxRulesPerDetector);
-        if (ruleCountError != null) {
-            listener.onFailure(
-                    SecurityAnalyticsException.wrap(
-                            new OpenSearchStatusException(ruleCountError, RestStatus.BAD_REQUEST)));
-            return;
-        }
-
         // Prevent modification of standard detectors
         // Use the flag from the request object — thread context headers don't survive
         // cross-action client.execute() calls (context is stashed by the transport layer).
@@ -620,6 +611,22 @@ public class TransportIndexDetectorAction
     }
 
     /**
+     * Returns the rule count error of the detector {@code request} stores, or {@code null}.
+     *
+     * <p>Standard detectors, which the Content Manager creates from CTI content, are not limited, as
+     * they do not count towards {@code max_detectors} either: that content reaches every deployment
+     * with the default value, so an integration above it would get no detector at all. By the time
+     * this runs, the detector of a request that is not an internal call is a custom one, unless it is
+     * a standard detector a user enables or disables, which is stored unchanged otherwise.
+     */
+    static String validateRuleCount(IndexDetectorRequest request, int maxRulesPerDetector) {
+        if (request.getDetector().isStandardDetector()) {
+            return null;
+        }
+        return validateRuleCount(request.getDetector(), maxRulesPerDetector);
+    }
+
+    /**
      * Returns an error message if any detector input exceeds the maximum allowed rule count, or
      * {@code null} if all inputs are within the limit.
      */
@@ -650,6 +657,15 @@ public class TransportIndexDetectorAction
             ActionListener<IndexDetectorResponse> listener,
             User user) {
         log.debug("check indices and execute began");
+        // Prevent detectors from exceeding the configured rules-per-detector limit. Checked here, once
+        // the detector to store is known: a user enabling or disabling a standard detector stores the
+        // existing one.
+        String ruleCountError =
+                TransportIndexDetectorAction.validateRuleCount(request, this.maxRulesPerDetector);
+        if (ruleCountError != null) {
+            listener.onFailure(new OpenSearchStatusException(ruleCountError, RestStatus.BAD_REQUEST));
+            return;
+        }
         String[] detectorIndices =
                 request.getDetector().getInputs().stream()
                         .flatMap(detectorInput -> detectorInput.getIndices().stream())
@@ -1353,8 +1369,16 @@ public class TransportIndexDetectorAction
             tags.add(rule.getCategory());
             tags.addAll(rule.getTags().stream().map(Value::getValue).collect(Collectors.toList()));
 
+            // Wazuh: a rule holding a Sigma keyword gets no field names, so that alerting reads the
+            // whole event for it (wazuh/wazuh-indexer-plugins#1747).
             DocLevelQuery docLevelQuery =
-                    new DocLevelQuery(id, name, Collections.emptyList(), actualQuery, tags, queryFieldNames);
+                    new DocLevelQuery(
+                            id,
+                            name,
+                            Collections.emptyList(),
+                            actualQuery,
+                            tags,
+                            RuleFieldScope.monitorQueryFieldNames(rule, queryFieldNames));
             docLevelQueries.add(docLevelQuery);
         }
         docLevelQueries.addAll(threatIntelQueries);
@@ -1974,10 +1998,17 @@ public class TransportIndexDetectorAction
                                                         // detector creates issued before either one's create-index has
                                                         // been applied both decide the index is missing and both try to
                                                         // create it. The loser gets ResourceAlreadyExistsException
+                                                        // and carries on with the index the winner created.
                                                         if (ExceptionsHelper.unwrapCause(e)
                                                                 instanceof ResourceAlreadyExistsException) {
-                                                            AsyncIndexDetectorsAction.this
-                                                                    .resumeAfterConcurrentDetectorIndexCreation();
+                                                            log.debug(
+                                                                    "{} was created concurrently by another request.",
+                                                                    Detector.DETECTORS_INDEX);
+                                                            try {
+                                                                AsyncIndexDetectorsAction.this.prepareDetectorIndexing();
+                                                            } catch (Exception ex) {
+                                                                AsyncIndexDetectorsAction.this.onFailures(ex);
+                                                            }
                                                             return;
                                                         }
                                                         AsyncIndexDetectorsAction.this.onFailures(e);
@@ -2037,40 +2068,33 @@ public class TransportIndexDetectorAction
         }
 
         /**
-         * Resumes a detector create that lost the race to create {@link Detector#DETECTORS_INDEX}.
+         * Indexes the detector once {@link Detector#DETECTORS_INDEX} can serve reads.
          *
-         * <p>The rejection only tells us the index exists at the cluster manager. Its shards may not be
-         * assigned on this node yet and {@link #prepareDetectorIndexing()} reads the index straight
-         * away, so wait for an active shard first or the request dies on "no shard available".
+         * <p>Every branch of {@link #start()} gets here as soon as the index is in the cluster state,
+         * which says nothing about its shards. On the first sync of a cluster, detector requests issued
+         * together get here while the new index's primary is still recovering, and the read in {@link
+         * #updateDetector()} fails with "no shard available". The local cluster state answers the usual
+         * case, an active primary, without a round trip; otherwise wait for one.
          */
-        private void resumeAfterConcurrentDetectorIndexCreation() {
-            log.debug(
-                    "{} was created concurrently by another request; waiting for an active shard.",
-                    Detector.DETECTORS_INDEX);
+        void prepareDetectorIndexing() {
+            IndexRoutingTable routing =
+                    TransportIndexDetectorAction.this
+                            .clusterService
+                            .state()
+                            .routingTable()
+                            .index(Detector.DETECTORS_INDEX);
+            if (routing != null && routing.allPrimaryShardsActive()) {
+                this.createOrUpdateDetector();
+                return;
+            }
+            log.debug("{} has no active primary yet; waiting for one.", Detector.DETECTORS_INDEX);
             IndexUtils.waitForActiveShard(
                     TransportIndexDetectorAction.this.client,
                     Detector.DETECTORS_INDEX,
-                    new ActionListener<>() {
-                        @Override
-                        public void onResponse(Void unused) {
-                            try {
-                                AsyncIndexDetectorsAction.this.prepareDetectorIndexing();
-                            } catch (Exception e) {
-                                log.debug("detector index creation failed", e);
-                                AsyncIndexDetectorsAction.this.onFailures(e);
-                            }
-                        }
-
-                        @Override
-                        public void onFailure(Exception e) {
-                            log.error(
-                                    "Failed waiting for {} shards to become active", Detector.DETECTORS_INDEX, e);
-                            AsyncIndexDetectorsAction.this.onFailures(e);
-                        }
-                    });
+                    ActionListener.wrap(unused -> this.createOrUpdateDetector(), this::onFailures));
         }
 
-        void prepareDetectorIndexing() throws Exception {
+        private void createOrUpdateDetector() {
             if (this.request.getMethod() == RestRequest.Method.POST) {
                 this.createDetector();
             } else if (this.request.getMethod() == RestRequest.Method.PUT) {
