@@ -16,6 +16,7 @@
  */
 package org.opensearch.securityanalytics.rules.engine;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.apache.logging.log4j.LogManager;
@@ -42,6 +43,7 @@ import org.opensearch.search.SearchHit;
 import org.opensearch.search.builder.SearchSourceBuilder;
 import org.opensearch.securityanalytics.rules.backend.OSQueryBackend;
 import org.opensearch.securityanalytics.rules.backend.QueryBackend;
+import org.opensearch.securityanalytics.rules.backend.RuleFieldScope;
 import org.opensearch.securityanalytics.rules.condition.ConditionFieldEqualsValueExpression;
 import org.opensearch.securityanalytics.rules.condition.ConditionItem;
 import org.opensearch.securityanalytics.rules.condition.ConditionNOT;
@@ -164,14 +166,20 @@ public class PercolateRuleEvaluator {
             return;
         }
 
-        // Doc id -> the rule and compiled query it holds, so a percolate hit needs no _source.
-        Map<String, CompiledQuery> compiled = new LinkedHashMap<>();
+        List<CompiledQuery> compiled = new ArrayList<>();
         Set<String> requiredFields = new LinkedHashSet<>();
-        compile(rules, integrationId, compiled, requiredFields);
+        boolean matchesAnyField = compile(rules, compiled, requiredFields);
 
         if (compiled.isEmpty()) {
             listener.onResponse(buildResult(rulesEvaluated, Collections.emptyList(), Map.of()));
             return;
+        }
+
+        if (matchesAnyField) {
+            // A condition that names no field is matched against every field of the event, and a
+            // query only reaches the fields its index maps. A detector reads the event after it was
+            // ingested, when its fields are mapped, so the event's own fields are mapped here too.
+            requiredFields.addAll(eventFields(eventJson));
         }
 
         queryIndex.ensureIndex(
@@ -181,7 +189,12 @@ public class PercolateRuleEvaluator {
                 ActionListener.wrap(
                         preparedIndex ->
                                 storeQueries(
-                                        preparedIndex, integrationId, compiled, rulesEvaluated, eventJson, listener),
+                                        preparedIndex,
+                                        integrationId,
+                                        byDocId(compiled, new DocScope(integrationId, preparedIndex.mappingVersion())),
+                                        rulesEvaluated,
+                                        eventJson,
+                                        listener),
                         e -> {
                             // The percolator index could not be prepared, so nothing was evaluated. Report
                             // it as such instead of returning "no matches", which would read as "the rules
@@ -203,25 +216,24 @@ public class PercolateRuleEvaluator {
      * separate defect; it is logged, not hidden, and tracked on its own.
      *
      * @param rules the parsed rules.
-     * @param integrationId the integration owning the rules; part of the document identity.
-     * @param compiled receives doc id to compiled query.
+     * @param compiled receives the compiled queries, in rule order.
      * @param requiredFields receives every field the compiled queries name, so the query index can
      *     make sure they are mapped before the queries are stored.
+     * @return {@code true} when a compiled query holds a condition that names no field.
      */
-    private void compile(
-            List<ParsedRule> rules,
-            String integrationId,
-            Map<String, CompiledQuery> compiled,
-            Set<String> requiredFields) {
+    private boolean compile(
+            List<ParsedRule> rules, List<CompiledQuery> compiled, Set<String> requiredFields) {
+        boolean matchesAnyField = false;
         for (int position = 0; position < rules.size(); position++) {
             SigmaRule rule = rules.get(position).rule();
             String body = rules.get(position).body();
             String ruleId = ruleId(rule, position);
             try {
                 // Constructed exactly as WTransportIndexRuleAction:225 does when a rule is uploaded —
-                // same arguments, so the compiled query is the same one a detector would run. One
-                // backend per rule, so a rule cannot inherit state collected while converting another.
-                QueryBackend backend = new OSQueryBackend(Collections.emptyMap(), false);
+                // same arguments, so the compiled query is the same one a detector would run; the
+                // subclass only observes. One backend per rule, so a rule cannot inherit state
+                // collected while converting another.
+                RuleFieldScope.Backend backend = new RuleFieldScope.Backend();
                 List<Object> queries = backend.convertRule(rule);
 
                 if (queries.isEmpty()) {
@@ -252,21 +264,23 @@ public class PercolateRuleEvaluator {
                 // has to be told which fields to make sure of. This is the same field set rule upload
                 // records as the rule's query_field_names.
                 requiredFields.addAll(backend.getQueryFields().keySet());
-                compiled.put(
-                        docId(integrationId, ruleId, query), new CompiledQuery(rule, ruleId, query, body));
+                matchesAnyField |= backend.matchesAnyField();
+                compiled.add(new CompiledQuery(rule, ruleId, query, body));
             } catch (Exception e) {
                 log.warn("Rule '{}' could not be compiled: {}", ruleId, e.getMessage());
             }
         }
+        return matchesAnyField;
     }
 
     /**
      * Upserts the compiled queries into the percolator index, then percolates.
      *
-     * <p>Doc ids are content-addressed, so re-running logtest on an unchanged rule is a no-op, while
-     * an edited rule stores a new document and leaves the previous one behind. Those superseded
-     * documents are removed after the search — see {@link #deleteSupersededQueries}. The refresh is
-     * immediate because the percolate search runs right after.
+     * <p>Doc ids are content-addressed, so re-running logtest on an unchanged rule against unchanged
+     * mappings is a no-op, while an edited rule, or the same rule once the index maps more fields,
+     * stores a new document and leaves the previous one behind. Those superseded documents are
+     * removed after the search — see {@link #deleteSupersededQueries}. The refresh is immediate
+     * because the percolate search runs right after.
      *
      * @param indexName the percolator index.
      * @param integrationId scopes the stored queries.
@@ -309,7 +323,7 @@ public class PercolateRuleEvaluator {
                                 return;
                             }
                             percolate(
-                                    indexName,
+                                    preparedIndex,
                                     integrationId,
                                     eventJson,
                                     compiled,
@@ -496,7 +510,7 @@ public class PercolateRuleEvaluator {
     /**
      * Percolates the event against the stored queries of this integration.
      *
-     * @param indexName the percolator index.
+     * @param preparedIndex the percolator index and the mapping version the queries were stored for.
      * @param integrationId scopes the stored queries.
      * @param eventJson the event to percolate.
      * @param compiled doc id to compiled query, used to resolve hits without fetching sources.
@@ -505,13 +519,15 @@ public class PercolateRuleEvaluator {
      * @param listener notified with the result JSON.
      */
     private void percolate(
-            String indexName,
+            LogtestQueryIndex.PreparedIndex preparedIndex,
             String integrationId,
             String eventJson,
             Map<String, CompiledQuery> compiled,
             Set<String> storedDocIds,
             int rulesEvaluated,
             ActionListener<String> listener) {
+
+        String indexName = preparedIndex.indexName();
 
         String percolateQuery;
         try {
@@ -540,7 +556,7 @@ public class PercolateRuleEvaluator {
                             }
                             explainMatches(
                                     indexName,
-                                    integrationId,
+                                    new DocScope(integrationId, preparedIndex.mappingVersion()),
                                     eventJson,
                                     matches,
                                     ActionListener.wrap(
@@ -584,21 +600,22 @@ public class PercolateRuleEvaluator {
      * the response has to explain rather than to the size of the integration.
      *
      * @param indexName the percolator index.
-     * @param integrationId the integration owning the rules.
+     * @param scope the integration owning the rules and the mapping version the documents belong to.
      * @param eventJson the event being evaluated.
      * @param matches the rules that matched.
      * @param listener receives the conditions per rule and the documents written for them.
      */
     private void explainMatches(
             String indexName,
-            String integrationId,
+            DocScope scope,
             String eventJson,
             List<CompiledQuery> matches,
             ActionListener<Explanation> listener) {
 
+        String integrationId = scope.integrationId();
         Map<String, ConditionLeaf> leaves = new LinkedHashMap<>();
         for (CompiledQuery match : matches) {
-            collectLeaves(match, integrationId, leaves);
+            collectLeaves(match, scope, leaves);
         }
         if (leaves.isEmpty()) {
             listener.onResponse(new Explanation(Map.of(), Set.of()));
@@ -816,11 +833,11 @@ public class PercolateRuleEvaluator {
      * that did <em>not</em> hold.
      *
      * @param match the matched rule and the body it was parsed from.
-     * @param integrationId the integration owning the rule; part of the document identity.
+     * @param scope the document identity the leaves are stored under.
      * @param leaves receives document id to leaf, in the order the conditions appear.
      */
     private void collectLeaves(
-            CompiledQuery match, String integrationId, Map<String, ConditionLeaf> leaves) {
+            CompiledQuery match, DocScope scope, Map<String, ConditionLeaf> leaves) {
         if (match.body() == null) {
             return;
         }
@@ -834,7 +851,7 @@ public class PercolateRuleEvaluator {
                     parsed.get(0).parsed().getLeft(),
                     false,
                     match.ruleId(),
-                    integrationId,
+                    scope,
                     new ConditionBackend(),
                     leaves);
         } catch (Exception e) {
@@ -852,7 +869,7 @@ public class PercolateRuleEvaluator {
      * @param item the condition node.
      * @param negated whether this node sits under a {@code not}.
      * @param ruleId the rule being walked.
-     * @param integrationId the integration owning the rule.
+     * @param scope the document identity the leaves are stored under.
      * @param backend the compiler.
      * @param leaves the accumulator.
      */
@@ -860,7 +877,7 @@ public class PercolateRuleEvaluator {
             ConditionItem item,
             boolean negated,
             String ruleId,
-            String integrationId,
+            DocScope scope,
             QueryBackend backend,
             Map<String, ConditionLeaf> leaves) {
         if (item == null || negated) {
@@ -869,7 +886,7 @@ public class PercolateRuleEvaluator {
         if (item instanceof ConditionFieldEqualsValueExpression fieldExpr) {
             addLeaf(
                     ruleId,
-                    integrationId,
+                    scope,
                     fieldExpr.getField() + " matched '" + formatSigmaValue(fieldExpr.getValue()) + "'",
                     new ConditionType(Either.right(Either.left(fieldExpr))),
                     backend,
@@ -879,7 +896,7 @@ public class PercolateRuleEvaluator {
         if (item instanceof ConditionValueExpression valueExpr) {
             addLeaf(
                     ruleId,
-                    integrationId,
+                    scope,
                     "keywords contains '" + valueExpr.getValue() + "'",
                     new ConditionType(Either.right(Either.right(valueExpr))),
                     backend,
@@ -898,7 +915,7 @@ public class PercolateRuleEvaluator {
                         resolveConditionItem(arg.getLeft()),
                         item instanceof ConditionNOT,
                         ruleId,
-                        integrationId,
+                        scope,
                         backend,
                         leaves);
             }
@@ -912,7 +929,7 @@ public class PercolateRuleEvaluator {
      * what the event satisfied, and a condition nobody checked is not that.
      *
      * @param ruleId the rule the leaf belongs to.
-     * @param integrationId the integration owning the rule.
+     * @param scope the document identity the leaf is stored under.
      * @param description the leaf as the response describes it.
      * @param conditionType the leaf, wrapped the way the backend expects it.
      * @param backend the compiler.
@@ -920,7 +937,7 @@ public class PercolateRuleEvaluator {
      */
     private void addLeaf(
             String ruleId,
-            String integrationId,
+            DocScope scope,
             String description,
             ConditionType conditionType,
             QueryBackend backend,
@@ -928,7 +945,7 @@ public class PercolateRuleEvaluator {
         try {
             String query = String.valueOf(backend.convertCondition(conditionType, false, false));
             leaves.putIfAbsent(
-                    docId(integrationId, ruleId, query), new ConditionLeaf(ruleId, description, query));
+                    docId(scope, ruleId, query), new ConditionLeaf(ruleId, description, query));
         } catch (Exception e) {
             log.debug(
                     "Condition '{}' of rule '{}' could not be compiled on its own: {}",
@@ -1029,6 +1046,58 @@ public class PercolateRuleEvaluator {
     }
 
     /**
+     * Keys the compiled queries by the id of the document that stores each one.
+     *
+     * <p>A rule id and query that repeat map to one document, as they always have.
+     *
+     * @param compiled the compiled queries, in rule order.
+     * @param scope the integration and the mapping version the documents belong to.
+     * @return doc id to compiled query, so a percolate hit needs no _source.
+     */
+    private static Map<String, CompiledQuery> byDocId(List<CompiledQuery> compiled, DocScope scope) {
+        Map<String, CompiledQuery> byDocId = new LinkedHashMap<>();
+        for (CompiledQuery query : compiled) {
+            byDocId.putIfAbsent(docId(scope, query.ruleId(), query.query()), query);
+        }
+        return byDocId;
+    }
+
+    /**
+     * Lists the dotted paths of the values an event holds.
+     *
+     * <p>Arrays are walked into, since an indexed array maps its elements under the array's own path.
+     * Null values are skipped: they map nothing.
+     *
+     * @param eventJson the event, already known to be a JSON object.
+     * @return every leaf path, in document order; empty if the event cannot be read.
+     */
+    static Set<String> eventFields(String eventJson) {
+        Set<String> fields = new LinkedHashSet<>();
+        try {
+            collectFields(MAPPER.readTree(eventJson), "", fields);
+        } catch (Exception e) {
+            log.debug("Could not list the fields of the event: {}", e.getMessage());
+        }
+        return fields;
+    }
+
+    private static void collectFields(JsonNode node, String path, Set<String> fields) {
+        if (node.isObject()) {
+            node.fields()
+                    .forEachRemaining(
+                            entry ->
+                                    collectFields(
+                                            entry.getValue(),
+                                            path.isEmpty() ? entry.getKey() : path + "." + entry.getKey(),
+                                            fields));
+        } else if (node.isArray()) {
+            node.forEach(element -> collectFields(element, path, fields));
+        } else if (!node.isNull() && !path.isEmpty()) {
+            fields.add(path);
+        }
+    }
+
+    /**
      * Tells whether a string is a JSON object, which is what the percolator needs as its document.
      *
      * @param json the candidate.
@@ -1048,7 +1117,7 @@ public class PercolateRuleEvaluator {
     /**
      * Derives a percolator document's id from what it contains.
      *
-     * <p>All three parts are load-bearing.
+     * <p>All four parts are load-bearing.
      *
      * <ul>
      *   <li><b>The compiled query</b>, because an id built from the rule id alone is reused across
@@ -1061,17 +1130,23 @@ public class PercolateRuleEvaluator {
      *       matching.
      *   <li><b>The integration id</b>, to keep two integrations that share a log type — and therefore
      *       share this index — apart.
+     *   <li><b>The mapping version</b> of the index, because the percolator extracts a stored query's
+     *       terms once, when the document is written. A query naming no field (a Sigma keyword) is
+     *       bound then to the fields mapped at that moment, so a field mapped later is never searched
+     *       by it while the document stands. A new version stores the query again.
      * </ul>
      *
-     * @param integrationId the integration owning the rule.
+     * @param scope the integration owning the rule and the mapping version.
      * @param ruleId the rule the query was compiled from.
      * @param query the compiled query.
      * @return a deterministic document id.
      */
-    private static String docId(String integrationId, String ruleId, String query) {
+    private static String docId(DocScope scope, String ruleId, String query) {
         try {
             MessageDigest digest = MessageDigest.getInstance(DOC_ID_DIGEST);
-            digest.update(integrationId.getBytes(StandardCharsets.UTF_8));
+            digest.update(scope.integrationId().getBytes(StandardCharsets.UTF_8));
+            digest.update((byte) '|');
+            digest.update(Long.toString(scope.mappingVersion()).getBytes(StandardCharsets.UTF_8));
             digest.update((byte) '|');
             digest.update(ruleId.getBytes(StandardCharsets.UTF_8));
             digest.update((byte) '|');
@@ -1087,6 +1162,15 @@ public class PercolateRuleEvaluator {
             throw new IllegalStateException(DOC_ID_DIGEST + " is not available", e);
         }
     }
+
+    /**
+     * What a stored document's id is scoped to besides its rule and query.
+     *
+     * @param integrationId the integration owning the rule.
+     * @param mappingVersion the version of the percolator index's mappings the document is stored
+     *     for.
+     */
+    private record DocScope(String integrationId, long mappingVersion) {}
 
     /**
      * A compiled percolator query and the rule it came from.

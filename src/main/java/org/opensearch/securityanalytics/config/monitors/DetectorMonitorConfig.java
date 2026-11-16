@@ -114,6 +114,15 @@ public class DetectorMonitorConfig {
      * rule_analyzer} tokenizes with {@code keyword}), which is what makes a compiled Sigma query
      * comparable against a whole field value.
      *
+     * <p>A whole value is one term, and Lucene refuses a term longer than 32766 UTF-8 bytes. A {@code
+     * keyword} field never reaches that limit because the WCS declares {@code ignore_above}, but
+     * {@code text} and {@code match_only_text} fields have no such bound. When a document holding
+     * such a value is percolated, the search fails for every document of the batch. So {@code
+     * rule_analyzer} ends with {@code rule_term_limit_filter}, which truncates the term to 10922
+     * characters. The filter counts UTF-16 code units, and none encodes to more than 3 UTF-8 bytes,
+     * so 10922 is the longest length that always fits. A rule only sees the first 10922 characters of
+     * such a field.
+     *
      * <p>These overrides decide how a compiled Sigma query is compared against a document, so
      * whatever they contain applies identically to a deployed detector and to logtest, which copies
      * them onto its own percolator index. They apply only to the query index copy of a field; the
@@ -140,7 +149,8 @@ public class DetectorMonitorConfig {
         // with it any more: `field: *a\ b*` finds no single token holding a space, and
         // `field: "a_ws_b"` analyzes to a token the document never produced. `rule_analyzer`
         // tokenizes with `keyword`, so the field stays one whole-value token and matches exactly as
-        // it did under `keyword` + `rule_ws_normalizer`, minus the 1024-character ceiling.
+        // it did under `keyword` + `rule_ws_normalizer`, with a ceiling of 10922 characters instead
+        // of 1024 (see the Javadoc above).
         HashMap<String, String> matchOnlyTextProperties = new HashMap<>();
         matchOnlyTextProperties.put("analyzer", "rule_analyzer");
         fieldMappingProperties.put("match_only_text", matchOnlyTextProperties);

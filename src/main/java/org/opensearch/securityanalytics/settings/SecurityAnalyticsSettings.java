@@ -207,8 +207,9 @@ public class SecurityAnalyticsSettings {
     private static final int MINIMUM_MAX_RULES_PER_DETECTOR = 0;
 
     /**
-     * Maximum number of rules allowed per detector input. Requests that would exceed this limit are
-     * rejected with a 400 error.
+     * Maximum number of rules allowed per input of a user-created detector. Requests that would
+     * exceed this limit are rejected with a 400 error. Standard detectors created by the Content
+     * Manager plugin are not limited.
      */
     public static final Setting<Integer> MAX_RULES_PER_DETECTOR =
             Setting.intSetting(
@@ -407,6 +408,22 @@ public class SecurityAnalyticsSettings {
                     "plugins.security_analytics.enriched_findings_max_pending_retries",
                     10000,
                     0,
+                    1000000,
+                    Setting.Property.NodeScope,
+                    Setting.Property.Dynamic);
+
+    /**
+     * Maximum number of findings allowed to wait for enrichment in {@code
+     * WazuhEnrichedFindingService}. A detector run publishes all its findings at once and every one
+     * of them is enriched, so the queue absorbs whole runs; this bound only protects the heap when
+     * findings keep arriving faster than they are enriched. Past it, findings are refused and
+     * counted: each one is a finding missing from {@code wazuh-findings-v5-*}.
+     */
+    public static final Setting<Integer> ENRICHED_FINDINGS_MAX_PENDING =
+            Setting.intSetting(
+                    "plugins.security_analytics.enriched_findings_max_pending",
+                    100000,
+                    1,
                     1000000,
                     Setting.Property.NodeScope,
                     Setting.Property.Dynamic);
