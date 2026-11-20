@@ -94,6 +94,20 @@ public class TransportDeleteRuleActionTests extends OpenSearchTestCase {
         assertTrue(failure.contains("all shards failed"));
     }
 
+    /**
+     * A cancelled delete-by-query answers with no failures of either kind, so the failure lists alone
+     * would read it as a deletion that went through.
+     */
+    public void testReportsACancelledTask() {
+        BulkByScrollResponse response = response(List.of(), List.of());
+        when(response.getReasonCancelled()).thenReturn("by user request");
+
+        String failure = TransportDeleteRuleAction.firstFailure(response);
+
+        assertNotNull(failure);
+        assertTrue(failure.contains("by user request"));
+    }
+
     /** Bulk failures are reported first, being the ones that name the document that survived. */
     public void testPrefersTheBulkFailure() {
         BulkItemResponse.Failure bulk =

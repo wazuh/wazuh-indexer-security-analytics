@@ -141,11 +141,12 @@ public class TransportDeleteRuleAction
     /**
      * Returns the first failure a delete-by-query reported inside a successful response.
      *
-     * <p>A delete-by-query does not raise on a failure that affects only some documents: it answers
-     * normally, carries the causes in the response and counts what it did delete. Against an index
-     * that blocks writes it reports {@code deleted: 0} with a cluster block per document, so a caller
-     * that only checks {@link BulkByScrollResponse#isTimedOut()} reports a deletion that never
-     * happened.
+     * <p>A delete-by-query does not raise on a failure that affects only some documents, nor on a
+     * cancellation: it answers normally, carries the causes in the response and counts what it did
+     * delete. Against an index that blocks writes it reports {@code deleted: 0} with a cluster block
+     * per document, and a cancelled task reports {@code deleted: 0} with a reason and no failures at
+     * all, so a caller that only checks {@link BulkByScrollResponse#isTimedOut()} reports a deletion
+     * that never happened.
      *
      * @param response the delete-by-query response.
      * @return the failure to report, or {@code null} when it reported none.
@@ -157,7 +158,9 @@ public class TransportDeleteRuleAction
         if (!response.getSearchFailures().isEmpty()) {
             return response.getSearchFailures().get(0).toString();
         }
-        return null;
+        // The third way out with nothing deleted and nothing to show for it: a cancelled task
+        // answers normally, with no failures of either kind and without having timed out.
+        return response.getReasonCancelled();
     }
 
     @Override
