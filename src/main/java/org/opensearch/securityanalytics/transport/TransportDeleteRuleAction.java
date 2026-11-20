@@ -138,6 +138,28 @@ public class TransportDeleteRuleAction
         return DETECTOR_RULE_SPACE.equalsIgnoreCase(ruleSpace);
     }
 
+    /**
+     * Returns the first failure a delete-by-query reported inside a successful response.
+     *
+     * <p>A delete-by-query does not raise on a failure that affects only some documents: it answers
+     * normally, carries the causes in the response and counts what it did delete. Against an index
+     * that blocks writes it reports {@code deleted: 0} with a cluster block per document, so a caller
+     * that only checks {@link BulkByScrollResponse#isTimedOut()} reports a deletion that never
+     * happened.
+     *
+     * @param response the delete-by-query response.
+     * @return the failure to report, or {@code null} when it reported none.
+     */
+    static String firstFailure(BulkByScrollResponse response) {
+        if (!response.getBulkFailures().isEmpty()) {
+            return response.getBulkFailures().get(0).getMessage();
+        }
+        if (!response.getSearchFailures().isEmpty()) {
+            return response.getSearchFailures().get(0).toString();
+        }
+        return null;
+    }
+
     @Override
     protected void doExecute(
             Task task, DeleteRuleRequest request, ActionListener<DeleteRuleResponse> listener) {
@@ -365,6 +387,22 @@ public class TransportDeleteRuleAction
                                                                 "Request timed out. Rule with id %s cannot be deleted",
                                                                 ruleId),
                                                         RestStatus.REQUEST_TIMEOUT));
+                                        return;
+                                    }
+
+                                    // A delete-by-query carries its failures inside a successful response: against a
+                                    // blocked or unavailable index it answers with deleted: 0 and the causes here,
+                                    // and without this the caller is told the rule was deleted when it was not.
+                                    String failure = firstFailure(response);
+                                    if (failure != null) {
+                                        onFailures(
+                                                new OpenSearchStatusException(
+                                                        String.format(
+                                                                Locale.getDefault(),
+                                                                "Rule with id %s cannot be deleted: %s",
+                                                                ruleId,
+                                                                failure),
+                                                        RestStatus.INTERNAL_SERVER_ERROR));
                                         return;
                                     }
 
