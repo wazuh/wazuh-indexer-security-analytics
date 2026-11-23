@@ -20,9 +20,12 @@ import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.LogEvent;
 import org.opensearch.action.DocWriteRequest;
+import org.opensearch.action.NoShardAvailableActionException;
 import org.opensearch.action.bulk.BulkItemResponse;
 import org.opensearch.action.bulk.BulkRequest;
 import org.opensearch.action.bulk.BulkResponse;
+import org.opensearch.action.get.GetResponse;
+import org.opensearch.action.get.MultiGetItemResponse;
 import org.opensearch.action.get.MultiGetRequest;
 import org.opensearch.action.get.MultiGetResponse;
 import org.opensearch.action.index.IndexRequest;
@@ -34,20 +37,30 @@ import org.opensearch.common.settings.ClusterSettings;
 import org.opensearch.common.settings.Setting;
 import org.opensearch.common.settings.Settings;
 import org.opensearch.common.unit.TimeValue;
+import org.opensearch.common.util.concurrent.OpenSearchExecutors;
 import org.opensearch.common.util.concurrent.ThreadContext;
+import org.opensearch.common.xcontent.XContentFactory;
 import org.opensearch.commons.alerting.model.DocLevelQuery;
 import org.opensearch.commons.alerting.model.Finding;
 import org.opensearch.core.action.ActionListener;
+import org.opensearch.core.common.bytes.BytesReference;
 import org.opensearch.core.concurrency.OpenSearchRejectedExecutionException;
 import org.opensearch.core.rest.RestStatus;
+import org.opensearch.index.IndexNotFoundException;
+import org.opensearch.index.get.GetResult;
+import org.opensearch.index.seqno.SequenceNumbers;
 import org.opensearch.node.NodeClosedException;
 import org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings;
 import org.opensearch.test.MockLogAppender;
 import org.opensearch.test.OpenSearchTestCase;
 import org.opensearch.threadpool.Scheduler;
 import org.opensearch.threadpool.ThreadPool;
+import org.opensearch.transport.RemoteTransportException;
 import org.opensearch.transport.client.Client;
+import org.hamcrest.MatcherAssert;
+import org.junit.Assert;
 
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.time.Instant;
@@ -87,6 +100,12 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
      */
     private Exception inlineFailure;
 
+    /**
+     * When set, every source-event MultiGet throws it before {@code client.multiGet} returns, the way
+     * a rejected submission fails on the sending node.
+     */
+    private RuntimeException inlineReadFailure;
+
     @Override
     @SuppressWarnings("unchecked")
     public void setUp() throws Exception {
@@ -112,12 +131,19 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
                                     new SentMultiGet(
                                             invocation.getArgument(0),
                                             (ActionListener<MultiGetResponse>) invocation.getArgument(1)));
+                            if (this.inlineReadFailure != null) {
+                                throw this.inlineReadFailure;
+                            }
                             return null;
                         })
                 .when(client)
                 .multiGet(any(MultiGetRequest.class), any(ActionListener.class));
         ThreadPool threadPool = mock(ThreadPool.class);
         when(threadPool.getThreadContext()).thenReturn(new ThreadContext(Settings.EMPTY));
+        // Enriched documents are built on the calling thread, so a test sees them queued for writing
+        // as soon as the source MultiGet is answered.
+        when(threadPool.executor(ThreadPool.Names.GENERIC))
+                .thenReturn(OpenSearchExecutors.newDirectExecutorService());
         Scheduler.Cancellable cancellable = mock(Scheduler.Cancellable.class);
         when(threadPool.scheduleWithFixedDelay(any(), any(), any())).thenReturn(cancellable);
 
@@ -803,6 +829,358 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
                 WazuhEnrichedFindingService.isRetryable(floodStage.status(), floodStage));
     }
 
+    // ── Triggering event reads ─────────────────────────────────────────────
+
+    /**
+     * The triggering events are read from the primary: a replica that has not applied an event yet
+     * answers that it does not exist, although the detector has already matched it.
+     */
+    public void testRead_prefersThePrimary() {
+        this.service.enrich(WazuhEnrichedFindingServiceTests.finding("f-1", "doc-1", EVENTS));
+
+        Assert.assertEquals("_primary_first", this.sentMultiGets.get(0).request().preference());
+    }
+
+    /**
+     * An event whose read was rejected under load is read again on the next periodic flush, and only
+     * that event: the finding's other event, read the first time, is written straight away and not
+     * fetched twice. The finding ends up complete.
+     */
+    public void testRead_rejectedEventReadAgainOnNextFlush() throws Exception {
+        this.service.enrich(
+                WazuhEnrichedFindingServiceTests.finding("f-1", List.of("doc-1", "doc-2"), EVENTS));
+        this.answer(
+                0,
+                WazuhEnrichedFindingServiceTests.found("doc-1"),
+                WazuhEnrichedFindingServiceTests.failed(
+                        "doc-2", WazuhEnrichedFindingServiceTests.rejected()));
+
+        Assert.assertEquals(List.of("doc-1"), this.writtenEventIds());
+        Assert.assertEquals(1L, this.service.getRetriedReadCount());
+        Assert.assertEquals("The read waits for the flush", 1, this.sentMultiGets.size());
+
+        this.invokePrivate("periodicFlush");
+        Assert.assertEquals(2, this.sentMultiGets.size());
+        Assert.assertEquals(
+                List.of("doc-2"), WazuhEnrichedFindingServiceTests.docIds(this.sentMultiGets.get(1)));
+        Assert.assertEquals("_primary_first", this.sentMultiGets.get(1).request().preference());
+
+        this.answer(1, WazuhEnrichedFindingServiceTests.found("doc-2"));
+        Assert.assertEquals(List.of("doc-1", "doc-2"), this.writtenEventIds());
+        Assert.assertEquals(0L, this.service.getUnreadCount());
+        Assert.assertEquals(0L, this.service.getMissingCount());
+    }
+
+    /**
+     * An event not found on the first read is read again, since the detector matched it: a copy that
+     * had not applied it yet answers the same way. Found on the second read, its finding is written.
+     */
+    public void testRead_eventNotFoundThenFound_written() throws Exception {
+        this.service.enrich(WazuhEnrichedFindingServiceTests.finding("f-1", "doc-1", EVENTS));
+        this.answer(0, WazuhEnrichedFindingServiceTests.notFound("doc-1"));
+        Assert.assertTrue(this.writtenEventIds().isEmpty());
+
+        this.invokePrivate("periodicFlush");
+        this.answer(1, WazuhEnrichedFindingServiceTests.found("doc-1"));
+
+        Assert.assertEquals(List.of("doc-1"), this.writtenEventIds());
+        Assert.assertEquals(1L, this.service.getRetriedReadCount());
+        Assert.assertEquals(0L, this.service.getMissingCount());
+    }
+
+    /**
+     * An event still not found after every read does not exist. It is reported as such, apart from a
+     * failed read, and its finding is counted as left out.
+     */
+    public void testRead_eventNeverFound_reportedAsMissing() throws Exception {
+        try (MockLogAppender appender =
+                MockLogAppender.createForLoggers(LogManager.getLogger(WazuhEnrichedFindingService.class))) {
+            LoggedLines warnings = new LoggedLines(Level.WARN);
+            LoggedLines errors = new LoggedLines(Level.ERROR);
+            appender.addExpectation(warnings);
+            appender.addExpectation(errors);
+            this.service.setMaxRetries(2);
+
+            this.service.enrich(WazuhEnrichedFindingServiceTests.finding("f-1", "doc-1", EVENTS));
+            this.answer(0, WazuhEnrichedFindingServiceTests.notFound("doc-1"));
+            for (int read = 1; read <= 2; read++) {
+                this.invokePrivate("periodicFlush");
+                this.answer(read, WazuhEnrichedFindingServiceTests.notFound("doc-1"));
+            }
+
+            Assert.assertEquals("The first read plus two more", 3, this.sentMultiGets.size());
+            Assert.assertEquals(2L, this.service.getRetriedReadCount());
+            Assert.assertEquals(1L, this.service.getMissingCount());
+            Assert.assertEquals(0L, this.service.getUnreadCount());
+            Assert.assertTrue(this.writtenEventIds().isEmpty());
+            Assert.assertTrue("A missing event is not a failed read", errors.lines.isEmpty());
+            Assert.assertEquals(3, warnings.lines.size());
+            MatcherAssert.assertThat(
+                    warnings.lines.get(0),
+                    containsString("Could not read 1 triggering events, reading them again"));
+            MatcherAssert.assertThat(warnings.lines.get(0), containsString(EVENTS + "/doc-1: not found"));
+            MatcherAssert.assertThat(
+                    warnings.lines.get(2), containsString("1 triggering events do not exist"));
+            MatcherAssert.assertThat(warnings.lines.get(2), containsString("(total so far: 1)"));
+
+            this.invokePrivate("periodicFlush");
+            Assert.assertEquals("Nothing is left to read", 3, this.sentMultiGets.size());
+        }
+    }
+
+    /**
+     * An event whose index no longer exists cannot be found by asking again: it is given up on at
+     * once and reported as missing.
+     */
+    public void testRead_indexGone_givenUpAtOnceAsMissing() throws Exception {
+        this.service.enrich(WazuhEnrichedFindingServiceTests.finding("f-1", "doc-1", EVENTS));
+        this.answer(
+                0, WazuhEnrichedFindingServiceTests.failed("doc-1", new IndexNotFoundException(EVENTS)));
+
+        Assert.assertEquals(0L, this.service.getRetriedReadCount());
+        Assert.assertEquals(1L, this.service.getMissingCount());
+        Assert.assertEquals(0L, this.service.getUnreadCount());
+
+        this.invokePrivate("periodicFlush");
+        Assert.assertEquals(1, this.sentMultiGets.size());
+    }
+
+    /**
+     * A read that keeps failing is given up on after the configured number of attempts, and the error
+     * names the cause, so a failed read is never reported as an event not found.
+     */
+    public void testRead_retriesExhausted_errorNamesTheCause() throws Exception {
+        try (MockLogAppender appender =
+                MockLogAppender.createForLoggers(LogManager.getLogger(WazuhEnrichedFindingService.class))) {
+            LoggedLines errors = new LoggedLines(Level.ERROR);
+            appender.addExpectation(errors);
+            this.service.setMaxRetries(2);
+
+            this.service.enrich(WazuhEnrichedFindingServiceTests.finding("f-1", "doc-1", EVENTS));
+            this.answer(
+                    0,
+                    WazuhEnrichedFindingServiceTests.failed(
+                            "doc-1", WazuhEnrichedFindingServiceTests.rejected()));
+            for (int read = 1; read <= 2; read++) {
+                this.invokePrivate("periodicFlush");
+                this.answer(
+                        read,
+                        WazuhEnrichedFindingServiceTests.failed(
+                                "doc-1", WazuhEnrichedFindingServiceTests.rejected()));
+            }
+
+            Assert.assertEquals(2L, this.service.getRetriedReadCount());
+            Assert.assertEquals(1L, this.service.getUnreadCount());
+            Assert.assertEquals(0L, this.service.getMissingCount());
+            Assert.assertEquals(1, errors.lines.size());
+            MatcherAssert.assertThat(
+                    errors.lines.get(0), containsString("Could not read 1 triggering events"));
+            MatcherAssert.assertThat(errors.lines.get(0), containsString("(total so far: 1)"));
+            MatcherAssert.assertThat(
+                    errors.lines.get(0),
+                    containsString(
+                            EVENTS + "/doc-1: " + OpenSearchRejectedExecutionException.class.getName()));
+
+            this.invokePrivate("periodicFlush");
+            Assert.assertEquals("The given-up read is not sent again", 3, this.sentMultiGets.size());
+        }
+    }
+
+    /** A read that failed for a permanent reason is given up on at once, with its cause. */
+    public void testRead_permanentFailure_givenUpAtOnce() throws Exception {
+        this.service.enrich(WazuhEnrichedFindingServiceTests.finding("f-1", "doc-1", EVENTS));
+        this.answer(
+                0,
+                WazuhEnrichedFindingServiceTests.failed("doc-1", new IllegalArgumentException("bad id")));
+
+        Assert.assertEquals(0L, this.service.getRetriedReadCount());
+        Assert.assertEquals(1L, this.service.getUnreadCount());
+    }
+
+    /**
+     * A MultiGet that failed as a whole reads every finding of the batch again, and only on the next
+     * flush.
+     */
+    public void testRead_wholeMultiGetFailed_everyFindingReadAgain() throws Exception {
+        this.service.enrich(
+                WazuhEnrichedFindingServiceTests.finding("f-1", List.of("doc-1", "doc-2"), EVENTS));
+        this.sentMultiGets.get(0).listener().onFailure(new NodeClosedException((DiscoveryNode) null));
+
+        Assert.assertEquals(1L, this.service.getRetriedReadCount());
+        Assert.assertEquals(1, this.sentMultiGets.size());
+
+        this.invokePrivate("periodicFlush");
+        Assert.assertEquals(
+                List.of("doc-1", "doc-2"),
+                WazuhEnrichedFindingServiceTests.docIds(this.sentMultiGets.get(1)));
+        this.answer(
+                1,
+                WazuhEnrichedFindingServiceTests.found("doc-1"),
+                WazuhEnrichedFindingServiceTests.found("doc-2"));
+        Assert.assertEquals(List.of("doc-1", "doc-2"), this.writtenEventIds());
+    }
+
+    /**
+     * A MultiGet rejected before {@code client.multiGet} returns puts its findings on the read retry
+     * queue while the flush is processing the findings queue. They must still wait for the next flush
+     * instead of being read again in the same one.
+     */
+    public void testRead_inlineFailure_readAgainOnlyOnNextFlush() throws Exception {
+        this.inlineReadFailure = WazuhEnrichedFindingServiceTests.rejected();
+        this.service.enrich(WazuhEnrichedFindingServiceTests.finding("f-1", "doc-1", EVENTS));
+        Assert.assertEquals(1, this.sentMultiGets.size());
+        Assert.assertEquals(1L, this.service.getRetriedReadCount());
+
+        this.invokePrivate("periodicFlush");
+        Assert.assertEquals("One read per flush", 2, this.sentMultiGets.size());
+
+        this.inlineReadFailure = null;
+        this.invokePrivate("periodicFlush");
+        Assert.assertEquals(3, this.sentMultiGets.size());
+        this.answer(2, WazuhEnrichedFindingServiceTests.found("doc-1"));
+        Assert.assertEquals(List.of("doc-1"), this.writtenEventIds());
+    }
+
+    /**
+     * The read retry queue is bounded by {@code enriched_findings_max_pending_retries}: past it, a
+     * finding whose read failed is given up on and counted instead of queued.
+     */
+    public void testRead_retryQueueFull_overflowGivenUp() throws Exception {
+        this.service.setMaxPendingRetries(1);
+        this.service.enrich(WazuhEnrichedFindingServiceTests.finding("f-1", "doc-1", EVENTS));
+        this.service.enrich(WazuhEnrichedFindingServiceTests.finding("f-2", "doc-2", EVENTS));
+        this.answer(
+                0,
+                WazuhEnrichedFindingServiceTests.failed(
+                        "doc-1", WazuhEnrichedFindingServiceTests.rejected()));
+        this.answer(
+                1,
+                WazuhEnrichedFindingServiceTests.failed(
+                        "doc-2", WazuhEnrichedFindingServiceTests.rejected()));
+
+        Assert.assertEquals(1L, this.service.getRetriedReadCount());
+        Assert.assertEquals(1L, this.service.getUnreadCount());
+
+        this.invokePrivate("periodicFlush");
+        Assert.assertEquals(
+                List.of("doc-1"), WazuhEnrichedFindingServiceTests.docIds(this.sentMultiGets.get(2)));
+    }
+
+    /**
+     * After a read rejected under load, no batch starts until the next flush: the findings that
+     * arrive in the meantime wait instead of being sent to a node shedding load, and then leave in
+     * one MultiGet with the finding read again. A finding that was not found does not pause the
+     * reads.
+     */
+    public void testRead_transientFailurePausesBatchesUntilNextFlush() throws Exception {
+        this.service.enrich(WazuhEnrichedFindingServiceTests.finding("f-1", "doc-1", EVENTS));
+        this.service.enrich(WazuhEnrichedFindingServiceTests.finding("f-2", "doc-2", EVENTS));
+        this.answer(0, WazuhEnrichedFindingServiceTests.notFound("doc-1"));
+        this.service.enrich(WazuhEnrichedFindingServiceTests.finding("f-3", "doc-3", EVENTS));
+        Assert.assertEquals("A miss does not pause the reads", 3, this.sentMultiGets.size());
+
+        this.answer(
+                1,
+                WazuhEnrichedFindingServiceTests.failed(
+                        "doc-2", WazuhEnrichedFindingServiceTests.rejected()));
+        this.service.enrich(WazuhEnrichedFindingServiceTests.finding("f-4", "doc-4", EVENTS));
+        this.service.enrich(WazuhEnrichedFindingServiceTests.finding("f-5", "doc-5", EVENTS));
+        this.answer(2, WazuhEnrichedFindingServiceTests.found("doc-3"));
+        Assert.assertEquals("No batch starts after the rejection", 3, this.sentMultiGets.size());
+
+        this.invokePrivate("periodicFlush");
+        Assert.assertEquals(4, this.sentMultiGets.size());
+        Assert.assertEquals(
+                List.of("doc-4", "doc-5", "doc-1", "doc-2"),
+                WazuhEnrichedFindingServiceTests.docIds(this.sentMultiGets.get(3)));
+    }
+
+    /** With retries disabled, an event not read is given up on straight away. */
+    public void testRead_retriesDisabled_givenUpAtOnce() throws Exception {
+        this.service.setMaxRetries(0);
+        this.service.enrich(
+                WazuhEnrichedFindingServiceTests.finding("f-1", List.of("doc-1", "doc-2"), EVENTS));
+        this.answer(
+                0,
+                WazuhEnrichedFindingServiceTests.notFound("doc-1"),
+                WazuhEnrichedFindingServiceTests.failed(
+                        "doc-2", WazuhEnrichedFindingServiceTests.rejected()));
+
+        Assert.assertEquals(0L, this.service.getRetriedReadCount());
+        Assert.assertEquals(1L, this.service.getMissingCount());
+        Assert.assertEquals(1L, this.service.getUnreadCount());
+    }
+
+    /**
+     * A batch whose events all fail to read is reported in one line, whatever its size, and the line
+     * stays short: it lists the first events and counts the rest.
+     */
+    public void testRead_failedBatch_reportedInOneLine() throws Exception {
+        try (MockLogAppender appender =
+                MockLogAppender.createForLoggers(LogManager.getLogger(WazuhEnrichedFindingService.class))) {
+            LoggedLines warnings = new LoggedLines(Level.WARN);
+            appender.addExpectation(warnings);
+            List<String> docIds = new ArrayList<>();
+            for (int i = 1; i <= 12; i++) {
+                docIds.add("doc-" + i);
+            }
+            this.service.enrich(WazuhEnrichedFindingServiceTests.finding("f-1", docIds, EVENTS));
+            MultiGetItemResponse[] items =
+                    docIds.stream()
+                            .map(
+                                    id ->
+                                            WazuhEnrichedFindingServiceTests.failed(
+                                                    id, WazuhEnrichedFindingServiceTests.rejected()))
+                            .toArray(MultiGetItemResponse[]::new);
+            this.answer(0, items);
+
+            Assert.assertEquals(1, warnings.lines.size());
+            MatcherAssert.assertThat(
+                    warnings.lines.get(0), containsString("Could not read 12 triggering events"));
+            MatcherAssert.assertThat(warnings.lines.get(0), containsString(EVENTS + "/doc-10: "));
+            MatcherAssert.assertThat(warnings.lines.get(0), containsString(" and 2 more"));
+            Assert.assertFalse(warnings.lines.get(0).contains(EVENTS + "/doc-11: "));
+        }
+    }
+
+    /** Closing the service counts the findings it discards while they wait to read their events. */
+    public void testClose_reportsFindingsWaitingToReadTheirEvents() throws Exception {
+        try (MockLogAppender appender =
+                MockLogAppender.createForLoggers(LogManager.getLogger(WazuhEnrichedFindingService.class))) {
+            LoggedLines warnings = new LoggedLines(Level.WARN);
+            appender.addExpectation(warnings);
+            this.service.enrich(WazuhEnrichedFindingServiceTests.finding("f-1", "doc-1", EVENTS));
+            this.answer(
+                    0,
+                    WazuhEnrichedFindingServiceTests.failed(
+                            "doc-1", new NodeClosedException((DiscoveryNode) null)));
+
+            this.service.close();
+
+            MatcherAssert.assertThat(
+                    warnings.lines.get(warnings.lines.size() - 1),
+                    containsString("1 waiting to read their triggering events again"));
+        }
+    }
+
+    /** Events not found and transient read failures are read again; the rest are not. */
+    public void testIsRetryableRead() {
+        Assert.assertTrue("Not found", WazuhEnrichedFindingService.isRetryableRead(null));
+        Assert.assertTrue(
+                "A rejection on the shard's node arrives wrapped",
+                WazuhEnrichedFindingService.isRetryableRead(WazuhEnrichedFindingServiceTests.rejected()));
+        Assert.assertTrue(
+                WazuhEnrichedFindingService.isRetryableRead(
+                        new NoShardAvailableActionException(null, "no copy available")));
+        Assert.assertTrue(
+                WazuhEnrichedFindingService.isRetryableRead(new NodeClosedException((DiscoveryNode) null)));
+
+        Assert.assertFalse(
+                WazuhEnrichedFindingService.isRetryableRead(new IndexNotFoundException(EVENTS)));
+        Assert.assertFalse(
+                WazuhEnrichedFindingService.isRetryableRead(new IllegalArgumentException("bad id")));
+    }
+
     // ── Helper ──────────────────────────────────────────────────────────────
 
     /** A finding over a single source document, with the queries supplied separately. */
@@ -817,6 +1195,88 @@ public class WazuhEnrichedFindingServiceTests extends OpenSearchTestCase {
                 Collections.emptyList(),
                 Instant.now(),
                 "high");
+    }
+
+    /** Concrete index of the triggering events the read tests use. */
+    private static final String EVENTS = ".ds-wazuh-events-v5-system-activity-000001";
+
+    /** A finding over several source documents of one index, without rules. */
+    private static Finding finding(String id, List<String> docIds, String index) {
+        return new Finding(
+                id,
+                docIds,
+                docIds,
+                "monitor-1",
+                "monitor-name",
+                index,
+                Collections.emptyList(),
+                Instant.now(),
+                "high");
+    }
+
+    /** An event of {@link #EVENTS} that exists, with a valid integration category. */
+    private static MultiGetItemResponse found(String docId) {
+        try {
+            Map<String, Object> source =
+                    Map.of("wazuh", Map.of("integration", Map.of("category", "system-activity")));
+            BytesReference bytes = BytesReference.bytes(XContentFactory.jsonBuilder().map(source));
+            return new MultiGetItemResponse(
+                    new GetResponse(new GetResult(EVENTS, docId, 0, 1, 1, true, bytes, null, null)), null);
+        } catch (IOException e) {
+            throw new AssertionError(e);
+        }
+    }
+
+    /** An event of {@link #EVENTS} that the copy read does not hold. */
+    private static MultiGetItemResponse notFound(String docId) {
+        return new MultiGetItemResponse(
+                new GetResponse(
+                        new GetResult(
+                                EVENTS,
+                                docId,
+                                SequenceNumbers.UNASSIGNED_SEQ_NO,
+                                SequenceNumbers.UNASSIGNED_PRIMARY_TERM,
+                                -1,
+                                false,
+                                null,
+                                null,
+                                null)),
+                null);
+    }
+
+    /** An event of {@link #EVENTS} whose read failed. */
+    private static MultiGetItemResponse failed(String docId, Exception failure) {
+        return new MultiGetItemResponse(null, new MultiGetResponse.Failure(EVENTS, docId, failure));
+    }
+
+    /** A shard read rejected by a full {@code get} pool, as it reaches the coordinating node. */
+    private static RemoteTransportException rejected() {
+        return new RemoteTransportException(
+                "[node-1][indices:data/read/mget[shard][s]]",
+                new OpenSearchRejectedExecutionException("rejected execution of get on node-1"));
+    }
+
+    /** Completes the {@code index}-th source MultiGet with the given items, in request order. */
+    private void answer(int index, MultiGetItemResponse... items) {
+        this.sentMultiGets.get(index).listener().onResponse(new MultiGetResponse(items));
+    }
+
+    /**
+     * Ids of the triggering events of every enriched finding sent for writing or waiting to be, in
+     * the order they were built.
+     */
+    @SuppressWarnings("unchecked")
+    private List<String> writtenEventIds() throws Exception {
+        List<IndexRequest> requests = new ArrayList<>();
+        for (SentBulk bulk : this.sentBulks) {
+            bulk.request().requests().forEach(request -> requests.add((IndexRequest) request));
+        }
+        requests.addAll(this.pendingRequests());
+        return requests.stream()
+                .map(
+                        request ->
+                                (String) ((Map<String, Object>) request.sourceAsMap().get("event")).get("doc_id"))
+                .toList();
     }
 
     /**

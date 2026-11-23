@@ -25,7 +25,9 @@ import org.opensearch.action.bulk.BulkRequest;
 import org.opensearch.action.bulk.BulkResponse;
 import org.opensearch.action.get.MultiGetItemResponse;
 import org.opensearch.action.get.MultiGetRequest;
+import org.opensearch.action.get.MultiGetResponse;
 import org.opensearch.action.index.IndexRequest;
+import org.opensearch.cluster.routing.Preference;
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.unit.TimeValue;
 import org.opensearch.common.util.concurrent.ThreadContext;
@@ -34,6 +36,7 @@ import org.opensearch.commons.alerting.model.DocLevelQuery;
 import org.opensearch.commons.alerting.model.Finding;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.rest.RestStatus;
+import org.opensearch.index.IndexNotFoundException;
 import org.opensearch.node.NodeClosedException;
 import org.opensearch.securityanalytics.config.monitors.DetectorMonitorConfig;
 import org.opensearch.securityanalytics.model.LOG_CATEGORY;
@@ -107,10 +110,16 @@ public class WazuhEnrichedFindingService implements Closeable {
      */
     private volatile int flushIntervalSeconds;
 
-    /** Maximum number of times a write that failed for a transient reason is resent. */
+    /**
+     * Maximum number of times a write that failed for a transient reason is resent, and a triggering
+     * event that could not be read is read again.
+     */
     private volatile int maxRetries;
 
-    /** Maximum number of writes allowed to wait in {@link #retryQueue}. */
+    /**
+     * Maximum number of writes allowed to wait in {@link #retryQueue}, and of findings allowed to
+     * wait in {@link #readRetryQueue}.
+     */
     private volatile int maxPendingRetries;
 
     /** Maximum number of findings allowed to wait in {@link #findingsQueue}. */
@@ -137,13 +146,47 @@ public class WazuhEnrichedFindingService implements Closeable {
     private final Map<String, Map<String, Object>> ruleMetadataCache;
 
     /** Findings waiting to be enriched, processed when an in-flight slot becomes available. */
-    private final ConcurrentLinkedQueue<Finding> findingsQueue = new ConcurrentLinkedQueue<>();
+    private final ConcurrentLinkedQueue<PendingRead> findingsQueue = new ConcurrentLinkedQueue<>();
 
     /**
      * Size of {@link #findingsQueue}, reserved before a finding is added and released when it is
      * taken into a batch.
      */
     private final AtomicInteger findingsQueueSize = new AtomicInteger(0);
+
+    /**
+     * Findings whose triggering events could not be read, waiting to read them again. Drained only by
+     * the periodic flush, back into {@link #findingsQueue}, so the flush interval is the backoff
+     * between attempts, as for {@link #retryQueue}.
+     */
+    private final ConcurrentLinkedQueue<PendingRead> readRetryQueue = new ConcurrentLinkedQueue<>();
+
+    private final AtomicInteger readRetryQueueSize = new AtomicInteger(0);
+
+    /**
+     * Set when a triggering-event read fails for a transient reason, cleared by the next periodic
+     * flush. While it is set, {@link #processQueue} starts no batch. A node that rejected a read is
+     * then not sent the rest of the queue one batch after another, which would spend the attempts of
+     * findings that were never read, and the findings that arrive in the meantime leave in fewer,
+     * fuller MultiGets.
+     */
+    private volatile boolean readsPaused;
+
+    /** Number of findings put back on {@link #readRetryQueue}, once per attempt. */
+    private final AtomicLong retriedReadCount = new AtomicLong(0);
+
+    /**
+     * Number of triggering events given up on because they could not be read: permanent failures,
+     * reads out of attempts, and reads that found {@link #readRetryQueue} full. The findings they
+     * triggered are missing from the index.
+     */
+    private final AtomicLong unreadCount = new AtomicLong(0);
+
+    /**
+     * Number of triggering events that do not exist: still not found after every read, or held by an
+     * index that no longer exists. The findings they triggered are missing from the index.
+     */
+    private final AtomicLong missingCount = new AtomicLong(0);
 
     /**
      * Number of findings refused because {@link #findingsQueue} was full. Each one is a finding
@@ -329,12 +372,14 @@ public class WazuhEnrichedFindingService implements Closeable {
         this.flushSchedule.cancel();
         this.reportRejections();
         int queued = this.findingsQueueSize.get();
+        int rereading = this.readRetryQueueSize.get();
         int unwritten = this.pendingRequests.size();
         int retrying = this.retryQueueSize.get();
-        if (queued > 0 || unwritten > 0 || retrying > 0) {
+        if (queued > 0 || rereading > 0 || unwritten > 0 || retrying > 0) {
             log.warn(
-                    "Enrichment service closed with findings not written to the findings index: {} waiting for enrichment, {} enriched and waiting to be written, {} waiting for a retry",
+                    "Enrichment service closed with findings not written to the findings index: {} waiting for enrichment, {} waiting to read their triggering events again, {} enriched and waiting to be written, {} waiting for a retry",
                     queued,
+                    rereading,
                     unwritten,
                     retrying);
         }
@@ -369,23 +414,24 @@ public class WazuhEnrichedFindingService implements Closeable {
                     finding.getMonitorId());
             return;
         }
-        this.findingsQueue.add(finding);
+        this.findingsQueue.add(new PendingRead(finding, relatedDocIds, 0));
         this.processQueue();
     }
 
     /**
      * Drains the findings queue up to the number of available in-flight permits. Each acquired permit
      * covers a batch of up to {@link #enrichBatchSize} findings whose triggering events are fetched
-     * in one combined MultiGet; the permit is released once the whole batch completes.
+     * in one combined MultiGet; the permit is released once the whole batch completes. Starts nothing
+     * while {@link #readsPaused} is set.
      */
     private void processQueue() {
-        while (this.inFlightPermits.tryAcquire()) {
+        while (!this.readsPaused && this.inFlightPermits.tryAcquire()) {
             int batchSize = this.enrichBatchSize;
-            List<Finding> batch = new ArrayList<>(batchSize);
-            Finding finding;
-            while (batch.size() < batchSize && (finding = this.findingsQueue.poll()) != null) {
+            List<PendingRead> batch = new ArrayList<>(batchSize);
+            PendingRead read;
+            while (batch.size() < batchSize && (read = this.findingsQueue.poll()) != null) {
                 this.findingsQueueSize.decrementAndGet();
-                batch.add(finding);
+                batch.add(read);
             }
             if (batch.isEmpty()) {
                 this.inFlightPermits.release();
@@ -423,17 +469,24 @@ public class WazuhEnrichedFindingService implements Closeable {
      * batch is released exactly once — after the last finding completes, or immediately on a path
      * that starts no per-finding chains. Must reach {@link #enrichmentComplete()} (directly, or via
      * the per-finding {@code onComplete} callbacks) at every terminal point.
+     *
+     * <p>The events are read from the primary when it is available. The detector matched them, so
+     * they are in the index, but a replica that has not applied them yet would answer that they do
+     * not exist.
      */
-    private void doEnrichBatch(List<Finding> batch) {
+    private void doEnrichBatch(List<PendingRead> batch) {
         // One combined MultiGet across the whole batch, deduplicated by index|docId so the same
         // event referenced by multiple findings is fetched only once.
-        MultiGetRequest mget = new MultiGetRequest();
+        MultiGetRequest mget = new MultiGetRequest().preference(Preference.PRIMARY_FIRST.type());
+        List<String> requestedKeys = new ArrayList<>();
         Set<String> seenKeys = new HashSet<>();
-        for (Finding finding : batch) {
-            String index = finding.getIndex();
-            for (String docId : finding.getRelatedDocIds()) {
-                if (seenKeys.add(docKey(index, docId))) {
+        for (PendingRead read : batch) {
+            String index = read.finding().getIndex();
+            for (String docId : read.docIds()) {
+                String key = WazuhEnrichedFindingService.docKey(index, docId);
+                if (seenKeys.add(key)) {
                     mget.add(new MultiGetRequest.Item(index, docId));
+                    requestedKeys.add(key);
                 }
             }
         }
@@ -447,92 +500,233 @@ public class WazuhEnrichedFindingService implements Closeable {
             this.client.multiGet(
                     mget,
                     ActionListener.wrap(
-                            response -> {
-                                // index|docId -> (source, category) shared across the batch.
-                                Map<String, Map<String, Object>> keyToSource = new HashMap<>();
-                                Map<String, String> keyToCategory = new HashMap<>();
-                                for (MultiGetItemResponse item : response.getResponses()) {
-                                    if (item.isFailed()
-                                            || item.getResponse() == null
-                                            || !item.getResponse().isExists()) {
-                                        log.warn(
-                                                "Triggering event {}/{} not found, skipping for affected findings",
-                                                item.getIndex(),
-                                                item.getId());
-                                        continue;
-                                    }
-                                    Map<String, Object> eventSource = item.getResponse().getSourceAsMap();
-                                    String category = WazuhEnrichedFindingService.resolveCategory(eventSource);
-                                    if (category == null) {
-                                        log.warn(
-                                                "No valid wazuh.integration.category in event {}/{}, skipping",
-                                                item.getIndex(),
-                                                item.getId());
-                                        continue;
-                                    }
-                                    String key = docKey(item.getIndex(), item.getId());
-                                    keyToSource.put(key, eventSource);
-                                    keyToCategory.put(key, category);
-                                }
-
-                                // Resolve each finding's valid docs from the shared lookup.
-                                List<FindingDocs> validEntries = new ArrayList<>(batch.size());
-                                for (Finding finding : batch) {
-                                    String index = finding.getIndex();
-                                    List<String> validDocIds = new ArrayList<>();
-                                    List<Map<String, Object>> validSources = new ArrayList<>();
-                                    List<String> validCategories = new ArrayList<>();
-                                    for (String docId : finding.getRelatedDocIds()) {
-                                        String key = docKey(index, docId);
-                                        Map<String, Object> src = keyToSource.get(key);
-                                        String cat = keyToCategory.get(key);
-                                        if (src != null && cat != null) {
-                                            validDocIds.add(docId);
-                                            validSources.add(src);
-                                            validCategories.add(cat);
-                                        }
-                                    }
-                                    if (!validSources.isEmpty()) {
-                                        validEntries.add(
-                                                new FindingDocs(finding, validDocIds, validSources, validCategories));
-                                    }
-                                }
-
-                                if (validEntries.isEmpty()) {
-                                    this.enrichmentComplete();
-                                    return;
-                                }
-
-                                // One permit covers the whole batch; release after the last finding completes.
-                                AtomicInteger remaining = new AtomicInteger(validEntries.size());
-                                Runnable onOneDone =
-                                        () -> {
-                                            if (remaining.decrementAndGet() == 0) {
-                                                this.enrichmentComplete();
-                                            }
-                                        };
-
-                                for (FindingDocs fd : validEntries) {
-                                    this.fetchRuleMetadataAndIndex(
-                                            fd.finding, fd.docIds, fd.eventSources, fd.categories, onOneDone);
-                                }
-                            },
+                            response -> this.enrichFromResponse(batch, requestedKeys, response),
                             e -> {
-                                log.warn(
-                                        "Batch source-doc MultiGet failed for {} findings, skipping enrichment",
-                                        batch.size(),
-                                        e);
+                                this.handleReadFailure(batch, e);
                                 this.enrichmentComplete();
                             }));
         } catch (Exception e) {
             // Synchronous failure (e.g. thread pool rejection) before the listener is wired in.
             // Release the single in-flight permit so it is not leaked.
-            log.warn(
-                    "Failed to submit batch source-doc MultiGet for {} findings, releasing in-flight slot",
-                    batch.size(),
-                    e);
+            this.handleReadFailure(batch, e);
             this.enrichmentComplete();
         }
+    }
+
+    /**
+     * Sorts the source MultiGet's answer into events that were read, events that do not exist and
+     * events that failed to read, then starts the rule-metadata step for every finding with at least
+     * one event read. The events not read are read again or given up on, see {@link #handleUnread}.
+     *
+     * @param requestedKeys the {@code index|docId} key of each MultiGet item, in request order; the
+     *     response lists one item per request item, in the same order
+     */
+    private void enrichFromResponse(
+            List<PendingRead> batch, List<String> requestedKeys, MultiGetResponse response) {
+        // index|docId -> (source, category) shared across the batch.
+        Map<String, Map<String, Object>> keyToSource = new HashMap<>();
+        Map<String, String> keyToCategory = new HashMap<>();
+        // index|docId -> why the event was not read: the failure, or null if it does not exist.
+        Map<String, Exception> keyToUnread = new HashMap<>();
+        MultiGetItemResponse[] items = response.getResponses();
+        for (int i = 0; i < items.length; i++) {
+            MultiGetItemResponse item = items[i];
+            String key = requestedKeys.get(i);
+            if (item.isFailed()) {
+                keyToUnread.put(key, item.getFailure().getFailure());
+                continue;
+            }
+            if (!item.getResponse().isExists()) {
+                keyToUnread.put(key, null);
+                continue;
+            }
+            Map<String, Object> eventSource = item.getResponse().getSourceAsMap();
+            String category = WazuhEnrichedFindingService.resolveCategory(eventSource);
+            if (category == null) {
+                log.warn(
+                        "No valid wazuh.integration.category in event {}/{}, skipping",
+                        item.getIndex(),
+                        item.getId());
+                continue;
+            }
+            keyToSource.put(key, eventSource);
+            keyToCategory.put(key, category);
+        }
+
+        // Resolve each finding's valid docs from the shared lookup.
+        List<FindingDocs> validEntries = new ArrayList<>(batch.size());
+        UnreadEvents unread = new UnreadEvents();
+        for (PendingRead read : batch) {
+            String index = read.finding().getIndex();
+            List<String> validDocIds = new ArrayList<>();
+            List<Map<String, Object>> validSources = new ArrayList<>();
+            List<String> validCategories = new ArrayList<>();
+            Map<String, Exception> unreadDocs = new LinkedHashMap<>();
+            for (String docId : read.docIds()) {
+                String key = WazuhEnrichedFindingService.docKey(index, docId);
+                Map<String, Object> src = keyToSource.get(key);
+                String cat = keyToCategory.get(key);
+                if (src != null && cat != null) {
+                    validDocIds.add(docId);
+                    validSources.add(src);
+                    validCategories.add(cat);
+                } else if (keyToUnread.containsKey(key)) {
+                    unreadDocs.put(docId, keyToUnread.get(key));
+                }
+            }
+            if (!unreadDocs.isEmpty()) {
+                this.handleUnread(read, unreadDocs, unread);
+            }
+            if (!validSources.isEmpty()) {
+                validEntries.add(
+                        new FindingDocs(read.finding(), validDocIds, validSources, validCategories));
+            }
+        }
+        this.reportUnread(unread);
+
+        if (validEntries.isEmpty()) {
+            this.enrichmentComplete();
+            return;
+        }
+
+        // One permit covers the whole batch; release after the last finding completes.
+        AtomicInteger remaining = new AtomicInteger(validEntries.size());
+        Runnable onOneDone =
+                () -> {
+                    if (remaining.decrementAndGet() == 0) {
+                        this.enrichmentComplete();
+                    }
+                };
+
+        for (FindingDocs fd : validEntries) {
+            this.fetchRuleMetadataAndIndex(
+                    fd.finding, fd.docIds, fd.eventSources, fd.categories, onOneDone);
+        }
+    }
+
+    /**
+     * Handles a source MultiGet that failed as a whole, before any event was read: every event in the
+     * batch shares the same cause, so each finding is read again or given up on for it.
+     */
+    private void handleReadFailure(List<PendingRead> batch, Exception e) {
+        UnreadEvents unread = new UnreadEvents();
+        for (PendingRead read : batch) {
+            Map<String, Exception> unreadDocs = new LinkedHashMap<>();
+            for (String docId : read.docIds()) {
+                unreadDocs.put(docId, e);
+            }
+            this.handleUnread(read, unreadDocs, unread);
+        }
+        this.reportUnread(unread);
+    }
+
+    /**
+     * Decides what happens to the events of one finding that were not read. An event that was not
+     * found, or whose read failed for a transient reason, is read again on a later flush: the
+     * detector matched it, so a miss can come from a replica that had not applied it yet, read while
+     * the primary was unavailable. An event held by an index that no longer exists, or whose read
+     * failed for any other reason, is given up on at once, as is every event of a finding out of
+     * attempts or that finds {@link #readRetryQueue} full. A transient failure also sets {@link
+     * #readsPaused}.
+     *
+     * @param unreadDocs id of each event not read, with the failure, or {@code null} if not found
+     */
+    private void handleUnread(
+            PendingRead read, Map<String, Exception> unreadDocs, UnreadEvents unread) {
+        String index = read.finding().getIndex();
+        List<String> retryDocIds = new ArrayList<>();
+        for (Map.Entry<String, Exception> entry : unreadDocs.entrySet()) {
+            if (!WazuhEnrichedFindingService.isRetryableRead(entry.getValue())) {
+                unread.giveUp(index, entry.getKey(), entry.getValue());
+                continue;
+            }
+            if (entry.getValue() != null) {
+                // The node is shedding load or the shard is unavailable: no batch starts before the
+                // next flush.
+                this.readsPaused = true;
+            }
+            retryDocIds.add(entry.getKey());
+        }
+        if (retryDocIds.isEmpty()) {
+            return;
+        }
+        boolean queued = this.retryRead(read, retryDocIds);
+        for (String docId : retryDocIds) {
+            if (queued) {
+                unread.retry(index, docId, unreadDocs.get(docId));
+            } else {
+                unread.giveUp(index, docId, unreadDocs.get(docId));
+            }
+        }
+    }
+
+    /**
+     * Puts a finding back on {@link #readRetryQueue}, to read the given events again on the next
+     * periodic flush.
+     *
+     * @return {@code false} if the finding is out of attempts or the queue is full, in which case the
+     *     caller gives up on its events
+     */
+    private boolean retryRead(PendingRead read, List<String> docIds) {
+        if (read.attempts() >= this.maxRetries) {
+            return false;
+        }
+        if (this.readRetryQueueSize.incrementAndGet() > this.maxPendingRetries) {
+            this.readRetryQueueSize.decrementAndGet();
+            return false;
+        }
+        this.readRetryQueue.add(new PendingRead(read.finding(), docIds, read.attempts() + 1));
+        this.retriedReadCount.incrementAndGet();
+        return true;
+    }
+
+    /**
+     * Whether a triggering event that was not read may be read if asked again: one that was not found
+     * ({@code null}), or one whose read failed for a reason {@link #isRetryable} accepts.
+     */
+    static boolean isRetryableRead(Exception failure) {
+        if (failure == null) {
+            return true;
+        }
+        Throwable cause = ExceptionsHelper.unwrapCause(failure);
+        return WazuhEnrichedFindingService.isRetryable(ExceptionsHelper.status(cause), cause);
+    }
+
+    /**
+     * Logs what one source MultiGet left unread, in at most one line per outcome: the events to read
+     * again, the events that do not exist, and the events whose read failed for good. The last two
+     * are added to their running totals, since the findings they triggered are not written.
+     */
+    private void reportUnread(UnreadEvents unread) {
+        if (!unread.retried.isEmpty()) {
+            log.warn(
+                    "Could not read {} triggering events, reading them again on the next flush: {}",
+                    unread.retried.size(),
+                    WazuhEnrichedFindingService.sample(unread.retried));
+        }
+        if (!unread.missing.isEmpty()) {
+            long total = this.missingCount.addAndGet(unread.missing.size());
+            log.warn(
+                    "{} triggering events do not exist, so their findings are not written to the findings index (total so far: {}): {}",
+                    unread.missing.size(),
+                    total,
+                    WazuhEnrichedFindingService.sample(unread.missing));
+        }
+        if (!unread.failed.isEmpty()) {
+            long total = this.unreadCount.addAndGet(unread.failed.size());
+            log.error(
+                    "Could not read {} triggering events, so their findings are not written to the findings index (total so far: {}): {}",
+                    unread.failed.size(),
+                    total,
+                    WazuhEnrichedFindingService.sample(unread.failed));
+        }
+    }
+
+    /** Lists at most the first 10 entries, so a large batch does not produce a huge log line. */
+    private static String sample(List<String> entries) {
+        int shown = Math.min(entries.size(), 10);
+        String listed = String.join(", ", entries.subList(0, shown));
+        return shown == entries.size() ? listed : listed + " and " + (entries.size() - shown) + " more";
     }
 
     /** Composite lookup key for a triggering document: {@code index|docId}. */
@@ -556,6 +750,41 @@ public class WazuhEnrichedFindingService implements Closeable {
             this.docIds = docIds;
             this.eventSources = eventSources;
             this.categories = categories;
+        }
+    }
+
+    /**
+     * The triggering events one source MultiGet did not read, sorted by outcome, each entry as {@code
+     * index/docId: cause}, so {@link #reportUnread} logs a batch in one line per outcome.
+     */
+    private static final class UnreadEvents {
+        /** Events to read again on the next flush. */
+        final List<String> retried = new ArrayList<>();
+
+        /** Events given up on because they do not exist. */
+        final List<String> missing = new ArrayList<>();
+
+        /** Events given up on because their read failed. */
+        final List<String> failed = new ArrayList<>();
+
+        void retry(String index, String docId, Exception failure) {
+            this.retried.add(UnreadEvents.describe(index, docId, failure));
+        }
+
+        /**
+         * Gives up on an event: it does not exist if it was not found or its index is gone, otherwise
+         * its read failed.
+         */
+        void giveUp(String index, String docId, Exception failure) {
+            boolean missing =
+                    failure == null || ExceptionsHelper.unwrap(failure, IndexNotFoundException.class) != null;
+            (missing ? this.missing : this.failed).add(UnreadEvents.describe(index, docId, failure));
+        }
+
+        private static String describe(String index, String docId, Exception failure) {
+            String cause =
+                    failure == null ? "not found" : ExceptionsHelper.unwrapCause(failure).toString();
+            return index + "/" + docId + ": " + cause;
         }
     }
 
@@ -914,15 +1143,35 @@ public class WazuhEnrichedFindingService implements Closeable {
 
     /**
      * Called by the periodic schedule to resend the writes waiting for a retry, flush leftover index
-     * requests, and process queued findings. Retries go first: a bulk can fail inline (a cluster
-     * block is rejected before the request leaves the node), and its writes would otherwise be resent
-     * in the same tick, without waiting a flush interval.
+     * requests, queue again the findings waiting to read their events, lift a pause of the reads, and
+     * process queued findings. Retries go first: a bulk can fail inline (a cluster block is rejected
+     * before the request leaves the node), and its writes would otherwise be resent in the same tick,
+     * without waiting a flush interval. The same holds for reads, which can fail inline when {@link
+     * #processQueue} sends them.
      */
     private void periodicFlush() {
         this.reportRejections();
         this.flushRetries();
         this.drainAndFlush();
+        this.requeueReads();
+        this.readsPaused = false;
         this.processQueue();
+    }
+
+    /**
+     * Moves the findings waiting on {@link #readRetryQueue} back to {@link #findingsQueue}. Only
+     * those queued before this call move, so a read that fails again waits for the next flush. They
+     * are queued even past {@link #maxPending}: they were admitted once, and {@link
+     * #maxPendingRetries} already bounds them.
+     */
+    private void requeueReads() {
+        int remaining = this.readRetryQueueSize.get();
+        PendingRead read;
+        while (remaining-- > 0 && (read = this.readRetryQueue.poll()) != null) {
+            this.readRetryQueueSize.decrementAndGet();
+            this.findingsQueueSize.incrementAndGet();
+            this.findingsQueue.add(read);
+        }
     }
 
     /**
@@ -1134,6 +1383,34 @@ public class WazuhEnrichedFindingService implements Closeable {
         return this.rejectedCount.get();
     }
 
+    /** Number of findings put back on the read retry queue, once per attempt. */
+    public long getRetriedReadCount() {
+        return this.retriedReadCount.get();
+    }
+
+    /**
+     * Number of triggering events given up on because their read failed, accumulated over this
+     * service instance's lifetime.
+     */
+    public long getUnreadCount() {
+        return this.unreadCount.get();
+    }
+
+    /**
+     * Number of triggering events given up on because they do not exist, accumulated over this
+     * service instance's lifetime.
+     */
+    public long getMissingCount() {
+        return this.missingCount.get();
+    }
+
     /** An index request together with the number of times it has already been resent. */
     private record PendingWrite(IndexRequest request, int attempts) {}
+
+    /**
+     * A finding waiting for its triggering events to be read, with the ids of the events still to
+     * read (all of them at first, only the ones not read after a failed attempt) and the number of
+     * times they have already been read again.
+     */
+    private record PendingRead(Finding finding, List<String> docIds, int attempts) {}
 }
