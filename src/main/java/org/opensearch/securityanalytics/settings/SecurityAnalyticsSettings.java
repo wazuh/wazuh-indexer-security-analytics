@@ -385,7 +385,8 @@ public class SecurityAnalyticsSettings {
 
     /**
      * Maximum number of times {@code WazuhEnrichedFindingService} resends an enriched finding whose
-     * write failed for a transient reason (rejection, unavailable shard, retryable cluster block).
+     * write failed for a transient reason (rejection, unavailable shard, retryable cluster block),
+     * and reads again a triggering event that was not found or whose read failed for such a reason.
      * Retries are sent on the periodic flush, so a finding is given up on after roughly this many
      * flush intervals. A value of 0 disables retries.
      */
@@ -399,9 +400,10 @@ public class SecurityAnalyticsSettings {
                     Setting.Property.Dynamic);
 
     /**
-     * Maximum number of enriched findings allowed to wait for a retry in {@code
-     * WazuhEnrichedFindingService}. Bounds heap growth during a long outage: past this size, failed
-     * writes are dropped and counted instead of queued.
+     * Maximum number of enriched findings allowed to wait for a write retry in {@code
+     * WazuhEnrichedFindingService}, and of findings allowed to wait to read their triggering events
+     * again. Each bound applies on its own. Bounds heap growth during a long outage: past this size,
+     * failed writes and reads are dropped and counted instead of queued.
      */
     public static final Setting<Integer> ENRICHED_FINDINGS_MAX_PENDING_RETRIES =
             Setting.intSetting(
