@@ -95,14 +95,6 @@ public class DetectorMonitorConfig {
         return String.format(Locale.getDefault(), "wazuh-findings-v5-%s", logType);
     }
 
-    public static String getWazuhFindingsIndexPattern(String logType) {
-        return String.format(Locale.getDefault(), "<wazuh-findings-v5-%s-{now/d}-1>", logType);
-    }
-
-    public static String getAllWazuhFindingsIndicesPattern(String logType) {
-        return String.format(Locale.getDefault(), "wazuh-findings-v5-%s-*", logType);
-    }
-
     /**
      * Analysis overrides applied to the query index copy of every source field, keyed by the source
      * field's type. The chains are defined in {@code mappings/detector-settings.json}: {@code text}
