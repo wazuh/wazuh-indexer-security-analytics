@@ -28,7 +28,6 @@ import org.opensearch.common.xcontent.XContentType;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.xcontent.NamedXContentRegistry;
 import org.opensearch.core.xcontent.XContentParser;
-import org.opensearch.index.query.BoolQueryBuilder;
 import org.opensearch.index.query.QueryBuilder;
 import org.opensearch.index.query.QueryBuilders;
 import org.opensearch.rest.RestRequest;
@@ -38,12 +37,17 @@ import org.opensearch.search.builder.SearchSourceBuilder;
 import org.opensearch.securityanalytics.action.IndexDetectorAction;
 import org.opensearch.securityanalytics.action.IndexDetectorRequest;
 import org.opensearch.securityanalytics.model.Detector;
+import org.opensearch.securityanalytics.model.DetectorInput;
+import org.opensearch.securityanalytics.model.DetectorRule;
 import org.opensearch.transport.client.Client;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Predicate;
 
 /**
  * Keeps detectors in sync with the rules they reference.
@@ -78,24 +82,26 @@ public final class RuleDetectorSync {
     }
 
     /**
-     * Builds a query matching detectors that reference any of the given rule ids, as a custom or as a
-     * pre-packaged rule. The ids are matched as phrases: the field is analyzed text, so a plain match
-     * on a UUID would also select detectors that share only one of its parts.
+     * Whether a detector references any of the given rule ids, as a custom or as a pre-packaged rule.
+     * The ids are compared exactly: the detectors index maps them as analyzed text, so a query on
+     * them would also match detectors that share only part of an id.
      *
-     * @param ruleIds the rule ids referenced by the detectors
-     * @return a query over the detectors index
+     * @param detector the detector
+     * @param ruleIds the rule ids
+     * @return true if the detector references one of the rules
      */
-    public static QueryBuilder detectorsReferencingAnyRuleQuery(Collection<String> ruleIds) {
-        BoolQueryBuilder query = QueryBuilders.boolQuery();
-        for (String nestedRulesField : List.of("custom_rules", "pre_packaged_rules")) {
-            String path = INPUT_BASE + nestedRulesField;
-            BoolQueryBuilder ids = QueryBuilders.boolQuery();
-            for (String ruleId : ruleIds) {
-                ids.should(QueryBuilders.matchPhraseQuery(path + ".id", ruleId));
+    public static boolean referencesAnyRule(Detector detector, Set<String> ruleIds) {
+        for (DetectorInput input : detector.getInputs()) {
+            for (List<DetectorRule> rules :
+                    List.of(input.getCustomRules(), input.getPrePackagedRules())) {
+                for (DetectorRule rule : rules) {
+                    if (ruleIds.contains(rule.getId())) {
+                        return true;
+                    }
+                }
             }
-            query.should(QueryBuilders.nestedQuery(path, ids, ScoreMode.None));
         }
-        return query;
+        return false;
     }
 
     /**
@@ -121,6 +127,7 @@ public final class RuleDetectorSync {
                 client,
                 xContentRegistry,
                 detectorsReferencingRuleQuery(nestedRulesField, ruleId),
+                detector -> true,
                 "rule [" + ruleId + "]",
                 refreshPolicy,
                 ActionListener.wrap(rebuilt -> listener.onResponse(null), listener::onFailure));
@@ -144,17 +151,22 @@ public final class RuleDetectorSync {
             Collection<String> ruleIds,
             WriteRequest.RefreshPolicy refreshPolicy,
             ActionListener<Integer> listener) {
+        // Read every detector and pick the referencing ones here: a query with one clause per rule
+        // id would exceed the maximum clause count for the rule sets of a CTI sync, and there are
+        // few detectors.
+        Set<String> ids = new HashSet<>(ruleIds);
         rebuildDetectors(
                 client,
                 xContentRegistry,
-                detectorsReferencingAnyRuleQuery(ruleIds),
-                "rules " + ruleIds,
+                QueryBuilders.matchAllQuery(),
+                detector -> referencesAnyRule(detector, ids),
+                ids.size() + " rules",
                 refreshPolicy,
                 listener);
     }
 
     /**
-     * Rebuilds every detector matching the query.
+     * Rebuilds every detector that matches the query and the predicate.
      *
      * @param listener notified with the number of detectors rebuilt
      */
@@ -162,6 +174,7 @@ public final class RuleDetectorSync {
             Client client,
             NamedXContentRegistry xContentRegistry,
             QueryBuilder query,
+            Predicate<Detector> keep,
             String change,
             WriteRequest.RefreshPolicy refreshPolicy,
             ActionListener<Integer> listener) {
@@ -197,7 +210,10 @@ public final class RuleDetectorSync {
                                                         xContentRegistry,
                                                         LoggingDeprecationHandler.INSTANCE,
                                                         hit.getSourceAsString())) {
-                                    detectors.add(Detector.docParse(xcp, hit.getId(), hit.getVersion()));
+                                    Detector detector = Detector.docParse(xcp, hit.getId(), hit.getVersion());
+                                    if (keep.test(detector)) {
+                                        detectors.add(detector);
+                                    }
                                 } catch (Exception e) {
                                     log.error(
                                             "Failed to parse detector [{}] while syncing {}", hit.getId(), change, e);

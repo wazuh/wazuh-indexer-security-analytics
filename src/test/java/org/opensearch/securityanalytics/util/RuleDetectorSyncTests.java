@@ -16,10 +16,12 @@
  */
 package org.opensearch.securityanalytics.util;
 
-import org.opensearch.index.query.BoolQueryBuilder;
-import org.opensearch.index.query.MatchPhraseQueryBuilder;
 import org.opensearch.index.query.NestedQueryBuilder;
 import org.opensearch.index.query.QueryBuilder;
+import org.opensearch.securityanalytics.TestHelpers;
+import org.opensearch.securityanalytics.model.Detector;
+import org.opensearch.securityanalytics.model.DetectorInput;
+import org.opensearch.securityanalytics.model.DetectorRule;
 import org.opensearch.test.OpenSearchTestCase;
 
 import java.util.List;
@@ -47,28 +49,28 @@ public class RuleDetectorSyncTests extends OpenSearchTestCase {
         assertEquals("detector.inputs.detector_input.custom_rules", ((NestedQueryBuilder) q).path());
     }
 
-    public void testDetectorsReferencingAnyRuleQuery_matchesEachIdAsAPhraseInBothLists() {
-        List<String> ruleIds =
-                List.of("26a8d32e-0838-5589-948c-501b5a301cf5", "a1776000-0000-4000-8000-000000000001");
+    private static Detector detector(List<String> customRules, List<String> prePackagedRules) {
+        return TestHelpers.randomDetectorWithInputs(
+                List.of(
+                        new DetectorInput(
+                                "input",
+                                List.of("wazuh-events-v5-applications"),
+                                customRules.stream().map(DetectorRule::new).collect(Collectors.toList()),
+                                prePackagedRules.stream().map(DetectorRule::new).collect(Collectors.toList()))));
+    }
 
-        QueryBuilder q = RuleDetectorSync.detectorsReferencingAnyRuleQuery(ruleIds);
+    public void testReferencesAnyRule_matchesCustomAndPrePackagedIdsExactly() {
+        Set<String> ruleIds = Set.of("26a8d32e-0838-5589-948c-501b5a301cf5");
 
-        assertTrue(q instanceof BoolQueryBuilder);
-        List<QueryBuilder> lists = ((BoolQueryBuilder) q).should();
-        assertEquals(
-                Set.of(
-                        "detector.inputs.detector_input.custom_rules",
-                        "detector.inputs.detector_input.pre_packaged_rules"),
-                lists.stream().map(n -> ((NestedQueryBuilder) n).path()).collect(Collectors.toSet()));
-        for (QueryBuilder list : lists) {
-            NestedQueryBuilder nested = (NestedQueryBuilder) list;
-            List<QueryBuilder> ids = ((BoolQueryBuilder) nested.query()).should();
-            assertEquals(ruleIds.size(), ids.size());
-            for (QueryBuilder id : ids) {
-                MatchPhraseQueryBuilder phrase = (MatchPhraseQueryBuilder) id;
-                assertEquals(nested.path() + ".id", phrase.fieldName());
-                assertTrue(ruleIds.contains((String) phrase.value()));
-            }
-        }
+        assertTrue(
+                RuleDetectorSync.referencesAnyRule(
+                        detector(List.of(), List.of("26a8d32e-0838-5589-948c-501b5a301cf5")), ruleIds));
+        assertTrue(
+                RuleDetectorSync.referencesAnyRule(
+                        detector(List.of("26a8d32e-0838-5589-948c-501b5a301cf5"), List.of()), ruleIds));
+        // An id that shares parts with the rule's is not the rule: the match is exact.
+        assertFalse(
+                RuleDetectorSync.referencesAnyRule(
+                        detector(List.of("26a8d32e-0838-5589-948c-000000000000"), List.of("0838")), ruleIds));
     }
 }
