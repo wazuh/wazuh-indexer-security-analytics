@@ -262,22 +262,33 @@ public class OSQueryBackend extends QueryBackend {
         }
     }
 
+    /**
+     * Converts a {@code not} by pushing the negation down to the leaves (De Morgan's laws).
+     *
+     * <p>{@code applyDeMorgans} says whether this {@code not} already sits under a negation. A
+     * {@code not} flips that state for its operand, so under one negation the two cancel and the
+     * operand is converted as it is: {@code not (not x)} is {@code x}. Every leaf converter writes
+     * its own negated form, so no {@code NOT} token is added here — adding one as well produced
+     * {@code NOT NOT x}, which the query parser rejects, and {@code |exists: false} reached it
+     * without any nesting (wazuh/wazuh-indexer-security-analytics#350).
+     */
     @Override
     public Object convertConditionNot(ConditionNOT condition, boolean applyDeMorgans) {
         Either<AnyOneOf<ConditionItem, ConditionFieldEqualsValueExpression, ConditionValueExpression>, String> arg = condition.getArgs().get(0);
+        boolean negateOperand = !applyDeMorgans;
         try {
             if (arg.isLeft()) {
                 if (arg.getLeft().isLeft()) {
                     ConditionType argType = arg.getLeft().getLeft().getClass().equals(ConditionAND.class) ? new ConditionType(Either.left(AnyOneOf.leftVal((ConditionAND) arg.getLeft().getLeft()))) :
                             (arg.getLeft().getLeft().getClass().equals(ConditionOR.class) ? new ConditionType(Either.left(AnyOneOf.middleVal((ConditionOR) arg.getLeft().getLeft()))) :
                                     new ConditionType(Either.left(AnyOneOf.rightVal((ConditionNOT) arg.getLeft().getLeft()))));
-                    return String.format(Locale.getDefault(), groupExpression, this.convertConditionGroup(argType, true, true));
+                    return String.format(Locale.getDefault(), groupExpression, this.convertConditionGroup(argType, negateOperand, negateOperand));
                 } else if (arg.getLeft().isMiddle()) {
                     ConditionType argType = new ConditionType(Either.right(Either.left(arg.getLeft().getMiddle())));
-                    return String.format(Locale.getDefault(), groupExpression, this.notToken + this.tokenSeparator + this.convertCondition(argType, true, applyDeMorgans).toString());
+                    return String.format(Locale.getDefault(), groupExpression, this.convertCondition(argType, negateOperand, negateOperand).toString());
                 } else {
                     ConditionType argType = new ConditionType(Either.right(Either.right(arg.getLeft().get())));
-                    return String.format(Locale.getDefault(), groupExpression, this.notToken + this.tokenSeparator + this.convertCondition(argType, true, applyDeMorgans).toString());
+                    return String.format(Locale.getDefault(), groupExpression, this.convertCondition(argType, negateOperand, negateOperand).toString());
                 }
             }
         } catch (Exception ex) {
