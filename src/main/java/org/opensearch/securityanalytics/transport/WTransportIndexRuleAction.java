@@ -337,9 +337,14 @@ public class WTransportIndexRuleAction
         /**
          * Rebuilds the detectors referencing this rule when its {@code enabled} state changed, then
          * completes. When the state is unchanged it is a no-op, which avoids rebuild storms during bulk
-         * CTI syncs. Best-effort: rebuild failures do not fail the rule write.
+         * CTI syncs. A caller that asks to skip the rebuild rebuilds the detectors itself, once for all
+         * the rules it changed. Best-effort: rebuild failures do not fail the rule write.
          */
         private void cascadeThenComplete(Rule rule, boolean wasEnabled, IndexResponse indexResponse) {
+            if (this.request.isSkipDetectorRebuild()) {
+                this.onOperation(indexResponse, rule);
+                return;
+            }
             boolean nowEnabled = TransportIndexDetectorAction.isRuleEnabled(rule.getRule());
             if (wasEnabled == nowEnabled) {
                 this.onOperation(indexResponse, rule);

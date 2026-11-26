@@ -28,6 +28,7 @@ import org.opensearch.common.xcontent.XContentType;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.xcontent.NamedXContentRegistry;
 import org.opensearch.core.xcontent.XContentParser;
+import org.opensearch.index.query.BoolQueryBuilder;
 import org.opensearch.index.query.QueryBuilder;
 import org.opensearch.index.query.QueryBuilders;
 import org.opensearch.rest.RestRequest;
@@ -40,6 +41,7 @@ import org.opensearch.securityanalytics.model.Detector;
 import org.opensearch.transport.client.Client;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -76,6 +78,27 @@ public final class RuleDetectorSync {
     }
 
     /**
+     * Builds a query matching detectors that reference any of the given rule ids, as a custom or as a
+     * pre-packaged rule. The ids are matched as phrases: the field is analyzed text, so a plain match
+     * on a UUID would also select detectors that share only one of its parts.
+     *
+     * @param ruleIds the rule ids referenced by the detectors
+     * @return a query over the detectors index
+     */
+    public static QueryBuilder detectorsReferencingAnyRuleQuery(Collection<String> ruleIds) {
+        BoolQueryBuilder query = QueryBuilders.boolQuery();
+        for (String nestedRulesField : List.of("custom_rules", "pre_packaged_rules")) {
+            String path = INPUT_BASE + nestedRulesField;
+            BoolQueryBuilder ids = QueryBuilders.boolQuery();
+            for (String ruleId : ruleIds) {
+                ids.should(QueryBuilders.matchPhraseQuery(path + ".id", ruleId));
+            }
+            query.should(QueryBuilders.nestedQuery(path, ids, ScoreMode.None));
+        }
+        return query;
+    }
+
+    /**
      * Rebuilds every detector that references the given rule so its Monitor is recompiled from the
      * current rule content. Best-effort: individual detector failures are logged but do not fail the
      * overall operation, so a rule write is never blocked by a detector rebuild problem.
@@ -94,13 +117,61 @@ public final class RuleDetectorSync {
             String ruleId,
             WriteRequest.RefreshPolicy refreshPolicy,
             ActionListener<Void> listener) {
+        rebuildDetectors(
+                client,
+                xContentRegistry,
+                detectorsReferencingRuleQuery(nestedRulesField, ruleId),
+                "rule [" + ruleId + "]",
+                refreshPolicy,
+                ActionListener.wrap(rebuilt -> listener.onResponse(null), listener::onFailure));
+    }
+
+    /**
+     * Rebuilds once every detector that references any of the given rules, as a custom or as a
+     * pre-packaged rule, so their Monitors are recompiled from the current rule content. A detector
+     * that references several of the rules is rebuilt once. Best-effort, like {@link
+     * #rebuildDetectorsForRule}.
+     *
+     * @param client the OpenSearch client
+     * @param xContentRegistry registry used to parse detector documents
+     * @param ruleIds the ids of the rules that changed
+     * @param refreshPolicy refresh policy for the detector re-index
+     * @param listener notified with the number of detectors rebuilt
+     */
+    public static void rebuildDetectorsForRules(
+            Client client,
+            NamedXContentRegistry xContentRegistry,
+            Collection<String> ruleIds,
+            WriteRequest.RefreshPolicy refreshPolicy,
+            ActionListener<Integer> listener) {
+        rebuildDetectors(
+                client,
+                xContentRegistry,
+                detectorsReferencingAnyRuleQuery(ruleIds),
+                "rules " + ruleIds,
+                refreshPolicy,
+                listener);
+    }
+
+    /**
+     * Rebuilds every detector matching the query.
+     *
+     * @param listener notified with the number of detectors rebuilt
+     */
+    private static void rebuildDetectors(
+            Client client,
+            NamedXContentRegistry xContentRegistry,
+            QueryBuilder query,
+            String change,
+            WriteRequest.RefreshPolicy refreshPolicy,
+            ActionListener<Integer> listener) {
         SearchRequest searchRequest =
                 new SearchRequest(Detector.DETECTORS_INDEX)
                         .source(
                                 new SearchSourceBuilder()
                                         .seqNoAndPrimaryTerm(true)
                                         .version(true)
-                                        .query(detectorsReferencingRuleQuery(nestedRulesField, ruleId))
+                                        .query(query)
                                         .size(10000))
                         // Tolerate a missing detectors index (no detectors created yet): treat it as
                         // an empty result instead of failing, keeping this best-effort.
@@ -113,7 +184,7 @@ public final class RuleDetectorSync {
                         response -> {
                             SearchHits hits = response.getHits();
                             if (hits.getHits().length == 0) {
-                                listener.onResponse(null);
+                                listener.onResponse(0);
                                 return;
                             }
 
@@ -129,19 +200,17 @@ public final class RuleDetectorSync {
                                     detectors.add(Detector.docParse(xcp, hit.getId(), hit.getVersion()));
                                 } catch (Exception e) {
                                     log.error(
-                                            "Failed to parse detector [{}] while syncing rule [{}]",
-                                            hit.getId(),
-                                            ruleId,
-                                            e);
+                                            "Failed to parse detector [{}] while syncing {}", hit.getId(), change, e);
                                 }
                             }
 
                             if (detectors.isEmpty()) {
-                                listener.onResponse(null);
+                                listener.onResponse(0);
                                 return;
                             }
 
                             AtomicInteger remaining = new AtomicInteger(detectors.size());
+                            AtomicInteger rebuilt = new AtomicInteger();
                             for (Detector detector : detectors) {
                                 IndexDetectorRequest indexRequest =
                                         new IndexDetectorRequest(
@@ -152,29 +221,28 @@ public final class RuleDetectorSync {
                                         ActionListener.wrap(
                                                 r -> {
                                                     log.debug(
-                                                            "Rebuilt detector [{}] after change to rule [{}]",
-                                                            detector.getId(),
-                                                            ruleId);
+                                                            "Rebuilt detector [{}] after change to {}", detector.getId(), change);
+                                                    rebuilt.incrementAndGet();
                                                     if (remaining.decrementAndGet() == 0) {
-                                                        listener.onResponse(null);
+                                                        listener.onResponse(rebuilt.get());
                                                     }
                                                 },
                                                 e -> {
                                                     log.error(
-                                                            "Failed to rebuild detector [{}] after change to rule [{}]",
+                                                            "Failed to rebuild detector [{}] after change to {}",
                                                             detector.getId(),
-                                                            ruleId,
+                                                            change,
                                                             e);
                                                     if (remaining.decrementAndGet() == 0) {
-                                                        listener.onResponse(null);
+                                                        listener.onResponse(rebuilt.get());
                                                     }
                                                 }));
                             }
                         },
                         e -> {
                             // Best-effort: a failed detector lookup must not break the rule write.
-                            log.error("Failed to search detectors referencing rule [{}]", ruleId, e);
-                            listener.onResponse(null);
+                            log.error("Failed to search detectors referencing {}", change, e);
+                            listener.onResponse(0);
                         }));
     }
 }
