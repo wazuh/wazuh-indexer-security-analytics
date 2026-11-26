@@ -41,6 +41,8 @@ import org.opensearch.transport.client.Client;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -50,12 +52,36 @@ import java.util.concurrent.atomic.AtomicInteger;
  * monitor is not re-evaluated afterwards. So when a rule changes in a way that affects compilation
  * (for example, when it is disabled), every detector that references it must be rebuilt for the
  * change to take effect. Used by both the custom and pre-packaged rules paths.
+ *
+ * <p>Rebuilds of the same detector are coalesced. A ruleset update changes many rules at once and
+ * the caller issues them in parallel, so one detector can be asked to rebuild dozens of times over
+ * a few seconds. Each rebuild reads the detector, and an update that leaves it with no monitors
+ * deletes its workflow, so overlapping rebuilds delete what the others still expect to find and the
+ * detector is left unable to rebuild until some later pass fixes it. Running one rebuild at a time
+ * per detector, with a single trailing pass for whatever changed meanwhile, produces the same end
+ * state: the rebuild recompiles the monitor from the rules as they are at that moment, not from the
+ * rule that triggered it.
+ *
+ * <p>Every referencing detector is rebuilt, including the ones the Content Manager owns. Its
+ * detector phase rebuilds those from their integration document, but it only sends the integrations
+ * that still have an enabled rule: an integration whose rules are all disabled builds no request,
+ * so nothing there stops the detector it already created. What stops it is this rebuild, which
+ * leaves it with no monitors.
+ *
+ * <p>See wazuh/wazuh-indexer-plugins#1837.
  */
 public final class RuleDetectorSync {
 
     private static final Logger log = LogManager.getLogger(RuleDetectorSync.class);
 
     private static final String INPUT_BASE = "detector.inputs.detector_input.";
+
+    /**
+     * Detector ids with a rebuild in flight on this node, mapped to whether another one is owed once
+     * it finishes. A detector is in the map only while it is being rebuilt, so the map is empty
+     * whenever nothing is in flight.
+     */
+    private static final Map<String, Boolean> REBUILDS_IN_FLIGHT = new ConcurrentHashMap<>();
 
     private RuleDetectorSync() {}
 
@@ -143,32 +169,16 @@ public final class RuleDetectorSync {
 
                             AtomicInteger remaining = new AtomicInteger(detectors.size());
                             for (Detector detector : detectors) {
-                                IndexDetectorRequest indexRequest =
-                                        new IndexDetectorRequest(
-                                                detector.getId(), refreshPolicy, RestRequest.Method.PUT, detector);
-                                client.execute(
-                                        IndexDetectorAction.INSTANCE,
-                                        indexRequest,
-                                        ActionListener.wrap(
-                                                r -> {
-                                                    log.debug(
-                                                            "Rebuilt detector [{}] after change to rule [{}]",
-                                                            detector.getId(),
-                                                            ruleId);
-                                                    if (remaining.decrementAndGet() == 0) {
-                                                        listener.onResponse(null);
-                                                    }
-                                                },
-                                                e -> {
-                                                    log.error(
-                                                            "Failed to rebuild detector [{}] after change to rule [{}]",
-                                                            detector.getId(),
-                                                            ruleId,
-                                                            e);
-                                                    if (remaining.decrementAndGet() == 0) {
-                                                        listener.onResponse(null);
-                                                    }
-                                                }));
+                                rebuildOneAtATime(
+                                        client,
+                                        detector,
+                                        refreshPolicy,
+                                        ruleId,
+                                        () -> {
+                                            if (remaining.decrementAndGet() == 0) {
+                                                listener.onResponse(null);
+                                            }
+                                        });
                             }
                         },
                         e -> {
@@ -176,5 +186,86 @@ public final class RuleDetectorSync {
                             log.error("Failed to search detectors referencing rule [{}]", ruleId, e);
                             listener.onResponse(null);
                         }));
+    }
+
+    /**
+     * Rebuilds one detector, unless a rebuild of it is already in flight. In that case the rebuild is
+     * marked as owed, so one more pass runs when the current one finishes, and {@code onDone} is
+     * called straight away: the pass that is already running, or the one now owed, recompiles the
+     * detector from the rules as they stand, which covers this rule as well.
+     */
+    // Package-private so the coalescing can be driven directly from the tests: reaching it through
+    // rebuildDetectorsForRule would mean building a detectors search response for every case.
+    static void rebuildOneAtATime(
+            Client client,
+            Detector detector,
+            WriteRequest.RefreshPolicy refreshPolicy,
+            String ruleId,
+            Runnable onDone) {
+        String detectorId = detector.getId();
+        if (REBUILDS_IN_FLIGHT.putIfAbsent(detectorId, Boolean.FALSE) != null) {
+            REBUILDS_IN_FLIGHT.put(detectorId, Boolean.TRUE);
+            log.debug(
+                    "Rebuild of detector [{}] already in flight; coalescing the one owed by rule [{}]",
+                    detectorId,
+                    ruleId);
+            onDone.run();
+            return;
+        }
+        issueRebuild(client, detector, refreshPolicy, ruleId, onDone);
+    }
+
+    /** Issues the detector re-index and, when it completes, runs the pass owed meanwhile, if any. */
+    private static void issueRebuild(
+            Client client,
+            Detector detector,
+            WriteRequest.RefreshPolicy refreshPolicy,
+            String ruleId,
+            Runnable onDone) {
+        IndexDetectorRequest indexRequest =
+                new IndexDetectorRequest(detector.getId(), refreshPolicy, RestRequest.Method.PUT, detector);
+        client.execute(
+                IndexDetectorAction.INSTANCE,
+                indexRequest,
+                ActionListener.wrap(
+                        r -> {
+                            log.debug(
+                                    "Rebuilt detector [{}] after change to rule [{}]", detector.getId(), ruleId);
+                            completeRebuild(client, detector, refreshPolicy, ruleId, onDone);
+                        },
+                        e -> {
+                            log.error(
+                                    "Failed to rebuild detector [{}] after change to rule [{}]",
+                                    detector.getId(),
+                                    ruleId,
+                                    e);
+                            completeRebuild(client, detector, refreshPolicy, ruleId, onDone);
+                        }));
+    }
+
+    /**
+     * Releases the detector, or keeps it and runs the owed pass. The check and the release are one
+     * atomic operation, so a rebuild asked for while this one was completing is not lost.
+     */
+    private static void completeRebuild(
+            Client client,
+            Detector detector,
+            WriteRequest.RefreshPolicy refreshPolicy,
+            String ruleId,
+            Runnable onDone) {
+        Boolean owed =
+                REBUILDS_IN_FLIGHT.compute(
+                        detector.getId(), (id, pending) -> Boolean.TRUE.equals(pending) ? Boolean.FALSE : null);
+        if (owed != null) {
+            log.debug("Running the rebuild owed for detector [{}]", detector.getId());
+            issueRebuild(client, detector, refreshPolicy, ruleId, onDone);
+            return;
+        }
+        onDone.run();
+    }
+
+    /** Drops the in-flight state. For tests, which share the static map across cases. */
+    static void clearInFlightRebuilds() {
+        REBUILDS_IN_FLIGHT.clear();
     }
 }
