@@ -18,16 +18,14 @@ package org.opensearch.securityanalytics.indexmanagment;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.opensearch.action.admin.cluster.state.ClusterStateRequest;
-import org.opensearch.action.admin.cluster.state.ClusterStateResponse;
 import org.opensearch.action.admin.indices.delete.DeleteIndexRequest;
+import org.opensearch.action.admin.indices.rollover.RolloverInfo;
 import org.opensearch.action.admin.indices.rollover.RolloverRequest;
 import org.opensearch.action.admin.indices.rollover.RolloverResponse;
 import org.opensearch.action.support.IndicesOptions;
 import org.opensearch.action.support.clustermanager.AcknowledgedResponse;
 import org.opensearch.cluster.ClusterChangedEvent;
 import org.opensearch.cluster.ClusterStateListener;
-import org.opensearch.cluster.metadata.AliasMetadata;
 import org.opensearch.cluster.metadata.IndexMetadata;
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.inject.Inject;
@@ -47,10 +45,10 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
-import java.util.stream.Collectors;
+import java.util.regex.Pattern;
 
 import static org.opensearch.securityanalytics.settings.SecurityAnalyticsSettings.*;
 
@@ -88,25 +86,62 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent
 
     private volatile TimeValue correlationHistoryRetentionPeriod;
 
-    private volatile TimeValue iocFindingHistoryRetentionPeriod;
+    /**
+     * How long a detector's query index generation must have been out of use before it is deleted.
+     * See {@link #selectUnusedQueryIndexGenerations}.
+     */
+    static final TimeValue QUERY_INDEX_GENERATION_GRACE_PERIOD = TimeValue.timeValueHours(1);
+
+    /**
+     * A generation of a detector's dedicated query index ({@link
+     * DetectorMonitorConfig#getRuleIndexOptimized}), or of its chained-findings counterpart. The
+     * random UUID makes the alias unique to one detector.
+     */
+    private static final Pattern DEDICATED_QUERY_INDEX_GENERATION =
+            Pattern.compile(
+                    "^\\.opensearch-sap-.+-detectors-queries-optimized-"
+                            + "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+                            + "(_chained_findings)?-\\d{6}$");
+
+    /**
+     * The history indices are found by name, not through the log types: the log type listing stops at
+     * {@link LogTypeService#MAX_LOG_TYPE_COUNT} names, and a removed log type is not listed at all.
+     * Each pattern ends with the date and counter of a rolled-over history index, so it cannot match
+     * an active alerts index ({@code .opensearch-sap-<log type>-alerts}), which has no write alias
+     * and would be deleted once old enough.
+     */
+    static final Pattern ALERT_HISTORY_INDEX =
+            Pattern.compile("^\\.opensearch-sap-.+-alerts-history-\\d{4}\\.\\d{2}\\.\\d{2}-\\d+$");
+
+    static final Pattern ALERT_HISTORY_WRITE_ALIAS =
+            Pattern.compile("^\\.opensearch-sap-.+-alerts-history$");
+
+    static final Pattern FINDING_HISTORY_INDEX =
+            Pattern.compile("^\\.opensearch-sap-.+-findings-\\d{4}\\.\\d{2}\\.\\d{2}-\\d+$");
+
+    static final Pattern FINDING_HISTORY_WRITE_ALIAS =
+            Pattern.compile("^\\.opensearch-sap-.+-findings$");
+
+    static final Pattern CORRELATION_HISTORY_INDEX =
+            Pattern.compile("^\\.opensearch-sap-correlation-history-\\d{4}\\.\\d{2}\\.\\d{2}-\\d+$");
+
+    static final Pattern CORRELATION_HISTORY_WRITE_ALIAS =
+            Pattern.compile(
+                    "^" + Pattern.quote(CorrelationIndices.CORRELATION_HISTORY_WRITE_INDEX) + "$");
 
     private volatile boolean isClusterManager = false;
 
     private Scheduler.Cancellable scheduledAlertsRollover = null;
     private Scheduler.Cancellable scheduledFindingsRollover = null;
-    private Scheduler.Cancellable scheduledWazuhFindingsRollover = null;
 
     private Scheduler.Cancellable scheduledCorrelationHistoryRollover = null;
 
-    private Scheduler.Cancellable scheduledIocFindingHistoryRollover = null;
-
-    List<HistoryIndexInfo> alertHistoryIndices = new ArrayList<>();
-    List<HistoryIndexInfo> findingHistoryIndices = new ArrayList<>();
-    List<HistoryIndexInfo> wazuhFindingHistoryIndices = new ArrayList<>();
+    // Replaced whole, never modified: the alert and finding sweeps both rebuild them, at the same
+    // time when their periods match, while the other one and clusterChanged iterate them.
+    private volatile List<HistoryIndexInfo> alertHistoryIndices = List.of();
+    private volatile List<HistoryIndexInfo> findingHistoryIndices = List.of();
 
     HistoryIndexInfo correlationHistoryIndex = null;
-
-    HistoryIndexInfo iocFindingHistoryIndex = null;
 
     @Inject
     public DetectorIndexManagementService(
@@ -235,10 +270,8 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent
     }
 
     private void populateAllIndexLists(List<String> logTypes) {
-
-        alertHistoryIndices.clear();
-        findingHistoryIndices.clear();
-        wazuhFindingHistoryIndices.clear();
+        List<HistoryIndexInfo> alertHistoryIndices = new ArrayList<>();
+        List<HistoryIndexInfo> findingHistoryIndices = new ArrayList<>();
 
         logTypes.forEach(
                 logType -> {
@@ -266,20 +299,10 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent
                                     findingHistoryMaxDocs,
                                     findingHistoryMaxAge,
                                     clusterService.state().metadata().hasAlias(findingsIndex)));
-
-                    String wazuhFindingsIndex = DetectorMonitorConfig.getWazuhFindingsIndex(logType);
-                    String wazuhFindingsIndexPattern =
-                            DetectorMonitorConfig.getWazuhFindingsIndexPattern(logType);
-
-                    wazuhFindingHistoryIndices.add(
-                            new HistoryIndexInfo(
-                                    wazuhFindingsIndex,
-                                    wazuhFindingsIndexPattern,
-                                    wazuhFindingEnrichmentMapping(),
-                                    findingHistoryMaxDocs,
-                                    findingHistoryMaxAge,
-                                    clusterService.state().metadata().hasAlias(wazuhFindingsIndex)));
                 });
+
+        this.alertHistoryIndices = alertHistoryIndices;
+        this.findingHistoryIndices = findingHistoryIndices;
     }
 
     private void initFromClusterSettings() {
@@ -318,17 +341,10 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent
         for (HistoryIndexInfo h : findingHistoryIndices) {
             h.isInitialized = event.state().metadata().hasAlias(h.indexAlias);
         }
-        for (HistoryIndexInfo h : wazuhFindingHistoryIndices) {
-            h.isInitialized = event.state().metadata().hasAlias(h.indexAlias);
-        }
 
         if (correlationHistoryIndex != null && correlationHistoryIndex.indexAlias != null) {
             correlationHistoryIndex.isInitialized =
                     event.state().metadata().hasAlias(correlationHistoryIndex.indexAlias);
-        }
-        if (iocFindingHistoryIndex != null && iocFindingHistoryIndex.indexAlias != null) {
-            iocFindingHistoryIndex.isInitialized =
-                    event.state().metadata().hasAlias(iocFindingHistoryIndex.indexAlias);
         }
     }
 
@@ -339,9 +355,7 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent
                     () -> {
                         rolloverAndDeleteAlertHistoryIndices();
                         rolloverAndDeleteFindingHistoryIndices();
-                        rolloverAndDeleteWazuhFindingHistoryIndices();
                         rolloverAndDeleteCorrelationHistoryIndices();
-                        rolloverAndDeleteIocFindingHistoryIndices();
                     },
                     TimeValue.timeValueSeconds(1),
                     executorName());
@@ -356,11 +370,6 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent
                             () -> rolloverAndDeleteFindingHistoryIndices(),
                             findingHistoryRolloverPeriod,
                             executorName());
-            scheduledWazuhFindingsRollover =
-                    threadPool.scheduleWithFixedDelay(
-                            () -> rolloverAndDeleteWazuhFindingHistoryIndices(),
-                            findingHistoryRolloverPeriod,
-                            executorName());
             scheduledCorrelationHistoryRollover =
                     threadPool.scheduleWithFixedDelay(
                             () -> rolloverAndDeleteCorrelationHistoryIndices(),
@@ -369,8 +378,8 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent
         } catch (Exception e) {
             // This should be run on cluster startup
             logger.error(
-                    "Error creating alert/finding/correlation/ioc finding indices. "
-                            + "Alerts/Findings/Correlations/IOC Finding can't be recorded until master node is restarted.",
+                    "Error creating alert/finding/correlation indices. "
+                            + "Alerts/Findings/Correlations can't be recorded until master node is restarted.",
                     e);
         }
     }
@@ -382,14 +391,8 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent
         if (scheduledFindingsRollover != null) {
             scheduledFindingsRollover.cancel();
         }
-        if (scheduledWazuhFindingsRollover != null) {
-            scheduledWazuhFindingsRollover.cancel();
-        }
         if (scheduledCorrelationHistoryRollover != null) {
             scheduledCorrelationHistoryRollover.cancel();
-        }
-        if (scheduledIocFindingHistoryRollover != null) {
-            scheduledIocFindingHistoryRollover.cancel();
         }
     }
 
@@ -397,192 +400,205 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent
         return ThreadPool.Names.MANAGEMENT;
     }
 
-    private void deleteOldIndices(String tag, String... indices) {
-        logger.info("info deleteOldIndices");
-        ClusterStateRequest clusterStateRequest =
-                new ClusterStateRequest()
-                        .clear()
-                        .indices(indices)
-                        .metadata(true)
-                        .local(true)
-                        .indicesOptions(IndicesOptions.strictExpand());
+    /**
+     * Deletes the history indices of one kind that have outlived their retention period.
+     *
+     * @param tag the kind of history, for the logs.
+     * @param historyIndex matches the names of that kind of history index, and nothing else.
+     * @param retentionPeriod how long an index is kept after its creation.
+     * @param writeAlias matches the write aliases of that kind of history.
+     * @param historyEnabled whether that kind of history is enabled.
+     */
+    private void deleteOldIndices(
+            String tag,
+            Pattern historyIndex,
+            TimeValue retentionPeriod,
+            Pattern writeAlias,
+            boolean historyEnabled) {
+        List<String> indicesToDelete =
+                selectExpiredHistoryIndices(
+                        clusterService.state().metadata().indices().values(),
+                        historyIndex,
+                        Instant.now().toEpochMilli(),
+                        retentionPeriod.millis(),
+                        writeAlias,
+                        historyEnabled);
+        if (indicesToDelete.isEmpty()) {
+            logger.debug("No old {} history indices to delete", tag);
+            return;
+        }
+        logger.info("Deleting old {} history indices: {}", tag, indicesToDelete);
+        deleteIndices(tag, indicesToDelete);
+    }
+
+    /**
+     * Picks the history indices of one kind that have outlived their retention period.
+     *
+     * <p>Each kind is judged only against its own retention period and write aliases. The index
+     * behind a write alias is still being written to, so it is kept while that history is enabled.
+     *
+     * @param indices every index in the cluster.
+     * @param historyIndex matches the names of that kind of history index, and nothing else. It must
+     *     not match an index that is not history, such as a detector's active alerts index: an index
+     *     without a write alias is deleted once it is old enough.
+     * @param nowMillis the current time.
+     * @param retentionMillis how long an index is kept after its creation.
+     * @param writeAlias matches the write aliases of that kind of history.
+     * @param historyEnabled whether that kind of history is enabled.
+     * @return the names of the indices to delete.
+     */
+    static List<String> selectExpiredHistoryIndices(
+            Collection<IndexMetadata> indices,
+            Pattern historyIndex,
+            long nowMillis,
+            long retentionMillis,
+            Pattern writeAlias,
+            boolean historyEnabled) {
+        List<String> expired = new ArrayList<>();
+        for (IndexMetadata index : indices) {
+            String name = index.getIndex().getName();
+            if (!historyIndex.matcher(name).matches()
+                    || nowMillis - index.getCreationDate() <= retentionMillis) {
+                continue;
+            }
+            boolean holdsWriteAlias =
+                    index.getAliases().keySet().stream()
+                            .anyMatch(alias -> writeAlias.matcher(alias).matches());
+            if (holdsWriteAlias && historyEnabled) {
+                continue;
+            }
+            expired.add(name);
+        }
+        return expired;
+    }
+
+    /**
+     * Deletes the generations of detectors' dedicated query indices that nothing reads any more. See
+     * {@link #selectUnusedQueryIndexGenerations}.
+     */
+    private void deleteUnusedQueryIndexGenerations() {
+        try {
+            List<String> unused =
+                    selectUnusedQueryIndexGenerations(
+                            clusterService.state().metadata().indices().values(),
+                            Instant.now().toEpochMilli(),
+                            QUERY_INDEX_GENERATION_GRACE_PERIOD.millis());
+            if (unused.isEmpty()) {
+                logger.debug("No unused detector query index generations to delete");
+                return;
+            }
+            logger.info("Deleting detector query index generations no longer in use: {}", unused);
+            deleteIndices("detector query index generation", unused);
+        } catch (Exception e) {
+            logger.warn("Could not delete unused detector query index generations", e);
+        }
+    }
+
+    /**
+     * Picks the generations of detectors' dedicated query indices that nothing reads any more.
+     *
+     * <p>Alerting rolls a detector's query index over when its mapping reaches the field limit. The
+     * alias moves to the new generation and the old one is left without an alias. Security Analytics
+     * creates a detector's monitors with {@code deleteQueryIndexInEveryRun}, so they resolve the
+     * alias' write index on every run, and after that run nothing reads the old generation again.
+     * Deleting a detector deletes only the generation behind the alias. Without this sweep, every
+     * other generation is kept for good.
+     *
+     * <p>The grace period covers the run that rolled the index over, which may still percolate the
+     * documents of another source index against the previous generation. It counts from the rollover,
+     * or from the index creation when no rollover is recorded.
+     *
+     * @param indices every index in the cluster.
+     * @param nowMillis the current time.
+     * @param gracePeriodMillis how long a generation must have been out of use.
+     * @return the names of the generations to delete.
+     */
+    static List<String> selectUnusedQueryIndexGenerations(
+            Collection<IndexMetadata> indices, long nowMillis, long gracePeriodMillis) {
+        List<String> unused = new ArrayList<>();
+        for (IndexMetadata index : indices) {
+            String name = index.getIndex().getName();
+            if (!DEDICATED_QUERY_INDEX_GENERATION.matcher(name).matches()
+                    || !index.getAliases().isEmpty()) {
+                continue;
+            }
+            long lastUsed = index.getCreationDate();
+            for (RolloverInfo rollover : index.getRolloverInfos().values()) {
+                lastUsed = Math.max(lastUsed, rollover.getTime());
+            }
+            if (nowMillis - lastUsed > gracePeriodMillis) {
+                unused.add(name);
+            }
+        }
+        return unused;
+    }
+
+    private void deleteIndices(String tag, List<String> indices) {
+        DeleteIndexRequest request =
+                new DeleteIndexRequest(indices.toArray(new String[0]))
+                        .indicesOptions(IndicesOptions.LENIENT_EXPAND_OPEN_CLOSED_HIDDEN);
         client
                 .admin()
-                .cluster()
-                .state(
-                        clusterStateRequest,
+                .indices()
+                .delete(
+                        request,
                         new ActionListener<>() {
                             @Override
-                            public void onResponse(ClusterStateResponse clusterStateResponse) {
-                                if (!clusterStateResponse.getState().metadata().getIndices().isEmpty()) {
-                                    List<String> indicesToDelete = getIndicesToDelete(clusterStateResponse);
-                                    logger.info(
-                                            "Checking if we should delete "
-                                                    + tag
-                                                    + " indices: ["
-                                                    + indicesToDelete
-                                                    + "]");
-                                    deleteAllOldHistoryIndices(indicesToDelete);
+                            public void onResponse(AcknowledgedResponse response) {
+                                if (response.isAcknowledged()) {
+                                    logger.info("Deleted {} indices: {}", tag, indices);
                                 } else {
-                                    logger.info("No Old " + tag + " Indices to delete");
+                                    logger.warn(
+                                            "Deletion of {} indices {} was not acknowledged, retrying one by one",
+                                            tag,
+                                            indices);
+                                    deleteIndicesOneByOne(tag, indices);
                                 }
                             }
 
                             @Override
                             public void onFailure(Exception e) {
-                                logger.error("Error fetching cluster state");
+                                logger.warn("Could not delete {} indices {}, retrying one by one", tag, indices, e);
+                                deleteIndicesOneByOne(tag, indices);
                             }
                         });
     }
 
-    private List<String> getIndicesToDelete(ClusterStateResponse clusterStateResponse) {
-        List<String> indicesToDelete = new ArrayList<>();
-        for (IndexMetadata indexMetadata :
-                clusterStateResponse.getState().metadata().indices().values()) {
-            IndexMetadata indexMetaData = indexMetadata;
-            String indexToDelete =
-                    getHistoryIndexToDelete(
-                            indexMetaData,
-                            alertHistoryRetentionPeriod.millis(),
-                            alertHistoryIndices,
-                            alertHistoryEnabled);
-            if (indexToDelete != null) {
-                indicesToDelete.add(indexToDelete);
-            }
-            indexToDelete =
-                    getHistoryIndexToDelete(
-                            indexMetaData,
-                            findingHistoryRetentionPeriod.millis(),
-                            findingHistoryIndices,
-                            findingHistoryEnabled);
-            if (indexToDelete != null) {
-                indicesToDelete.add(indexToDelete);
-            }
-            indexToDelete =
-                    getHistoryIndexToDelete(
-                            indexMetaData,
-                            correlationHistoryRetentionPeriod.millis(),
-                            correlationHistoryIndex != null ? List.of(correlationHistoryIndex) : List.of(),
-                            true);
-            if (indexToDelete != null) {
-                indicesToDelete.add(indexToDelete);
-            }
-            indexToDelete =
-                    getHistoryIndexToDelete(
-                            indexMetaData,
-                            iocFindingHistoryRetentionPeriod.millis(),
-                            iocFindingHistoryIndex != null ? List.of(iocFindingHistoryIndex) : List.of(),
-                            true);
-            if (indexToDelete != null) {
-                indicesToDelete.add(indexToDelete);
-            }
-            indexToDelete =
-                    getHistoryIndexToDelete(
-                            indexMetaData,
-                            findingHistoryRetentionPeriod.millis(),
-                            wazuhFindingHistoryIndices,
-                            findingHistoryEnabled);
-            if (indexToDelete != null) {
-                indicesToDelete.add(indexToDelete);
-            }
-        }
-        return indicesToDelete;
-    }
-
-    private String getHistoryIndexToDelete(
-            IndexMetadata indexMetadata,
-            Long retentionPeriodMillis,
-            List<HistoryIndexInfo> historyIndices,
-            Boolean historyEnabled) {
-        long creationTime = indexMetadata.getCreationDate();
-        if ((Instant.now().toEpochMilli() - creationTime) > retentionPeriodMillis) {
-            String alias = null;
-            for (AliasMetadata aliasMetadata : indexMetadata.getAliases().values()) {
-                Optional<HistoryIndexInfo> historyIndexInfoOptional =
-                        historyIndices.stream()
-                                .filter(e -> e.indexAlias.equals(aliasMetadata.alias()))
-                                .findFirst();
-                if (historyIndexInfoOptional.isPresent()) {
-                    alias = historyIndexInfoOptional.get().indexAlias;
-                    break;
-                }
-            }
-            if (alias != null) {
-                if (historyEnabled) {
-                    // If the index has the write alias and history is enabled, don't delete the index
-                    return null;
-                }
-            }
-            return indexMetadata.getIndex().getName();
-        }
-        return null;
-    }
-
-    private void deleteAllOldHistoryIndices(List<String> indicesToDelete) {
-        if (indicesToDelete.size() > 0) {
-            DeleteIndexRequest deleteIndexRequest =
-                    new DeleteIndexRequest(indicesToDelete.toArray(new String[0]));
+    private void deleteIndicesOneByOne(String tag, List<String> indices) {
+        for (String index : indices) {
+            DeleteIndexRequest request =
+                    new DeleteIndexRequest(index)
+                            .indicesOptions(IndicesOptions.LENIENT_EXPAND_OPEN_CLOSED_HIDDEN);
             client
                     .admin()
                     .indices()
                     .delete(
-                            deleteIndexRequest,
+                            request,
                             new ActionListener<>() {
                                 @Override
-                                public void onResponse(AcknowledgedResponse deleteIndicesResponse) {
-                                    if (!deleteIndicesResponse.isAcknowledged()) {
-                                        logger.error(
-                                                "Could not delete one or more Alerting/Finding/Correlation/IOC Finding history indices: ["
-                                                        + indicesToDelete
-                                                        + "]. Retrying one by one.");
-                                        deleteOldHistoryIndex(indicesToDelete);
-                                    } else {
-                                        logger.info("Succsessfuly deleted indices: [" + indicesToDelete + "]");
+                                public void onResponse(AcknowledgedResponse response) {
+                                    if (!response.isAcknowledged()) {
+                                        logger.warn("Deletion of {} index [{}] was not acknowledged", tag, index);
                                     }
                                 }
 
                                 @Override
                                 public void onFailure(Exception e) {
-                                    logger.error(
-                                            "Delete for Alerting/Finding/Correlation/IOC Finding History Indices failed: ["
-                                                    + indicesToDelete
-                                                    + "]. Retrying one By one.");
-                                    deleteOldHistoryIndex(indicesToDelete);
-                                }
-                            });
-        }
-    }
-
-    private void deleteOldHistoryIndex(List<String> indicesToDelete) {
-        for (String index : indicesToDelete) {
-            final DeleteIndexRequest singleDeleteRequest =
-                    new DeleteIndexRequest(indicesToDelete.toArray(new String[0]));
-
-            client
-                    .admin()
-                    .indices()
-                    .delete(
-                            singleDeleteRequest,
-                            new ActionListener<>() {
-                                @Override
-                                public void onResponse(AcknowledgedResponse acknowledgedResponse) {
-                                    if (!acknowledgedResponse.isAcknowledged()) {
-                                        logger.error(
-                                                "Could not delete one or more Alerting/Finding/Correlation/IOC Finding history indices: "
-                                                        + index);
-                                    }
-                                }
-
-                                @Override
-                                public void onFailure(Exception e) {
-                                    logger.debug(
-                                            "Exception: [" + e.getMessage() + "] while deleting the index " + index);
+                                    logger.warn("Could not delete {} index [{}]", tag, index, e);
                                 }
                             });
         }
     }
 
     private void rolloverAndDeleteAlertHistoryIndices() {
+        // Unrelated to alert history: it only shares this schedule instead of having one of its own.
+        deleteUnusedQueryIndexGenerations();
+        deleteOldIndices(
+                "alert",
+                ALERT_HISTORY_INDEX,
+                alertHistoryRetentionPeriod,
+                ALERT_HISTORY_WRITE_ALIAS,
+                alertHistoryEnabled);
         logTypeService.getAllLogTypes(
                 ActionListener.wrap(
                         logTypes -> {
@@ -593,13 +609,17 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent
                             populateAllIndexLists(logTypes);
 
                             if (alertHistoryEnabled) rolloverAlertHistoryIndices();
-                            deleteOldIndices(
-                                    "Alert", getAllAlertsIndicesPatternForAllTypes(logTypes).toArray(new String[0]));
                         },
-                        e -> {}));
+                        e -> logger.warn("Could not roll over the alert history indices", e)));
     }
 
     private void rolloverAndDeleteFindingHistoryIndices() {
+        deleteOldIndices(
+                "finding",
+                FINDING_HISTORY_INDEX,
+                findingHistoryRetentionPeriod,
+                FINDING_HISTORY_WRITE_ALIAS,
+                findingHistoryEnabled);
         logTypeService.getAllLogTypes(
                 ActionListener.wrap(
                         logTypes -> {
@@ -610,28 +630,8 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent
                             populateAllIndexLists(logTypes);
 
                             if (findingHistoryEnabled) rolloverFindingHistoryIndices();
-                            deleteOldIndices(
-                                    "Finding",
-                                    getAllFindingsIndicesPatternForAllTypes(logTypes).toArray(new String[0]));
                         },
-                        e -> {}));
-    }
-
-    private void rolloverAndDeleteWazuhFindingHistoryIndices() {
-        logTypeService.getAllLogTypes(
-                ActionListener.wrap(
-                        logTypes -> {
-                            if (logTypes == null || logTypes.isEmpty()) {
-                                return;
-                            }
-                            populateAllIndexLists(logTypes);
-
-                            if (findingHistoryEnabled) rolloverWazuhFindingHistoryIndices();
-                            deleteOldIndices(
-                                    "WazuhFinding",
-                                    getAllWazuhFindingsIndicesPatternForAllTypes(logTypes).toArray(new String[0]));
-                        },
-                        e -> {}));
+                        e -> logger.warn("Could not roll over the finding history indices", e)));
     }
 
     private void rolloverAndDeleteCorrelationHistoryIndices() {
@@ -648,47 +648,15 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent
                                     .metadata()
                                     .hasAlias(CorrelationIndices.CORRELATION_HISTORY_WRITE_INDEX));
             rolloverCorrelationHistoryIndices();
-            deleteOldIndices("Correlation", CorrelationIndices.CORRELATION_HISTORY_INDEX_PATTERN_REGEXP);
+            deleteOldIndices(
+                    "correlation",
+                    CORRELATION_HISTORY_INDEX,
+                    correlationHistoryRetentionPeriod,
+                    CORRELATION_HISTORY_WRITE_ALIAS,
+                    true);
         } catch (Exception ex) {
-            logger.error("failed to construct correlation history index info");
+            logger.error("Could not roll over or delete the correlation history indices", ex);
         }
-    }
-
-    private void rolloverAndDeleteIocFindingHistoryIndices() {
-        //        try {
-        //            iocFindingHistoryIndex = new HistoryIndexInfo(
-        //                    IocFindingService.IOC_FINDING_ALIAS_NAME,
-        //                    IocFindingService.IOC_FINDING_INDEX_PATTERN,
-        //                    IocFindingService.getIndexMapping(),
-        //                    iocFindingHistoryMaxDocs,
-        //                    iocFindingHistoryMaxAge,
-        //
-        // clusterService.state().metadata().hasAlias(IocFindingService.IOC_FINDING_ALIAS_NAME)
-        //            );
-        //            rolloverIocFindingHistoryIndices();
-        //            deleteOldIndices("IOC Findings",
-        // IocFindingService.IOC_FINDING_INDEX_PATTERN_REGEXP);
-        //        } catch (Exception ex) {
-        //            logger.error("failed to construct ioc finding index info");
-        //        }
-    }
-
-    private List<String> getAllAlertsIndicesPatternForAllTypes(List<String> logTypes) {
-        return logTypes.stream()
-                .map(logType -> DetectorMonitorConfig.getAllAlertsIndicesPattern(logType))
-                .collect(Collectors.toList());
-    }
-
-    private List<String> getAllFindingsIndicesPatternForAllTypes(List<String> logTypes) {
-        return logTypes.stream()
-                .map(logType -> DetectorMonitorConfig.getAllFindingsIndicesPattern(logType))
-                .collect(Collectors.toList());
-    }
-
-    private List<String> getAllWazuhFindingsIndicesPatternForAllTypes(List<String> logTypes) {
-        return logTypes.stream()
-                .map(logType -> DetectorMonitorConfig.getAllWazuhFindingsIndicesPattern(logType))
-                .collect(Collectors.toList());
     }
 
     private void rolloverIndex(
@@ -777,19 +745,6 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent
         }
     }
 
-    private void rolloverWazuhFindingHistoryIndices() {
-        for (HistoryIndexInfo h : wazuhFindingHistoryIndices) {
-            rolloverIndex(
-                    h.isInitialized,
-                    h.indexAlias,
-                    h.indexPattern,
-                    h.indexMappings,
-                    h.maxDocs,
-                    h.maxAge,
-                    false);
-        }
-    }
-
     private void rolloverCorrelationHistoryIndices() {
         if (correlationHistoryIndex != null) {
             rolloverIndex(
@@ -826,14 +781,6 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent
                             () -> rolloverAndDeleteFindingHistoryIndices(),
                             findingHistoryRolloverPeriod,
                             executorName());
-            if (scheduledWazuhFindingsRollover != null) {
-                scheduledWazuhFindingsRollover.cancel();
-            }
-            scheduledWazuhFindingsRollover =
-                    threadPool.scheduleWithFixedDelay(
-                            () -> rolloverAndDeleteWazuhFindingHistoryIndices(),
-                            findingHistoryRolloverPeriod,
-                            executorName());
         }
     }
 
@@ -847,14 +794,6 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent
                             () -> rolloverAndDeleteCorrelationHistoryIndices(),
                             correlationHistoryRolloverPeriod,
                             executorName());
-        }
-    }
-
-    private void rescheduleIocFindingHistoryRollover() {
-        if (clusterService.state().getNodes().isLocalNodeElectedClusterManager()) {
-            if (scheduledIocFindingHistoryRollover != null) {
-                scheduledIocFindingHistoryRollover.cancel();
-            }
         }
     }
 
@@ -883,19 +822,6 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent
             logger.error(e.getMessage());
         }
         return findingMapping;
-    }
-
-    private String wazuhFindingEnrichmentMapping() {
-        String mapping = null;
-        try (InputStream is =
-                DetectorIndexManagementService.class
-                        .getClassLoader()
-                        .getResourceAsStream("mappings/wazuh-finding-enrichment-mapping.json")) {
-            mapping = new String(Objects.requireNonNull(is).readAllBytes(), StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            logger.error(e.getMessage());
-        }
-        return mapping;
     }
 
     // Setters
@@ -956,10 +882,6 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent
         this.correlationHistoryRetentionPeriod = correlationHistoryRetentionPeriod;
     }
 
-    public void setIocFindingHistoryRetentionPeriod(TimeValue iocFindingHistoryRetentionPeriod) {
-        this.iocFindingHistoryRetentionPeriod = iocFindingHistoryRetentionPeriod;
-    }
-
     public void setClusterManager(boolean clusterManager) {
         isClusterManager = clusterManager;
     }
@@ -975,14 +897,8 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent
         if (scheduledFindingsRollover != null) {
             scheduledFindingsRollover.cancel();
         }
-        if (scheduledWazuhFindingsRollover != null) {
-            scheduledWazuhFindingsRollover.cancel();
-        }
         if (scheduledCorrelationHistoryRollover != null) {
             scheduledCorrelationHistoryRollover.cancel();
-        }
-        if (scheduledIocFindingHistoryRollover != null) {
-            scheduledIocFindingHistoryRollover.cancel();
         }
     }
 
@@ -994,14 +910,8 @@ public class DetectorIndexManagementService extends AbstractLifecycleComponent
         if (scheduledFindingsRollover != null) {
             scheduledFindingsRollover.cancel();
         }
-        if (scheduledWazuhFindingsRollover != null) {
-            scheduledWazuhFindingsRollover.cancel();
-        }
         if (scheduledCorrelationHistoryRollover != null) {
             scheduledCorrelationHistoryRollover.cancel();
-        }
-        if (scheduledIocFindingHistoryRollover != null) {
-            scheduledIocFindingHistoryRollover.cancel();
         }
     }
 
