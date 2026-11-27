@@ -48,7 +48,10 @@ public class ConditionSelector {
 
         List<Either<AnyOneOf<ConditionItem, ConditionFieldEqualsValueExpression, ConditionValueExpression>, String>> ids = new ArrayList<>();
         for (String identifier: detections.getDetections().keySet()) {
-            if (r.matcher(identifier).matches()) {
+            // Sigma specification: a selector skips the identifiers that start with '_' unless its own
+            // pattern starts with '_' (pySigma applies the same rule).
+            if (r.matcher(identifier).matches()
+                    && (this.pattern.startsWith("_") || !identifier.startsWith("_"))) {
                 ConditionItem item = new ConditionIdentifier(List.of(Either.right(identifier))).postProcess(detections, parent);
                 ids.add(Either.left(item instanceof ConditionFieldEqualsValueExpression? AnyOneOf.middleVal((ConditionFieldEqualsValueExpression) item):
                         (item instanceof ConditionValueExpression? AnyOneOf.rightVal((ConditionValueExpression) item): AnyOneOf.leftVal(item))));

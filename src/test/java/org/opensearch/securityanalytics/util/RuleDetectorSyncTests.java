@@ -18,7 +18,15 @@ package org.opensearch.securityanalytics.util;
 
 import org.opensearch.index.query.NestedQueryBuilder;
 import org.opensearch.index.query.QueryBuilder;
+import org.opensearch.securityanalytics.TestHelpers;
+import org.opensearch.securityanalytics.model.Detector;
+import org.opensearch.securityanalytics.model.DetectorInput;
+import org.opensearch.securityanalytics.model.DetectorRule;
 import org.opensearch.test.OpenSearchTestCase;
+
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public class RuleDetectorSyncTests extends OpenSearchTestCase {
 
@@ -39,5 +47,30 @@ public class RuleDetectorSyncTests extends OpenSearchTestCase {
 
         assertTrue(q instanceof NestedQueryBuilder);
         assertEquals("detector.inputs.detector_input.custom_rules", ((NestedQueryBuilder) q).path());
+    }
+
+    private static Detector detector(List<String> customRules, List<String> prePackagedRules) {
+        return TestHelpers.randomDetectorWithInputs(
+                List.of(
+                        new DetectorInput(
+                                "input",
+                                List.of("wazuh-events-v5-applications"),
+                                customRules.stream().map(DetectorRule::new).collect(Collectors.toList()),
+                                prePackagedRules.stream().map(DetectorRule::new).collect(Collectors.toList()))));
+    }
+
+    public void testReferencesAnyRule_matchesCustomAndPrePackagedIdsExactly() {
+        Set<String> ruleIds = Set.of("26a8d32e-0838-5589-948c-501b5a301cf5");
+
+        assertTrue(
+                RuleDetectorSync.referencesAnyRule(
+                        detector(List.of(), List.of("26a8d32e-0838-5589-948c-501b5a301cf5")), ruleIds));
+        assertTrue(
+                RuleDetectorSync.referencesAnyRule(
+                        detector(List.of("26a8d32e-0838-5589-948c-501b5a301cf5"), List.of()), ruleIds));
+        // An id that shares parts with the rule's is not the rule: the match is exact.
+        assertFalse(
+                RuleDetectorSync.referencesAnyRule(
+                        detector(List.of("26a8d32e-0838-5589-948c-000000000000"), List.of("0838")), ruleIds));
     }
 }

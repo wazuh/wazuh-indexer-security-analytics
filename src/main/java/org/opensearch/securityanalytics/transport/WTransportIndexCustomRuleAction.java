@@ -60,7 +60,8 @@ public class WTransportIndexCustomRuleAction
                         request.getRule(),
                         request.isForced(),
                         request.getDocumentId(),
-                        request.getSpace());
+                        request.getSpace(),
+                        request.isSkipDetectorRebuild());
         this.client.execute(
                 IndexRuleAction.INSTANCE,
                 internalRequest,

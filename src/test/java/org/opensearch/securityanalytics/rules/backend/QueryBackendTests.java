@@ -1761,6 +1761,79 @@ public class QueryBackendTests extends OpenSearchTestCase {
                 firstQuery("fieldA|gte: 5000\n" + "                    fieldC|lt: 10"));
     }
 
+    public void testAllOfThemSkipsUnderscoreIdentifiers()
+            throws IOException, SigmaError, CompositeSigmaErrors {
+        Assert.assertEquals(
+                "((process.name: \"nc\") AND (process.args: \"\\-e\")) AND ((NOT user.name: adm_*))",
+                compile(
+                        "                sel_a:\n"
+                                + "                    process.name: nc\n"
+                                + "                sel_b:\n"
+                                + "                    process.args: '-e'\n"
+                                + "                _filt_a177600000_selection:\n"
+                                + "                    user.name|startswith: adm_\n",
+                        "(all of them) and (not _filt_a177600000_selection)"));
+    }
+
+    public void testOneOfThemSkipsUnderscoreIdentifiers()
+            throws IOException, SigmaError, CompositeSigmaErrors {
+        Assert.assertEquals(
+                "((process.name: \"nc\") OR (process.args: \"\\-e\")) AND ((NOT user.name: adm_*))",
+                compile(
+                        "                sel_a:\n"
+                                + "                    process.name: nc\n"
+                                + "                sel_b:\n"
+                                + "                    process.args: '-e'\n"
+                                + "                _filt_a177600000_selection:\n"
+                                + "                    user.name|startswith: adm_\n",
+                        "(1 of them) and (not _filt_a177600000_selection)"));
+    }
+
+    public void testOneOfPatternSkipsUnderscoreIdentifiers()
+            throws IOException, SigmaError, CompositeSigmaErrors {
+        Assert.assertEquals(
+                "((process.name: \"nc\") OR (process.args: \"\\-e\")) AND ((NOT user.name: adm_*))",
+                compile(
+                        "                sel_a:\n"
+                                + "                    process.name: nc\n"
+                                + "                sel_b:\n"
+                                + "                    process.args: '-e'\n"
+                                + "                _filt_a177600000_selection:\n"
+                                + "                    user.name|startswith: adm_\n",
+                        "(1 of sel*) and (not _filt_a177600000_selection)"));
+        Assert.assertEquals(
+                "((process.name: \"nc\")) AND ((NOT user.name: adm_*))",
+                compile(
+                        "                selection:\n"
+                                + "                    process.name: nc\n"
+                                + "                _filt_a177600000_selection:\n"
+                                + "                    user.name|startswith: adm_\n",
+                        "(1 of *selection) and (not _filt_a177600000_selection)"));
+    }
+
+    public void testUnderscorePatternSelectsUnderscoreIdentifiers()
+            throws IOException, SigmaError, CompositeSigmaErrors {
+        Assert.assertEquals(
+                "(url.original: *.git\\/*) AND ((((NOT host.name: \"a\") AND (NOT host.name: \"b\"))))",
+                compile(
+                        "                selection:\n"
+                                + "                    url.original|contains: .git/\n"
+                                + "                _filt_a177600000_a:\n"
+                                + "                    host.name: a\n"
+                                + "                _filt_a177600000_b:\n"
+                                + "                    host.name: b\n",
+                        "(selection) and (not 1 of _filt_a177600000_*)"));
+    }
+
+    /** Compiles a rule with the given detection block and condition, and returns its single query. */
+    private String compile(String detection, String condition)
+            throws IOException, SigmaError, CompositeSigmaErrors {
+        return testBackend()
+                .convertRule(SigmaRule.fromYaml(ruleWith(detection, condition), false))
+                .get(0)
+                .toString();
+    }
+
     /** Compiles a one-selection rule and returns its single query. */
     private String firstQuery(String selection) throws IOException, SigmaError, CompositeSigmaErrors {
         return testBackend()

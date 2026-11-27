@@ -143,7 +143,9 @@ import org.opensearch.securityanalytics.transport.WTransportIndexCustomRuleActio
 import org.opensearch.securityanalytics.transport.WTransportIndexDetectorAction;
 import org.opensearch.securityanalytics.transport.WTransportIndexIntegrationAction;
 import org.opensearch.securityanalytics.transport.WTransportIndexRuleAction;
+import org.opensearch.securityanalytics.transport.WTransportRefreshDetectorsAction;
 import org.opensearch.securityanalytics.transport.WTransportSetDetectorEnabledAction;
+import org.opensearch.securityanalytics.transport.WTransportValidateRuleAction;
 import org.opensearch.securityanalytics.util.CorrelationIndices;
 import org.opensearch.securityanalytics.util.CorrelationRuleIndices;
 import org.opensearch.securityanalytics.util.CustomLogTypeIndices;
@@ -173,7 +175,9 @@ import com.wazuh.securityanalytics.action.WIndexCustomRuleAction;
 import com.wazuh.securityanalytics.action.WIndexDetectorAction;
 import com.wazuh.securityanalytics.action.WIndexIntegrationAction;
 import com.wazuh.securityanalytics.action.WIndexRuleAction;
+import com.wazuh.securityanalytics.action.WRefreshDetectorsAction;
 import com.wazuh.securityanalytics.action.WSetDetectorEnabledAction;
+import com.wazuh.securityanalytics.action.WValidateRuleAction;
 
 import static org.opensearch.securityanalytics.util.CorrelationIndices.CORRELATION_ALERT_INDEX;
 
@@ -489,6 +493,9 @@ public class SecurityAnalyticsPlugin extends Plugin
                 new ActionHandler<>(
                         WIndexIntegrationAction.INSTANCE, WTransportIndexIntegrationAction.class),
                 new ActionHandler<>(WEvaluateRulesAction.INSTANCE, WTransportEvaluateRulesAction.class),
+                new ActionHandler<>(WValidateRuleAction.INSTANCE, WTransportValidateRuleAction.class),
+                new ActionHandler<>(
+                        WRefreshDetectorsAction.INSTANCE, WTransportRefreshDetectorsAction.class),
                 new ActionHandler<>(WIndexCustomRuleAction.INSTANCE, WTransportIndexCustomRuleAction.class),
                 new ActionHandler<>(
                         WDeleteCustomRuleAction.INSTANCE, WTransportDeleteCustomRuleAction.class),

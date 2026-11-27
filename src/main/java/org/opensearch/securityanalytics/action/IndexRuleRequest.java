@@ -59,6 +59,12 @@ public class IndexRuleRequest extends ActionRequest {
 
     private final String space;
 
+    /**
+     * Whether to skip rebuilding the detectors that reference the rule. A caller that changes several
+     * rules sets it and then rebuilds each affected detector once, with WRefreshDetectorsAction.
+     */
+    private final boolean skipDetectorRebuild;
+
     public IndexRuleRequest(
             String ruleId,
             WriteRequest.RefreshPolicy refreshPolicy,
@@ -78,6 +84,19 @@ public class IndexRuleRequest extends ActionRequest {
             Boolean forced,
             String documentId,
             String space) {
+        this(ruleId, refreshPolicy, logType, method, rule, forced, documentId, space, false);
+    }
+
+    public IndexRuleRequest(
+            String ruleId,
+            WriteRequest.RefreshPolicy refreshPolicy,
+            String logType,
+            RestRequest.Method method,
+            String rule,
+            Boolean forced,
+            String documentId,
+            String space,
+            boolean skipDetectorRebuild) {
         super();
         this.ruleId = ruleId;
         this.refreshPolicy = refreshPolicy;
@@ -87,6 +106,7 @@ public class IndexRuleRequest extends ActionRequest {
         this.forced = forced;
         this.documentId = documentId;
         this.space = space;
+        this.skipDetectorRebuild = skipDetectorRebuild;
     }
 
     public IndexRuleRequest(StreamInput sin) throws IOException {
@@ -98,7 +118,8 @@ public class IndexRuleRequest extends ActionRequest {
                 sin.readString(),
                 sin.readBoolean(),
                 sin.readOptionalString(),
-                sin.readOptionalString());
+                sin.readOptionalString(),
+                sin.readBoolean());
     }
 
     @Override
@@ -121,6 +142,7 @@ public class IndexRuleRequest extends ActionRequest {
         out.writeBoolean(this.forced);
         out.writeOptionalString(this.documentId);
         out.writeOptionalString(this.space);
+        out.writeBoolean(this.skipDetectorRebuild);
     }
 
     public String getRuleId() {
@@ -153,5 +175,9 @@ public class IndexRuleRequest extends ActionRequest {
 
     public String getSpace() {
         return this.space;
+    }
+
+    public boolean isSkipDetectorRebuild() {
+        return this.skipDetectorRebuild;
     }
 }

@@ -294,6 +294,11 @@ public class TransportIndexRuleAction
 
         void indexRule(Rule rule, Map<String, String> ruleFieldMappings) throws IOException {
             if (this.request.getMethod() == RestRequest.Method.PUT) {
+                // The caller rebuilds the detectors itself, once for all the rules it changed.
+                if (this.request.isSkipDetectorRebuild()) {
+                    this.updateRule(rule, ruleFieldMappings, List.of());
+                    return;
+                }
                 if (TransportIndexRuleAction.this.detectorIndices.detectorIndexExists()) {
                     this.searchDetectors(
                             this.request.getRuleId(),
