@@ -242,6 +242,64 @@ public class RuleDetectorSyncTests extends OpenSearchTestCase {
         assertEquals("none of them is done yet", 0, done.get());
     }
 
+    /**
+     * A rebuild completes once, even when the caller's own completion throws. {@code
+     * ActionListener.wrap} routes an exception thrown by the response arm into the failure arm, so
+     * without a one-shot guard the detector would be released, or re-rebuilt, a second time, and the
+     * caller would be counted down twice.
+     */
+    public void testACompletionThatThrowsIsNotRunTwice() {
+        Detector detector = detector("d1");
+        AtomicInteger done = new AtomicInteger();
+
+        this.rebuild(
+                detector,
+                "rule-1",
+                () -> {
+                    done.incrementAndGet();
+                    throw new IllegalStateException("the caller's listener threw");
+                });
+
+        this.issued.get(0).onResponse(null);
+
+        assertEquals("the caller is counted down once", 1, done.get());
+        assertEquals("and no second rebuild is issued", 1, this.issued.size());
+    }
+
+    /**
+     * A dispatch that throws instead of calling the listener releases the detector. Otherwise it
+     * would stay claimed for the lifetime of the node, and every later change to it would be
+     * coalesced into a pass that never runs.
+     */
+    @SuppressWarnings("unchecked")
+    public void testADispatchThatThrowsReleasesTheDetector() {
+        AtomicInteger attempts = new AtomicInteger();
+        doAnswer(
+                        invocation -> {
+                            if (attempts.incrementAndGet() == 1) {
+                                throw new IllegalStateException("the node is closing");
+                            }
+                            IndexDetectorRequest request = invocation.getArgument(1);
+                            this.issuedFor.add(request.getDetectorId());
+                            this.issued.add((ActionListener<IndexDetectorResponse>) invocation.getArgument(2));
+                            return null;
+                        })
+                .when(this.client)
+                .execute(any(), any(), any());
+
+        Detector detector = detector("d1");
+        AtomicInteger done = new AtomicInteger();
+
+        this.rebuild(detector, "rule-1", done::incrementAndGet);
+
+        assertEquals("the caller is not left waiting on a request that was never sent", 1, done.get());
+        assertTrue("nothing reached the client", this.issued.isEmpty());
+
+        this.rebuild(detector, "rule-2", done::incrementAndGet);
+
+        assertEquals("the detector is free, so the next change rebuilds it", 1, this.issued.size());
+    }
+
     /** Two changes that do not overlap each get their own rebuild. */
     public void testSequentialRebuildsAreNotCoalesced() {
         Detector detector = detector("d1");

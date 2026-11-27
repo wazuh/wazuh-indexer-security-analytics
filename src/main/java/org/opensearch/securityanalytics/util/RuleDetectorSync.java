@@ -43,6 +43,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -203,8 +204,10 @@ public final class RuleDetectorSync {
             String ruleId,
             Runnable onDone) {
         String detectorId = detector.getId();
-        if (REBUILDS_IN_FLIGHT.putIfAbsent(detectorId, Boolean.FALSE) != null) {
-            REBUILDS_IN_FLIGHT.put(detectorId, Boolean.TRUE);
+        // One atomic operation: as a putIfAbsent plus a put, a rebuild completing in between would
+        // leave the entry recreated with nothing in flight, so every later change to that detector
+        // would be coalesced into a pass that never runs.
+        if (REBUILDS_IN_FLIGHT.merge(detectorId, Boolean.FALSE, (inFlight, ignored) -> Boolean.TRUE)) {
             log.debug(
                     "Rebuild of detector [{}] already in flight; coalescing the one owed by rule [{}]",
                     detectorId,
@@ -224,23 +227,43 @@ public final class RuleDetectorSync {
             Runnable onDone) {
         IndexDetectorRequest indexRequest =
                 new IndexDetectorRequest(detector.getId(), refreshPolicy, RestRequest.Method.PUT, detector);
-        client.execute(
-                IndexDetectorAction.INSTANCE,
-                indexRequest,
-                ActionListener.wrap(
-                        r -> {
-                            log.debug(
-                                    "Rebuilt detector [{}] after change to rule [{}]", detector.getId(), ruleId);
-                            completeRebuild(client, detector, refreshPolicy, ruleId, onDone);
-                        },
-                        e -> {
-                            log.error(
-                                    "Failed to rebuild detector [{}] after change to rule [{}]",
-                                    detector.getId(),
-                                    ruleId,
-                                    e);
-                            completeRebuild(client, detector, refreshPolicy, ruleId, onDone);
-                        }));
+        // Completes exactly once, whichever path gets there first: either listener arm, or the
+        // catch. ActionListener.wrap routes an exception from the response arm into the failure arm,
+        // and execute can deliver inline and still throw. Twice would release the detector mid-pass.
+        AtomicBoolean completed = new AtomicBoolean();
+        Runnable complete =
+                () -> {
+                    if (completed.compareAndSet(false, true)) {
+                        completeRebuild(client, detector, refreshPolicy, ruleId, onDone);
+                    }
+                };
+        try {
+            client.execute(
+                    IndexDetectorAction.INSTANCE,
+                    indexRequest,
+                    ActionListener.wrap(
+                            r -> {
+                                log.debug(
+                                        "Rebuilt detector [{}] after change to rule [{}]", detector.getId(), ruleId);
+                                complete.run();
+                            },
+                            e -> {
+                                log.error(
+                                        "Failed to rebuild detector [{}] after change to rule [{}]",
+                                        detector.getId(),
+                                        ruleId,
+                                        e);
+                                complete.run();
+                            }));
+        } catch (Exception e) {
+            // Otherwise the detector stays claimed for the lifetime of the node.
+            log.error(
+                    "Failed to issue the rebuild of detector [{}] after change to rule [{}]",
+                    detector.getId(),
+                    ruleId,
+                    e);
+            complete.run();
+        }
     }
 
     /**
