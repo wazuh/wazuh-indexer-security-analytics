@@ -39,6 +39,7 @@ import org.opensearch.search.builder.SearchSourceBuilder;
 import org.opensearch.securityanalytics.action.DeleteCustomLogTypeAction;
 import org.opensearch.securityanalytics.action.DeleteCustomLogTypeRequest;
 import org.opensearch.securityanalytics.action.DeleteCustomLogTypeResponse;
+import org.opensearch.securityanalytics.indexmanagment.LogTypeIndexCleanup;
 import org.opensearch.securityanalytics.logtype.LogTypeService;
 import org.opensearch.securityanalytics.model.CustomLogType;
 import org.opensearch.securityanalytics.model.Detector;
@@ -77,6 +78,8 @@ public class TransportDeleteCustomLogTypeAction
 
     private final CustomLogTypeIndices customLogTypeIndices;
 
+    private final LogTypeIndexCleanup logTypeIndexCleanup;
+
     private volatile Boolean filterByEnabled;
 
     private volatile TimeValue indexTimeout;
@@ -104,6 +107,7 @@ public class TransportDeleteCustomLogTypeAction
         this.detectorIndices = detectorIndices;
         this.ruleIndices = ruleIndices;
         this.customLogTypeIndices = customLogTypeIndices;
+        this.logTypeIndexCleanup = new LogTypeIndexCleanup(client, clusterService);
         this.filterByEnabled = SecurityAnalyticsSettings.FILTER_BY_BACKEND_ROLES.get(this.settings);
         this.indexTimeout = SecurityAnalyticsSettings.INDEX_TIMEOUT.get(this.settings);
 
@@ -329,8 +333,13 @@ public class TransportDeleteCustomLogTypeAction
                                                         "Log Type with id %s cannot be deleted",
                                                         logType.getId()),
                                                 RestStatus.INTERNAL_SERVER_ERROR));
+                                return;
                             }
-                            onOperation(response);
+                            // Never fails, so the response does not depend on it.
+                            logTypeIndexCleanup.deleteIndicesOfRemovedLogType(
+                                    logType.getName(),
+                                    ActionListener.wrap(
+                                            ignored -> onOperation(response), e -> onOperation(response)));
                         }
 
                         @Override
