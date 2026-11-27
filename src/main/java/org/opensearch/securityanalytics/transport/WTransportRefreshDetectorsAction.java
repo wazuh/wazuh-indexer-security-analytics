@@ -17,9 +17,11 @@
 package org.opensearch.securityanalytics.transport;
 
 import org.opensearch.action.support.ActionFilters;
+import org.opensearch.action.support.ContextPreservingActionListener;
 import org.opensearch.action.support.HandledTransportAction;
 import org.opensearch.action.support.WriteRequest;
 import org.opensearch.common.inject.Inject;
+import org.opensearch.common.util.concurrent.ThreadContext;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.xcontent.NamedXContentRegistry;
 import org.opensearch.securityanalytics.util.RuleDetectorSync;
@@ -79,15 +81,20 @@ public class WTransportRefreshDetectorsAction
             Task task,
             WRefreshDetectorsRequest request,
             ActionListener<WRefreshDetectorsResponse> listener) {
-        // Detectors belong to the plugin, as when a rule change rebuilds them.
-        this.threadPool.getThreadContext().stashContext();
-        RuleDetectorSync.rebuildDetectorsForRules(
-                this.client,
-                this.xContentRegistry,
-                request.getRuleIds(),
-                WriteRequest.RefreshPolicy.IMMEDIATE,
-                ActionListener.wrap(
-                        rebuilt -> listener.onResponse(new WRefreshDetectorsResponse(rebuilt)),
-                        listener::onFailure));
+        // Detectors belong to the plugin, as when a rule change rebuilds them. The caller gets its
+        // answer, and its thread back, in its own context.
+        ThreadContext threadContext = this.threadPool.getThreadContext();
+        ActionListener<WRefreshDetectorsResponse> restoring =
+                ContextPreservingActionListener.wrapPreservingContext(listener, threadContext);
+        try (ThreadContext.StoredContext ignored = threadContext.stashContext()) {
+            RuleDetectorSync.rebuildDetectorsForRules(
+                    this.client,
+                    this.xContentRegistry,
+                    request.getRuleIds(),
+                    WriteRequest.RefreshPolicy.IMMEDIATE,
+                    ActionListener.wrap(
+                            rebuilt -> restoring.onResponse(new WRefreshDetectorsResponse(rebuilt)),
+                            restoring::onFailure));
+        }
     }
 }
