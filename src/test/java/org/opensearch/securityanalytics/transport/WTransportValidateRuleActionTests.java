@@ -28,6 +28,9 @@ import java.util.Set;
 
 public class WTransportValidateRuleActionTests extends OpenSearchTestCase {
 
+    private static final WTransportValidateRuleAction.QueryLimits NO_LIMIT =
+            new WTransportValidateRuleAction.QueryLimits(Integer.MAX_VALUE, false, 50);
+
     @Override
     public void tearDown() throws Exception {
         WCSFieldValidator.reset();
@@ -61,7 +64,8 @@ public class WTransportValidateRuleActionTests extends OpenSearchTestCase {
                                         + "    user_agent.original|startswith: internal-scanner\n",
                                 "(selection) and (not _filt_a177600000_selection)"),
                         Collections.emptyMap(),
-                        false);
+                        false,
+                        NO_LIMIT);
 
         assertEquals(
                 List.of("(url.original: *.git\\/*) AND ((NOT user_agent.original: internal\\-scanner*))"),
@@ -73,7 +77,8 @@ public class WTransportValidateRuleActionTests extends OpenSearchTestCase {
                 WTransportValidateRuleAction.validate(
                         rule("  selection:\n    url.original|contains: .git/\n", "selection"),
                         Map.of("url.original", "url.full"),
-                        true);
+                        true,
+                        NO_LIMIT);
 
         assertEquals(List.of("url.full: *.git\\/*"), queries);
     }
@@ -86,7 +91,8 @@ public class WTransportValidateRuleActionTests extends OpenSearchTestCase {
                                 WTransportValidateRuleAction.validate(
                                         rule("  selection:\n    url.original: a\n", "selection and not missing"),
                                         Collections.emptyMap(),
-                                        false));
+                                        false,
+                                        NO_LIMIT));
 
         assertEquals(RestStatus.BAD_REQUEST, e.status());
     }
@@ -106,7 +112,8 @@ public class WTransportValidateRuleActionTests extends OpenSearchTestCase {
                                                         + "    not.a.wcs.field: b\n",
                                                 "(selection) and (not _filt_a177600000_selection)"),
                                         Collections.emptyMap(),
-                                        false));
+                                        false,
+                                        NO_LIMIT));
 
         assertEquals(RestStatus.BAD_REQUEST, e.status());
         assertTrue(e.getMessage(), e.getMessage().contains("not.a.wcs.field"));
@@ -127,5 +134,80 @@ public class WTransportValidateRuleActionTests extends OpenSearchTestCase {
     public void testQueryThatParsesIsAccepted() {
         WTransportValidateRuleAction.requireParses(
                 "(url.original: *.git\\/*) AND ((NOT user_agent.original: internal\\-scanner*))");
+    }
+
+    /** A rule that lists {@code count} source IP addresses. */
+    private static String ipRule(int count) {
+        StringBuilder detection = new StringBuilder("  selection:\n    source.ip:\n");
+        for (int i = 0; i < count; i++) {
+            detection.append("      - 10.30.0.").append(i).append('\n');
+        }
+        return rule(detection.toString(), "selection");
+    }
+
+    public void testQueryLongerThanTheLimitOnceStoredIsBadRequest() {
+        String rule = ipRule(20);
+        String query =
+                WTransportValidateRuleAction.validate(rule, Collections.emptyMap(), false, NO_LIMIT).get(0);
+        // Shorter than the limit as compiled, longer once each of its 20 fields gets 50 characters.
+        WTransportValidateRuleAction.QueryLimits limits =
+                new WTransportValidateRuleAction.QueryLimits(query.length() + 100, false, 50);
+
+        SecurityAnalyticsException e =
+                expectThrows(
+                        SecurityAnalyticsException.class,
+                        () ->
+                                WTransportValidateRuleAction.validate(rule, Collections.emptyMap(), false, limits));
+
+        assertEquals(RestStatus.BAD_REQUEST, e.status());
+        assertTrue(e.getMessage(), e.getMessage().contains("search.query.max_query_string_length"));
+        assertTrue(e.getMessage(), e.getMessage().contains(String.valueOf(query.length() + 20 * 50)));
+    }
+
+    public void testQueryThatFitsOnceStoredIsAccepted() {
+        String rule = ipRule(20);
+        String query =
+                WTransportValidateRuleAction.validate(rule, Collections.emptyMap(), false, NO_LIMIT).get(0);
+        WTransportValidateRuleAction.QueryLimits limits =
+                new WTransportValidateRuleAction.QueryLimits(query.length() + 20 * 50, false, 50);
+
+        assertEquals(
+                List.of(query),
+                WTransportValidateRuleAction.validate(rule, Collections.emptyMap(), false, limits));
+    }
+
+    public void testMonitorOnlyLimitAcceptsALongQuery() {
+        WTransportValidateRuleAction.QueryLimits limits =
+                new WTransportValidateRuleAction.QueryLimits(10, true, 50);
+
+        assertEquals(
+                1,
+                WTransportValidateRuleAction.validate(ipRule(20), Collections.emptyMap(), false, limits)
+                        .size());
+    }
+
+    public void testStoredLengthCountsEachFieldReference() {
+        String query = "(url.original: a) OR (url.original: b) AND (NOT _exists_: user.name)";
+
+        assertEquals(
+                query.length() + 3 * 10,
+                WTransportValidateRuleAction.storedLength(query, Set.of("url.original", "user.name"), 10));
+    }
+
+    public void testTooManyClausesNamesTheLimitAndQuotesTheQueryShort() {
+        StringBuilder query = new StringBuilder("source.ip: 10.0.0.0");
+        for (int i = 1; i <= 1100; i++) {
+            query.append(" OR source.ip: 10.0.").append(i / 250).append('.').append(i % 250);
+        }
+
+        SecurityAnalyticsException e =
+                expectThrows(
+                        SecurityAnalyticsException.class,
+                        () -> WTransportValidateRuleAction.requireParses(query.toString()));
+
+        assertEquals(RestStatus.BAD_REQUEST, e.status());
+        assertTrue(e.getMessage(), e.getMessage().contains("indices.query.bool.max_clause_count"));
+        assertTrue(e.getMessage(), e.getMessage().length() < 600);
+        assertTrue(e.getMessage(), e.getMessage().contains("(" + query.length() + " characters)"));
     }
 }
